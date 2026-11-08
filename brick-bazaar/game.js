@@ -113,6 +113,8 @@
       desc: (l) => `Chain lightning jumps between ${3 + Math.max(0, l - 1)} bricks. Never misses.` + (l ? '' : ' Comes with 15 cells.') },
     { id: 'recycler', cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
       desc: (l) => `${(l + 1) * 12}% chance a shot costs no ammo.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'rounds', cat: 'weap', icon: '🎯', name: 'Hardened Rounds', max: 4, base: 110, grow: 1.8,
+      desc: (l) => `All guns and drone shots deal +${l + 1} damage.`, req: () => ownsAnyGun() || lv('d_orbit') > 0, reqText: 'Needs a gun' },
     { id: 'belt', cat: 'weap', icon: '🎒', name: 'Ammo Belt', max: 4, base: 60, grow: 1.7,
       desc: (l) => `Ammo packs and crates give +${(l + 1) * 25}% more.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
 
@@ -121,6 +123,8 @@
     { id: 'ammo_rocket', cat: 'ammo', ammo: 'rocket' },
     { id: 'ammo_scatter', cat: 'ammo', ammo: 'scatter' },
     { id: 'ammo_arc', cat: 'ammo', ammo: 'arc' },
+    { id: 'factory', cat: 'ammo', icon: '🏭', name: 'Ammo Factory', max: 4, base: 90, grow: 1.7,
+      desc: (l) => `Every level starts with free ammo: ${(l + 1) * 15}% of a pack per gun.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
     { id: 'ammo_all', cat: 'ammo', icon: '🧰', name: 'Supply Drop', allAmmo: true,
       desc: () => 'Half a pack for every gun you own, at a discount.' },
 
@@ -135,38 +139,52 @@
     { id: 'd_over', cat: 'drone', icon: '⚙️', name: 'Overclock', max: 3, base: 120, grow: 1.8,
       desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => lv('d_orbit') + lv('d_hunter') + lv('d_collect') + lv('d_goalie') > 0, reqText: 'Needs a drone' },
 
-    { id: 'width', cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 5, base: 40, grow: 1.5,
+    { id: 'width', cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
       desc: () => 'Paddle +12% wider.' },
     { id: 'magnet', cat: 'gear', icon: '🧲', name: 'Coin Magnet', max: 5, base: 45, grow: 1.6,
       desc: (l) => (l ? 'Bigger, stronger pull.' : 'Pulls falling coins toward the paddle.') + (l >= 2 ? ' Now pulls capsules too.' : ' Level 3 also pulls capsules.') },
-    { id: 'net', cat: 'gear', icon: '🥅', name: 'Safety Net', max: 3, base: 70, grow: 1.8,
+    { id: 'net', cat: 'gear', icon: '🥅', name: 'Safety Net', max: 4, base: 70, grow: 1.8,
       desc: (l) => `A barrier that bounces back ${l + 1} missed ball${l ? 's' : ''} each level.` },
     { id: 'aim', cat: 'gear', icon: '🎯', name: 'Aim Sight', max: 1, base: 25, grow: 1,
       desc: () => 'Shows the launch path before you tap.' },
+    { id: 'shield', cat: 'gear', icon: '🛡️', name: 'Deflector', max: 3, base: 70, grow: 1.7,
+      desc: (l) => `Blocks ${l + 1} enemy slime shot${l ? 's' : ''} each level, so your paddle never gets stunned.` },
+    { id: 'second', cat: 'gear', icon: '🌬️', name: 'Second Wind', max: 2, base: 150, grow: 2,
+      desc: (l) => `Losing your last ball costs no life, ${l + 1} time${l ? 's' : ''} per level.` },
+    { id: 'starter', cat: 'gear', icon: '🚦', name: 'Head Start', max: 2, base: 80, grow: 1.9,
+      desc: (l) => `Start every level with ${l + 1} random power-up${l ? 's' : ''} active.` },
+    { id: 'demo', cat: 'gear', icon: '🧨', name: 'Demolition', max: 3, base: 65, grow: 1.7,
+      desc: (l) => `Bomb bricks blast a wider area and deal ${l + 3} damage.` },
     { id: 'puluck', cat: 'gear', icon: '🎁', name: 'Lucky Capsules', max: 4, base: 50, grow: 1.6,
       desc: () => 'More power-up capsules, and they last 15% longer.' },
     { id: 'life', cat: 'gear', icon: '❤️', name: 'Extra Life', consumable: true, base: 60, grow: 1.45,
       desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.` },
 
-    { id: 'dmg', cat: 'ball', icon: '🔩', name: 'Heavy Core', max: 4, base: 90, grow: 1.9,
+    { id: 'dmg', cat: 'ball', icon: '🔩', name: 'Heavy Core', max: 6, base: 90, grow: 1.9,
       desc: (l) => `Ball deals ${l + 2} damage per hit.` },
-    { id: 'crit', cat: 'ball', icon: '✨', name: 'Crit Spark', max: 5, base: 60, grow: 1.5,
+    { id: 'crit', cat: 'ball', icon: '✨', name: 'Crit Spark', max: 6, base: 60, grow: 1.5,
       desc: (l) => `${(l + 1) * 8}% chance for a triple-damage hit.` },
-    { id: 'pierce', cat: 'ball', icon: '🔥', name: 'Ember Core', max: 3, base: 110, grow: 1.9,
+    { id: 'pierce', cat: 'ball', icon: '🔥', name: 'Ember Core', max: 4, base: 110, grow: 1.9,
       desc: (l) => `After each paddle bounce the ball smashes through ${l + 1} brick${l ? 's' : ''} without bouncing.` },
-    { id: 'twin', cat: 'ball', icon: '⚪', name: 'Twin Serve', max: 2, base: 100, grow: 2.2,
+    { id: 'twin', cat: 'ball', icon: '⚪', name: 'Twin Serve', max: 3, base: 100, grow: 2.2,
       desc: (l) => `Every serve launches ${l + 2} balls.` },
+    { id: 'bigball', cat: 'ball', icon: '🟠', name: 'Big Ball', max: 3, base: 85, grow: 1.8,
+      desc: () => 'A bigger ball that is easier to hit and clips more bricks.' },
+    { id: 'splash', cat: 'ball', icon: '💥', name: 'Shatter Core', max: 4, base: 95, grow: 1.7,
+      desc: (l) => `${(l + 1) * 15}% chance a ball hit also chips every brick around it.` },
     { id: 'chill', cat: 'ball', icon: '❄️', name: 'Chill Field', max: 3, base: 60, grow: 1.7,
       desc: () => 'Ball moves 7% slower. Easier to follow.' },
 
-    { id: 'luck', cat: 'eco', icon: '🍀', name: 'Lucky Bricks', max: 5, base: 40, grow: 1.55,
+    { id: 'luck', cat: 'eco', icon: '🍀', name: 'Lucky Bricks', max: 6, base: 40, grow: 1.55,
       desc: (l) => `Coin drop chance ${Math.round(coinChance(l) * 100)}% → ${Math.round(coinChance(l + 1) * 100)}%.` },
-    { id: 'value', cat: 'eco', icon: '🪙', name: 'Gold Plating', max: 4, base: 70, grow: 1.8,
+    { id: 'value', cat: 'eco', icon: '🪙', name: 'Gold Plating', max: 5, base: 70, grow: 1.8,
       desc: (l) => `Each coin is worth ${l + 2}.` },
     { id: 'piggy', cat: 'eco', icon: '🐷', name: 'Piggy Bank', max: 4, base: 80, grow: 1.7,
       desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * 30}).` },
     { id: 'streak', cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 60, grow: 1.7,
       desc: (l) => `Streak payouts are ${(l + 1) * 50}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
+    { id: 'foebounty', cat: 'eco', icon: '🎯', name: 'Monster Bounty', max: 3, base: 70, grow: 1.7,
+      desc: (l) => `Enemies drop +${l + 1} coin${l ? 's' : ''}, bosses drop ${(l + 1) * 25}% more.` },
     { id: 'bounty', cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 25}%.` },
   ];
@@ -236,58 +254,90 @@
     }
   }
 
-  // ---------- level generation ----------
-  const PATTERNS = [
-    (r, c, R) => true, // wall
-    (r, c) => (r + c) % 2 === 0, // checker
-    (r, c, R) => Math.abs(c - 4.5) <= (r / Math.max(1, R - 1)) * 4.5 + 0.5, // pyramid
-    (r, c, R) => Math.abs(c - 4.5) / 5 + Math.abs(r - (R - 1) / 2) / (R / 2 + 0.5) <= 1.0, // diamond
-    (r) => r % 2 === 0, // stripes
-    (r, c) => c % 3 !== 2, // columns
-    (r, c, R) => r === 0 || r === R - 1 || c === 0 || c === 9 || (r === Math.floor(R / 2) && c > 2 && c < 7), // frame
-    (r, c) => (c + r) % 4 < 2, // zigzag
-    (r, c, R) => { const d = Math.max(Math.abs(c - 4.5), Math.abs(r - (R - 1) / 2) * 1.4); return Math.floor(d) % 2 === 0; }, // rings
-    (r, c, R) => (c < 4 || c > 5) ? r < R - 1 : r % 3 === 0, // gate
-    null, // random symmetric
-    null, // random symmetric
+  // ---------- levels ----------
+  // Hand-made campaign. Map legend: 1-9 brick hit points, S steel, B bomb, G gold, X stone (unbreakable),
+  // H hive (spawns blobs), . empty. foes = enemies that join the level; boss = boss kind (1-3).
+  const LEVELS = [
+    { name: 'Warm-up', map: ['..........', '..111111..', '.111GG111.', '..111111..'] },
+    { name: 'Archway', map: ['...1111...', '..122221..', '.11.22.11.', '.11....11.', '.11....11.'] },
+    { name: 'Fuse Box', map: ['2222222222', '1111111111', '..........', '11B1111B11', '1111111111'], tip: 'Bomb bricks blast their neighbours' },
+    { name: 'Gem', map: ['....11....', '...1221...', '..123321..', '.12333321.', '..123321..', '...1221...', '....11....'] },
+    { name: 'Piggy Bank', map: ['.11111111.', '1G2G22G2G1', '1222222221', '1G2G22G2G1', '.11111111.', '..1....1..'], tip: 'Gold bricks burst into coins' },
+    { name: 'Open Field', map: ['3333333333', '2.2.2.2.2.', '.1.1.1.1.1', '2.2.2.2.2.', '.1.1.1.1.1'], foes: { drifter: 2 }, tip: 'Blobs drift around and knock your ball off course' },
+    { name: 'Fortress', map: ['S11111111S', 'S12222221S', 'S12BGGB21S', 'S12222221S', 'S11111111S'], tip: 'Steel bricks take a beating' },
+    { name: 'Stone Garden', map: ['2222222222', 'X.X.XX.X.X', '3333333333', '.2.2..2.2.', '1111111111'], foes: { drifter: 2 }, tip: 'Grey stone never breaks. Aim through the gaps' },
+    { name: 'Twin Towers', map: ['33......33', '33..GG..33', '22.2222.22', '22.2..2.22', '11.1..1.11', '11.1111.11'], foes: { shooter: 1, drifter: 1 }, tip: 'Spitters shoot slime that shrinks and slows your paddle' },
+    { name: 'Crate King', map: ['..........', '..........', '..........', '..........', '1111111111', '.2.2..2.2.'], boss: 1, tip: 'BOSS! Knock out the Crate King' },
+    { name: 'Zigzag', map: ['33........', '2233......', '112233....', '..112233..', '....112233', '......1122', '........11'], foes: { drifter: 2, shooter: 1 } },
+    { name: 'Greenhouse', map: ['4444444444', '3.3.33.3.3', '3.3.33.3.3', '2222222222', '1G111111G1'], foes: { mender: 1, drifter: 1 }, tip: 'Menders patch damaged bricks. Take them out first' },
+    { name: 'Bomb Alley', map: ['3B3B3B3B3B', '4444444444', 'B3B3B3B3B3', '4444444444', '3333333333'], foes: { shooter: 1 } },
+    { name: 'The Nest', map: ['3333333333', '3S......S3', '3S..HH..S3', '3S......S3', '3SSS..SSS3', '2222222222'], tip: 'Hives keep spawning blobs until you break them' },
+    { name: 'Treasury', map: ['SGSGSGSGSG', '4444444444', '4G4G44G4G4', '3333333333', '2222222222', '1111111111'], foes: { thief: 1, shooter: 1 }, tip: 'Thieves steal falling coins. Pop them to get double back' },
+    { name: 'Checker Storm', map: ['5.5.5.5.5.', '.4.4.4.4.4', '3.3.3.3.3.', '.2.2.2.2.2', '4.4.4.4.4.', '.3.3.3.3.3', '2.2.2.2.2.'], foes: { drifter: 2, shooter: 1, mender: 1 } },
+    { name: 'Steel Bars', map: ['5555555555', 'SSS.SS.SSS', '4444444444', 'S.SSSSSS.S', '3333333333', '2222222222'], foes: { shooter: 2, thief: 1 } },
+    { name: 'Hive Cluster', map: ['44H4444H44', '3333333333', 'X3X3XX3X3X', '2222222222', '1111111111'], foes: { mender: 1 } },
+    { name: 'Golden Pyramid', map: ['....GG....', '...5555...', '..444444..', '.33333333.', '2222222222', '1111111111', 'S1S1S1S1S1'], foes: { shooter: 2, thief: 1, drifter: 1 } },
+    { name: 'Twin Cannon', map: ['..........', '..........', '..........', '..........', '3333333333', 'S2S2SS2S2S'], boss: 2, tip: 'BOSS! The Twin Cannon calls in blobs' },
+    { name: 'Rings', map: ['5555555555', '5444444445', '543333B345', '543.HH.345', '543333B345', '5444444445', '5555555555'], foes: { mender: 1, shooter: 1 } },
+    { name: 'Stairway', map: ['66......66', '555....555', '4444..4444', '333.GG.333', '22......22', '11.SSSS.11'], foes: { drifter: 3, thief: 1, shooter: 1 } },
+    { name: 'Bomb Factory', map: ['SBSBSBSBSB', '5555555555', '4B44B44B44', '4444444444', '3B33B33B33', '3333333333'], foes: { shooter: 2, mender: 1 } },
+    { name: 'Hive Wall', map: ['6666666666', 'H55555555H', '5555555555', '4444444444', '3.3.3.3.3.'], foes: { thief: 2, mender: 1 } },
+    { name: 'Gold Rush', map: ['GGGGGGGGGG', '6666666666', '5S5S55S5S5', '5555555555', '4444G44444', '3333333333'], foes: { thief: 3, shooter: 1 } },
+    { name: 'Fortress II', map: ['SSSSSSSSSS', 'S66666666S', 'S6G5HH5G6S', 'S65555556S', 'S66666666S', 'SSS....SSS', '4444444444'], foes: { shooter: 2, drifter: 2, mender: 1 } },
+    { name: 'Labyrinth', map: ['5555555555', 'X..XXXX..X', '4444444444', 'XXX....XXX', '3333333333', 'X..XXXX..X', '2222222222'], foes: { drifter: 2, shooter: 2 } },
+    { name: 'Everything', map: ['7777777777', '6B666666B6', '5555HH5555', '4S4G44G4S4', '3333333333', '2222222222', '1111111111'], foes: { shooter: 2, mender: 1, thief: 1, drifter: 2 } },
+    { name: 'Last Stand', map: ['8888888888', '7777777777', 'SSSS66SSSS', '6666666666', '55B5555B55', '4444444444', '3333333333'], foes: { shooter: 3, mender: 2, thief: 1 } },
+    { name: 'The Baron', map: ['..........', '..........', '..........', '..........', '5555555555', 'S5S5S5S5S5', '4444444444'], boss: 3, tip: 'FINAL BOSS! The Bazaar Baron' },
   ];
+  const BOSS_NAMES = ['', 'Crate King', 'Twin Cannon', 'Bazaar Baron'];
   const BRICK_COLORS = ['#5ef0ff', '#7cf2a8', '#ffe066', '#ffa94d', '#ff6b8b', '#c08cff', '#7c8cff'];
 
-  function genLevel(n) {
+  function makeBrick(r, c, type, hp) {
+    return { x: LEFT + c * (BW + GAP), y: TOP + r * (BH + GAP), w: BW, h: BH, hp, maxhp: hp, type, alive: true, flash: 0, col: c, row: r, spawnT: 6 + Math.random() * 4 };
+  }
+  // Later levels toughen up so they keep pace with your growing arsenal.
+  const hpMult = (n) => 1 + Math.max(0, n - 14) * 0.15 + Math.max(0, n - 22) * 0.15;
+  function brickFor(ch, r, c, n) {
+    const m = hpMult(n) * (n > LEVELS.length ? 1.5 + (n - LEVELS.length) * 0.05 : 1);
+    if (ch >= '1' && ch <= '9') return makeBrick(r, c, 'normal', Math.round(+ch * m));
+    if (ch === 'S') return makeBrick(r, c, 'steel', Math.round((4 + Math.floor(n / 6)) * m));
+    if (ch === 'B') return makeBrick(r, c, 'bomb', 1);
+    if (ch === 'G') return makeBrick(r, c, 'gold', Math.round((2 + Math.floor(n / 8)) * m));
+    if (ch === 'X') return makeBrick(r, c, 'stone', 999);
+    if (ch === 'H') return makeBrick(r, c, 'hive', Math.round((6 + Math.floor(n / 5)) * m));
+    return null;
+  }
+  // Endless mode after the campaign: seeded symmetric maps, more enemies, a boss every 10 levels.
+  function endlessLevel(n) {
     const rnd = mulberry32(n * 7919 + 13);
-    const R = Math.min(5 + Math.floor((n + 1) / 2), 12);
-    let pi = n === 1 ? 0 : n === 2 ? 2 : Math.floor(rnd() * PATTERNS.length);
-    let pat = PATTERNS[pi];
-    if (!pat) {
-      const cells = {};
-      for (let r = 0; r < R; r++) for (let c = 0; c < 5; c++) cells[r + ',' + c] = rnd() > 0.33;
-      pat = (r, c) => cells[r + ',' + (c < 5 ? c : 9 - c)];
-    }
-    const vault = n % 5 === 0;
-    const bricks = [];
-    const hpTier = 1 + Math.floor((n - 1) / 3);
-    for (let r = 0; r < R; r++) {
-      for (let c = 0; c < COLS; c++) {
-        if (!pat(r, c, R)) continue;
-        let hp = 1 + Math.floor(rnd() * Math.min(hpTier, 5));
-        if (r < R / 3 && n > 3) hp += 1;
-        hp = Math.min(hp, 7);
-        let type = 'normal';
+    const R = 7 + Math.floor(rnd() * 3);
+    const top = Math.min(9, 6 + Math.floor((n - 30) / 5));
+    const boss = n % 10 === 0 ? 1 + ((n / 10 - 1) % 3) : 0;
+    const map = [];
+    if (boss) for (let r = 0; r < 4; r++) map.push('..........');
+    const rows = boss ? 3 : R;
+    for (let r = 0; r < rows; r++) {
+      const half = [];
+      for (let c = 0; c < 5; c++) {
         const roll = rnd();
-        if (vault && roll < 0.22) type = 'gold';
-        else if (n >= 4 && roll < 0.05) type = 'stone';
-        else if (n >= 3 && roll < 0.11) type = 'steel';
-        else if (n >= 2 && roll < 0.18) type = 'bomb';
-        else if (roll > 0.97) type = 'gold';
-        if (type === 'steel') hp = 4 + Math.floor(n / 3);
-        if (type === 'gold') hp = 2 + Math.floor(n / 6);
-        if (type === 'bomb') hp = 1;
-        if (type === 'stone') hp = 999;
-        bricks.push({ x: LEFT + c * (BW + GAP), y: TOP + r * (BH + GAP), w: BW, h: BH, hp, maxhp: hp, type, alive: true, flash: 0, col: c, row: r });
+        let ch = '.';
+        if (roll < 0.78) ch = String(Math.max(1, Math.min(9, top - Math.floor(r / 2) - Math.floor(rnd() * 2))));
+        if (roll < 0.08) ch = 'S'; else if (roll < 0.1) ch = 'B'; else if (roll < 0.13) ch = 'G'; else if (roll < 0.145 && !boss) ch = 'H';
+        half.push(ch);
       }
+      map.push(half.join('') + half.slice().reverse().join(''));
     }
-    // never let stones be the majority or wall off everything
-    if (bricks.filter((b) => b.type !== 'stone').length < 8) bricks.forEach((b) => { if (b.type === 'stone') { b.type = 'normal'; b.hp = b.maxhp = 2; } });
+    const kinds = ['drifter', 'shooter', 'mender', 'thief'];
+    const foes = {};
+    const count = Math.min(7, 3 + Math.floor((n - 30) / 4));
+    for (let i = 0; i < count; i++) { const k = kinds[Math.floor(rnd() * kinds.length)]; foes[k] = (foes[k] || 0) + 1; }
+    return { name: boss ? BOSS_NAMES[boss] + ' returns' : 'Endless ' + (n - 30), map, foes, boss };
+  }
+  function levelDef(n) { return n <= LEVELS.length ? LEVELS[n - 1] : endlessLevel(n); }
+  function genLevel(n) {
+    const def = levelDef(n);
+    const bricks = [];
+    def.map.forEach((row, r) => { for (let c = 0; c < COLS; c++) { const b = brickFor(row[c] || '.', r, c, n); if (b) bricks.push(b); } });
     return bricks;
   }
 
@@ -305,8 +355,23 @@
       bricks: genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: { wide: 0, slow: 0, fire: 0, glue: 0 }, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0,
       levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7 },
-      shake: 0, banner: 1.8, started: false,
+      shake: 0, banner: 3.2, started: false,
+      foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
+      def: levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
+    G.par = 35 + run.level * 5;
+    if (G.def.boss) G.boss = makeBoss(G.def.boss);
+    const q = [];
+    for (const [k, n] of Object.entries(G.def.foes || {})) for (let i = 0; i < n; i++) q.push(k);
+    for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
+    G.foeQueue = q;
+    // Ammo Factory: free ammo every level
+    if (lv('factory')) for (const g in GUNS) if (lv('gun_' + g)) run.ammo[g] += Math.round(GUNS[g].pack * 0.15 * lv('factory'));
+    // Head Start: random power-ups at level start
+    for (let i = 0; i < lv('starter'); i++) {
+      const k = pick(['wide', 'slow', 'fire', 'wide']);
+      G.fx[k] = Math.max(G.fx[k], puDur(k === 'fire' ? 7 : 12));
+    }
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
     serve();
     // drones
@@ -320,7 +385,7 @@
   }
 
   function makeBall(x, y, vx, vy) {
-    return { x, y, vx, vy, r: 7, stuck: false, off: 0, stuckT: 0, pierce: 0, inside: new Set(), trail: [], serve: false };
+    return { x, y, vx, vy, r: 7 + 1.5 * lv('bigball'), stuck: false, off: 0, stuckT: 0, pierce: 0, inside: new Set(), trail: [], serve: false };
   }
   function serve() {
     const b = makeBall(paddle.x, PADDLE_Y - 8, 0, 0);
@@ -351,7 +416,7 @@
     if (any) { G.started = true; sfx.paddle(); }
   }
   function ballSpeed() {
-    let s = 360 + Math.min(run.level, 30) * 7 + Math.min(70, G.time * 1.0);
+    let s = 350 + Math.min(run.level, 40) * 5 + Math.min(60, G.time * 0.8);
     s *= 1 - 0.07 * lv('chill');
     if (G.fx.slow > 0) s *= 0.68;
     return s;
@@ -424,6 +489,11 @@
       dmg *= 3; G.texts.push({ x: b.x + b.w / 2, y: b.y, t: 0.6, s: 'CRIT', c: '#fff27a' });
     }
     b.hp -= dmg; b.flash = 0.12;
+    if (fromBall && lv('splash') && Math.random() < 0.15 * lv('splash')) {
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      burst(cx, cy, '#e8f0ff', 6, 140);
+      for (const o of G.bricks) if (o !== b && o.alive && o.type !== 'stone' && Math.abs(o.col - b.col) <= 1 && Math.abs(o.row - b.row) <= 1) { o.hp -= 1; o.flash = 0.12; if (o.hp <= 0) destroyBrick(o); }
+    }
     if (b.hp <= 0) { destroyBrick(b); return true; }
     sfx.brick(b.hp);
     return false;
@@ -438,7 +508,7 @@
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
     if (G.combo % STREAK_STEP === 0) streakPayout(cx, cy);
     if (Math.random() < 0.075 + 0.02 * lv('puluck')) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
-    if (b.type === 'bomb') explode(cx, cy, 62, 2, '#ff6b3d');
+    if (b.type === 'bomb') explode(cx, cy, 30 + 14 * lv('demo'), 2 + lv('demo'), '#ff6b3d');
   }
   // Streaks pay out every STREAK_STEP bricks; each payout is bigger than the last.
   const STREAK_STEP = 5;
@@ -463,6 +533,8 @@
       const dx = clamp(x, o.x, o.x + o.w) - x, dy = clamp(y, o.y, o.y + o.h) - y;
       if (dx * dx + dy * dy <= rad * rad) hitBrick(o, dmg, false);
     }
+    for (const f of G.foes) if (Math.hypot(f.x - x, f.y - y) <= rad + f.r) damageFoe(f, dmg);
+    if (bossAt(x, y, rad)) damageBoss(dmg);
   }
   function destructibleLeft() { let n = 0; for (const b of G.bricks) if (b.alive && b.type !== 'stone') n++; return n; }
 
@@ -511,13 +583,15 @@
     for (const k in G.fx) if (G.fx[k] > 0) G.fx[k] = Math.max(0, G.fx[k] - dt);
     G.shake = Math.max(0, G.shake - dt * 30);
 
-    // paddle
-    const targetW = basePaddleW() * (G.fx.wide > 0 ? 1.5 : 1);
+    // paddle (slime stun shrinks and slows it)
+    if (G.stun > 0) G.stun -= dt;
+    const targetW = basePaddleW() * (G.fx.wide > 0 ? 1.5 : 1) * (G.stun > 0 ? 0.75 : 1);
     paddle.w += (targetW - paddle.w) * Math.min(1, dt * 8);
-    paddle.x += (paddle.tx - paddle.x) * Math.min(1, dt * 30);
+    paddle.x += (paddle.tx - paddle.x) * Math.min(1, dt * (G.stun > 0 ? 12 : 30));
     paddle.x = clamp(paddle.x, paddle.w / 2, W - paddle.w / 2);
 
     updateBalls(dt);
+    updateFoes(dt);
     updateGuns(dt);
     updateDrones(dt);
     updateShots(dt);
@@ -525,7 +599,12 @@
     updateParticles(dt);
     for (const b of G.bricks) if (b.flash > 0) b.flash -= dt;
 
-    if (G.clearT < 0 && destructibleLeft() === 0) { G.clearT = 1.2; sfx.clear(); }
+    updateOvertime(dt);
+    if (G.clearT < 0 && levelDone()) {
+      G.clearT = 1.4; sfx.clear();
+      for (const f of G.foes) damageFoe(f, 999);
+      G.eshots = [];
+    }
     if (G.clearT >= 0) { G.clearT -= dt; if (G.clearT <= 0) finishLevel(); }
   }
 
@@ -544,6 +623,7 @@
       b.vx = (b.vx / v) * sp; b.vy = (b.vy / v) * sp;
       if (Math.abs(b.vy) < sp * 0.28) { b.vy = Math.sign(b.vy || -1) * sp * 0.28; b.vx = Math.sign(b.vx) * Math.sqrt(sp * sp - b.vy * b.vy); }
 
+      steerBall(b, dt);
       const steps = Math.max(1, Math.ceil((sp * dt) / (b.r * 0.7)));
       const sdt = dt / steps;
       for (let s = 0; s < steps && !b.dead; s++) {
@@ -573,6 +653,17 @@
           b.vy = -Math.abs(b.vy); b.y = NET_Y - b.r; G.net--; sfx.net(); burst(b.x, NET_Y, '#6ee7ff', 14);
         }
         if (b.y - b.r > H) { b.dead = true; break; }
+        // enemies, boss, slime
+        const dmgE = (1 + lv('dmg')) * (fire ? 2 : 1);
+        for (const f of G.foes) {
+          if (f.dead || !ballVsCircle(b, f.x, f.y, f.r)) continue;
+          if (f.hitCd <= 0) { damageFoe(f, dmgE); f.hitCd = 0.15; }
+        }
+        if (G.boss && !G.boss.dead) {
+          const B = G.boss;
+          if (ballVsRect(b, B.x - B.w / 2, B.y, B.w, B.h) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
+        }
+        for (const e of G.eshots) if (!e.dead && Math.hypot(e.x - b.x, e.y - b.y) < e.r + b.r) { e.dead = true; burst(e.x, e.y, '#9cff57', 6, 100); }
         // bricks
         const nowInside = new Set();
         for (const k of G.bricks) {
@@ -611,19 +702,56 @@
     b.stuck = false; b.vx = Math.sin(a) * s; b.vy = -Math.cos(a) * s; b.pierce = lv('pierce');
   }
   function loseLife() {
-    run.lives--; sfx.lose(); G.shake = 10; G.combo = 0;
+    G.combo = 0;
+    if (G.secondWind > 0) {
+      G.secondWind--; sfx.net();
+      G.texts.push({ x: W / 2, y: H / 2, t: 1.4, s: 'Second Wind!', c: '#6ee7ff', big: true });
+      serve(); return;
+    }
+    run.lives--; sfx.lose(); G.shake = 10;
     G.fx = { wide: 0, slow: 0, fire: 0, glue: 0 };
     if (run.lives <= 0) { gameOver(); return; }
     G.texts.push({ x: W / 2, y: H / 2, t: 1.2, s: 'Ball lost!', c: '#ff6b8b', big: true });
     serve();
   }
 
+  // ---------- keeping levels from dragging ----------
+  // After the level's par time the bricks start crumbling; when only a few bricks are left, balls home in on them.
+  function updateOvertime(dt) {
+    if (G.clearT >= 0 || !G.started) return;
+    if (G.time > G.par) {
+      if (!G.crumbling) { G.crumbling = true; G.texts.push({ x: W / 2, y: H * 0.5, t: 2.2, s: 'Overtime! Bricks are crumbling', c: '#ffa94d', big: true }); }
+      G.crumbleT -= dt;
+      if (G.crumbleT <= 0) {
+        G.crumbleT = 2;
+        for (const b of G.bricks) if (b.alive && b.type !== 'stone') { b.hp -= Math.max(1, Math.ceil(b.maxhp * 0.12)); b.flash = 0.1; if (b.hp <= 0) destroyBrick(b); }
+        if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * 0.05));
+        G.shake = Math.max(G.shake, 3);
+      }
+    }
+    G.seekT = (!G.boss && destructibleLeft() <= 3) ? G.seekT + dt : 0;
+  }
+  function steerBall(b, dt) {
+    if (G.seekT < 6 || b.y > PADDLE_Y - 120) return;
+    let best = null, bd = Infinity;
+    for (const k of G.bricks) if (k.alive && k.type !== 'stone') { const d = Math.hypot(k.x + k.w / 2 - b.x, k.y + k.h / 2 - b.y); if (d < bd) { bd = d; best = k; } }
+    if (!best) return;
+    const want = Math.atan2(best.y + best.h / 2 - b.y, best.x + best.w / 2 - b.x), cur = Math.atan2(b.vy, b.vx);
+    let diff = want - cur; while (diff > Math.PI) diff -= 2 * Math.PI; while (diff < -Math.PI) diff += 2 * Math.PI;
+    const a = cur + clamp(diff, -1.4 * dt, 1.4 * dt), sp = Math.hypot(b.vx, b.vy);
+    b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
+  }
+
   // ---------- guns ----------
   function overclock() { return 1 + 0.25 * lv('d_over'); }
   function brickAbove(x, slack = 0) {
     for (const k of G.bricks) if (k.alive && k.type !== 'stone' && x >= k.x - slack && x <= k.x + k.w + slack) return true;
+    for (const f of G.foes) if (Math.abs(f.x - x) <= f.r + slack) return true;
+    if (G.boss && !G.boss.dead && Math.abs(G.boss.x - x) <= G.boss.w / 2 + slack) return true;
     return false;
   }
+  function anyTarget() { return destructibleLeft() > 0 || G.foes.length > 0 || (G.boss && !G.boss.dead); }
+  const gunDmg = (d) => d + lv('rounds');
   function useAmmo(g) {
     if (run.ammo[g] <= 0) return false;
     if (Math.random() >= lv('recycler') * 0.12) run.ammo[g]--;
@@ -641,23 +769,23 @@
         const xl = px - paddle.w / 2 + 6, xr = px + paddle.w / 2 - 6;
         if (!(brickAbove(xl) || brickAbove(xr))) continue;
         if (!useAmmo(g)) continue;
-        G.shots.push({ x: xl, y: py, vx: 0, vy: -720, dmg: 1, k: g }, { x: xr, y: py, vx: 0, vy: -720, dmg: 1, k: g });
+        G.shots.push({ x: xl, y: py, vx: 0, vy: -720, dmg: gunDmg(1), k: g }, { x: xr, y: py, vx: 0, vy: -720, dmg: gunDmg(1), k: g });
         sfx.shot();
       } else if (g === 'laser') {
         if (!brickAbove(px)) continue; if (!useAmmo(g)) continue;
-        G.shots.push({ x: px, y: py, vx: 0, vy: -900, dmg: 2, k: g, pierce: 3 + (l - 1), hit: new Set() });
+        G.shots.push({ x: px, y: py, vx: 0, vy: -900, dmg: gunDmg(2), k: g, pierce: 3 + (l - 1), hit: new Set() });
         sfx.zap();
       } else if (g === 'rocket') {
         if (!brickAbove(px, 30)) continue; if (!useAmmo(g)) continue;
-        G.shots.push({ x: px, y: py, vx: 0, vy: -380, dmg: 2, k: g, rad: 52 + 10 * (l - 1) });
+        G.shots.push({ x: px, y: py, vx: 0, vy: -380, dmg: gunDmg(2), k: g, rad: 52 + 10 * (l - 1) });
         sfx.shot();
       } else if (g === 'scatter') {
-        if (destructibleLeft() === 0) continue; if (!useAmmo(g)) continue;
+        if (!anyTarget()) continue; if (!useAmmo(g)) continue;
         const n = 5 + (l - 1);
-        for (let i = 0; i < n; i++) { const a = -0.55 + (1.1 * i) / (n - 1); G.shots.push({ x: px, y: py, vx: Math.sin(a) * 620, vy: -Math.cos(a) * 620, dmg: 1, k: g, life: 0.75 }); }
+        for (let i = 0; i < n; i++) { const a = -0.55 + (1.1 * i) / (n - 1); G.shots.push({ x: px, y: py, vx: Math.sin(a) * 620, vy: -Math.cos(a) * 620, dmg: gunDmg(1), k: g, life: 0.75 }); }
         sfx.shot();
       } else if (g === 'arc') {
-        if (destructibleLeft() === 0) continue; if (!useAmmo(g)) continue;
+        if (!anyTarget()) continue; if (!useAmmo(g)) continue;
         arcZap(px, py, 3 + (l - 1));
       }
       G.gunCd[g] = rate;
@@ -667,15 +795,19 @@
     const pts = [[x, y]]; const used = new Set(); let cx = x, cy = y;
     for (let j = 0; j < jumps; j++) {
       let bestK = null, bd = Infinity;
-      for (const k of G.bricks) {
-        if (!k.alive || k.type === 'stone' || used.has(k)) continue;
-        const d = Math.hypot(k.x + k.w / 2 - cx, k.y + k.h / 2 - cy);
+      const cands = [];
+      for (const k of G.bricks) if (k.alive && k.type !== 'stone') cands.push({ o: k, x: k.x + k.w / 2, y: k.y + k.h / 2, hit: (d) => hitBrick(k, d, false) });
+      for (const f of G.foes) cands.push({ o: f, x: f.x, y: f.y, hit: (d) => damageFoe(f, d) });
+      if (G.boss && !G.boss.dead) cands.push({ o: G.boss, x: G.boss.x, y: G.boss.y + G.boss.h / 2, hit: (d) => damageBoss(d) });
+      for (const c of cands) {
+        if (used.has(c.o)) continue;
+        const d = Math.hypot(c.x - cx, c.y - cy);
         if (j > 0 && d > 140) continue;
-        if (d < bd) { bd = d; bestK = k; }
+        if (d < bd) { bd = d; bestK = c; }
       }
       if (!bestK) break;
-      used.add(bestK); cx = bestK.x + bestK.w / 2; cy = bestK.y + bestK.h / 2; pts.push([cx, cy]);
-      hitBrick(bestK, 2, false);
+      used.add(bestK.o); cx = bestK.x; cy = bestK.y; pts.push([cx, cy]);
+      bestK.hit(gunDmg(2));
     }
     if (pts.length > 1) { G.bolts.push({ pts, t: 0.18 }); sfx.zap(); }
   }
@@ -684,6 +816,19 @@
       s.x += s.vx * dt; s.y += s.vy * dt;
       if (s.life != null) { s.life -= dt; if (s.life <= 0) s.dead = true; }
       if (s.y < HUD_H || s.x < 0 || s.x > W) { s.dead = true; if (s.k === 'rocket') explode(s.x, Math.max(s.y, HUD_H), s.rad * 0.6, s.dmg, '#ffb14a'); continue; }
+      const f = foeAt(s.x, s.y, 3);
+      if (f && !(s.hit && s.hit.has(f))) {
+        if (s.k === 'rocket') { explode(s.x, s.y, s.rad, s.dmg, '#ffb14a'); s.dead = true; continue; }
+        damageFoe(f, s.dmg);
+        if (s.k === 'laser') { s.hit.add(f); if (--s.pierce <= 0) { s.dead = true; continue; } }
+        else { s.dead = true; continue; }
+      }
+      if (bossAt(s.x, s.y)) {
+        if (s.k === 'rocket') explode(s.x, s.y, s.rad, s.dmg, '#ffb14a'); else damageBoss(s.dmg);
+        s.dead = true; continue;
+      }
+      for (const e of G.eshots) if (!e.dead && Math.hypot(e.x - s.x, e.y - s.y) < e.r + 4) { e.dead = true; s.dead = true; burst(e.x, e.y, '#9cff57', 6, 100); }
+      if (s.dead) continue;
       for (const k of G.bricks) {
         if (!k.alive || s.x < k.x - 2 || s.x > k.x + k.w + 2 || s.y < k.y || s.y > k.y + k.h + 6) continue;
         if (s.k === 'laser') {
@@ -715,7 +860,7 @@
         d.cd -= dt;
         if (active && d.cd <= 0 && brickAbove(d.x)) {
           d.cd = 1.3 / oc;
-          G.shots.push({ x: d.x, y: d.y - 6, vx: 0, vy: -640, dmg: 1, k: 'orbit' });
+          G.shots.push({ x: d.x, y: d.y - 6, vx: 0, vy: -640, dmg: gunDmg(1), k: 'orbit' });
         }
       } else if (d.type === 'hunter') {
         d.cd -= dt;
@@ -803,6 +948,236 @@
     for (const t of G.texts) { t.t -= dt; t.y -= 30 * dt; }
     G.texts = G.texts.filter((t) => t.t > 0);
   }
+
+  // ---------- enemies & bosses ----------
+  const FOE = {
+    drifter: { r: 13, hp: 3, color: '#c08cff', coins: 2 },
+    shooter: { r: 14, hp: 4, color: '#ff9a4d', coins: 3 },
+    mender: { r: 12, hp: 4, color: '#5ee08a', coins: 3 },
+    thief: { r: 12, hp: 2, color: '#8b93b8', coins: 2 },
+  };
+  function foeScale() { return 1 + (run.level - 1) / 14; }
+  function brickBottom() { let y = TOP; for (const b of G.bricks) if (b.alive && b.y + b.h > y) y = b.y + b.h; return y; }
+  function foeZone() {
+    const top = Math.max(G.boss ? 140 : TOP, brickBottom() + 24);
+    return { top, bot: Math.max(top + 60, Math.min(top + 200, PADDLE_Y - 190)) };
+  }
+  function spawnFoe(type, x, y) {
+    const d = FOE[type], z = foeZone();
+    const hp = Math.round(d.hp * foeScale());
+    const f = { type, x: x != null ? x : rand(40, W - 40), y: y != null ? y : rand(z.top, z.bot), r: d.r, hp, maxhp: hp,
+      vx: rand(-1, 1) * 55, vy: rand(-1, 1) * 30, t: Math.random() * 6, cd: rand(1.5, 3.5), hitCd: 0, flash: 0, loot: 0, dir: Math.random() < 0.5 ? -1 : 1 };
+    G.foes.push(f); burst(f.x, f.y, d.color, 10, 120);
+    return f;
+  }
+  function makeBoss(kind) {
+    const hp = Math.round([0, 80, 200, 380][kind] * (1 + Math.max(0, run.level - 10) * 0.05));
+    return { kind, x: W / 2, y: 94, w: 150, h: 46, hp, maxhp: hp, t: 0, fireT: 2.5, spawnT: 7, flash: 0, dead: false };
+  }
+  function damageFoe(f, dmg) {
+    if (f.dead) return;
+    f.hp -= dmg; f.flash = 0.12; sfx.brick(2);
+    if (f.hp <= 0) {
+      f.dead = true; sfx.pop(); burst(f.x, f.y, FOE[f.type].color, 16, 220);
+      run.score += 50;
+      dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
+      if (f.loot) G.texts.push({ x: f.x, y: f.y - 16, t: 1, s: 'Loot back x2!', c: '#ffd84a' });
+    }
+  }
+  function damageBoss(dmg) {
+    const B = G.boss; if (!B || B.dead) return;
+    B.hp -= dmg; B.flash = 0.1; sfx.stone();
+    if (B.hp <= 0) {
+      B.dead = true; G.shake = 14; sfx.boom(); sfx.clear();
+      for (let i = 0; i < 6; i++) setTimeout(() => G && burst(B.x + rand(-60, 60), B.y + rand(-15, 15), '#ffd23f', 20, 260), i * 90);
+      dropCoin(B.x, B.y + 20, Math.round((15 + 10 * B.kind) * (1 + 0.25 * lv('foebounty'))));
+      run.score += 2000 * B.kind;
+      G.texts.push({ x: W / 2, y: H / 2, t: 2, s: BOSS_NAMES[B.kind] + ' defeated!', c: '#ffd23f', big: true });
+      for (const b of G.bricks) if (b.alive && b.type !== 'stone') destroyBrick(b);
+      for (const f of G.foes) damageFoe(f, 999);
+    }
+  }
+  // circle-vs-ball bounce; returns true on contact
+  function ballVsCircle(b, cx, cy, r) {
+    const dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy), min = r + b.r;
+    if (d >= min || d === 0) return false;
+    const nx = dx / d, ny = dy / d, dot = b.vx * nx + b.vy * ny;
+    if (dot < 0) { b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny; }
+    b.x = cx + nx * min; b.y = cy + ny * min;
+    return true;
+  }
+  function ballVsRect(b, x, y, w, h) {
+    const cx = clamp(b.x, x, x + w), cy = clamp(b.y, y, y + h), dx = b.x - cx, dy = b.y - cy;
+    if (dx * dx + dy * dy > b.r * b.r) return false;
+    const kx = x + w / 2, ky = y + h / 2;
+    const ox = w / 2 + b.r - Math.abs(b.x - kx), oy = h / 2 + b.r - Math.abs(b.y - ky);
+    if (ox < oy) { const sg = Math.sign(b.x - kx) || 1; b.vx = sg * Math.abs(b.vx); b.x += sg * ox; }
+    else { const sg = Math.sign(b.y - ky) || 1; b.vy = sg * Math.abs(b.vy); b.y += sg * oy; }
+    return true;
+  }
+  function enemyShot(x, y, angle, speed) {
+    G.eshots.push({ x, y, vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed, r: 6 });
+  }
+  function aimAtPaddle(x, y) { return Math.atan2(paddle.x - x, PADDLE_Y - y); }
+
+  function updateFoes(dt) {
+    // staggered arrivals
+    if (G.foeQueue.length && G.started) {
+      G.foeQueueT -= dt;
+      if (G.foeQueueT <= 0) { spawnFoe(G.foeQueue.shift()); G.foeQueueT = 2.2; }
+    }
+    // hives
+    for (const b of G.bricks) {
+      if (!b.alive || b.type !== 'hive' || !G.started) continue;
+      b.spawnT -= dt;
+      if (b.spawnT <= 0) {
+        b.spawnT = 9;
+        if (G.foes.filter((f) => f.type === 'drifter').length < 4) spawnFoe('drifter', b.x + b.w / 2, b.y + b.h + 16);
+      }
+    }
+    const z = foeZone();
+    for (const f of G.foes) {
+      f.t += dt; if (f.flash > 0) f.flash -= dt; if (f.hitCd > 0) f.hitCd -= dt;
+      if (f.type === 'drifter') {
+        f.vx += Math.sin(f.t * 0.9) * 12 * dt; f.vy += Math.cos(f.t * 0.7) * 10 * dt;
+        const sp = Math.hypot(f.vx, f.vy) || 1, want = 55; f.vx *= want / sp; f.vy *= want / sp;
+        f.x += f.vx * dt; f.y += f.vy * dt;
+      } else if (f.type === 'shooter') {
+        f.x += f.dir * 70 * dt;
+        if (f.x < 30 || f.x > W - 30) f.dir *= -1;
+        f.y += (z.top + 20 - f.y) * Math.min(1, dt * 1.5);
+        f.cd -= dt;
+        if (f.cd <= 0 && G.clearT < 0) { f.cd = rand(3, 4.2); enemyShot(f.x, f.y + f.r, aimAtPaddle(f.x, f.y) + rand(-0.12, 0.12), 170); beep(240, 0.1, 'sine', 0.04, -80); }
+      } else if (f.type === 'mender') {
+        f.x += f.dir * 45 * dt; if (f.x < 30 || f.x > W - 30) f.dir *= -1;
+        f.y += (z.top + 6 + Math.sin(f.t) * 10 - f.y) * Math.min(1, dt * 2);
+        f.cd -= dt;
+        if (f.cd <= 0) {
+          f.cd = 3.5;
+          let best = null, bd = 160;
+          for (const b of G.bricks) {
+            if (!b.alive || b.type === 'stone' || b.hp >= b.maxhp) continue;
+            const d = Math.hypot(b.x + b.w / 2 - f.x, b.y + b.h / 2 - f.y); if (d < bd) { bd = d; best = b; }
+          }
+          if (best) { best.hp++; best.flash = 0.15; G.bolts.push({ pts: [[f.x, f.y], [best.x + best.w / 2, best.y + best.h / 2]], t: 0.3, c: '#5ee08a' }); }
+        }
+      } else if (f.type === 'thief') {
+        let target = null, bd = Infinity;
+        for (const c of G.coins) { const d = Math.hypot(c.x - f.x, c.y - f.y); if (d < bd) { bd = d; target = c; } }
+        if (f.loot >= 10 || (f.loot > 0 && !target && (f.idle = (f.idle || 0) + dt) > 4)) f.fleeing = true;
+        let tx, ty;
+        if (f.fleeing) { tx = f.x; ty = -40; }
+        else if (target) { tx = target.x; ty = target.y; f.idle = 0; }
+        else { tx = W / 2 + Math.sin(f.t * 0.6) * 160; ty = z.top + 30; }
+        const dx = tx - f.x, dy = ty - f.y, d = Math.hypot(dx, dy) || 1, sp = f.fleeing ? 90 : 130;
+        f.x += (dx / d) * Math.min(sp * dt, d); f.y += (dy / d) * Math.min(sp * dt, d);
+        if (target && !f.fleeing && Math.hypot(target.x - f.x, target.y - f.y) < f.r + 6) {
+          target.dead = true; f.loot += target.val; beep(300, 0.08, 'square', 0.03, -120);
+        }
+        if (f.fleeing && f.y < HUD_H - 10) {
+          f.dead = true; f.escaped = true;
+          G.texts.push({ x: clamp(f.x, 80, W - 80), y: HUD_H + 20, t: 1.4, s: `Thief got away with ${f.loot}!`, c: '#ff6b8b' });
+        }
+      }
+      if (f.type !== 'thief') {
+        if (f.x < f.r) { f.x = f.r; f.vx = Math.abs(f.vx); } if (f.x > W - f.r) { f.x = W - f.r; f.vx = -Math.abs(f.vx); }
+        if (f.y < z.top) { f.y = Math.min(f.y + 60 * dt, z.top); f.vy = Math.abs(f.vy); }
+        if (f.y > z.bot) { f.y = z.bot; f.vy = -Math.abs(f.vy); }
+      }
+    }
+    G.foes = G.foes.filter((f) => !f.dead);
+
+    // boss
+    const B = G.boss;
+    if (B && !B.dead) {
+      const enraged = B.hp < B.maxhp * 0.4;
+      B.t += dt * (enraged ? 1.5 : 1); if (B.flash > 0) B.flash -= dt;
+      B.x = W / 2 + Math.sin(B.t * 0.55) * (W / 2 - B.w / 2 - 8);
+      if (G.started && G.clearT < 0) {
+        B.fireT -= dt * (enraged ? 1.4 : 1);
+        if (B.fireT <= 0) {
+          const by = B.y + B.h;
+          if (B.kind === 1) { B.fireT = 2.6; for (const a of [-0.35, 0, 0.35]) enemyShot(B.x, by, a, 160); }
+          else if (B.kind === 2) { B.fireT = 2.1; for (const ox of [-50, 50]) enemyShot(B.x + ox, by, aimAtPaddle(B.x + ox, by), 185); }
+          else { B.fireT = 2.1; const aim = aimAtPaddle(B.x, by); for (const a of [-0.5, -0.25, 0, 0.25, 0.5]) enemyShot(B.x, by, (B.t % 2 < 1 ? aim : 0) + a, 165); }
+          beep(180, 0.15, 'sawtooth', 0.04, -60);
+        }
+        if (B.kind >= 2) {
+          B.spawnT -= dt;
+          if (B.spawnT <= 0) { B.spawnT = B.kind === 3 ? 8 : 9; if (G.foes.length < 5) spawnFoe(B.kind === 3 && Math.random() < 0.4 ? 'mender' : 'drifter', B.x, B.y + B.h + 20); }
+        }
+      }
+    }
+
+    // enemy slime shots
+    for (const s of G.eshots) {
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      if (s.x < -10 || s.x > W + 10 || s.y > H + 10) { s.dead = true; continue; }
+      if (s.vy > 0 && s.y + s.r >= PADDLE_Y && s.y - s.r <= PADDLE_Y + PADDLE_H && Math.abs(s.x - paddle.x) <= paddle.w / 2 + s.r) {
+        s.dead = true;
+        if (G.shield > 0) { G.shield--; burst(s.x, PADDLE_Y, '#6ee7ff', 12, 160); sfx.net(); G.texts.push({ x: s.x, y: PADDLE_Y - 20, t: 0.8, s: 'Blocked!', c: '#6ee7ff' }); }
+        else { G.stun = 1.5; burst(s.x, PADDLE_Y, '#9cff57', 14, 160); beep(140, 0.25, 'sawtooth', 0.05, -60); }
+      }
+    }
+    G.eshots = G.eshots.filter((s) => !s.dead);
+  }
+  function drawFoes(t) {
+    for (const f of G.foes) {
+      const d = FOE[f.type], wob = Math.sin(f.t * 4) * 1.5;
+      ctx.fillStyle = f.flash > 0 ? '#ffffff' : d.color;
+      if (f.type === 'drifter') { ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r + wob, f.r - wob, 0, 0, 7); ctx.fill(); }
+      else if (f.type === 'shooter') {
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+        ctx.fillStyle = '#7a3a10'; ctx.fillRect(f.x - 4, f.y + f.r - 4, 8, 9);
+        ctx.fillStyle = d.color; for (const s of [-1, 1]) ctx.fillRect(f.x + s * (f.r + 2) - 3, f.y - 2 + wob, 6, 4);
+      } else if (f.type === 'mender') {
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(f.x - 2, f.y - 7, 4, 14); ctx.fillRect(f.x - 7, f.y - 2, 14, 4);
+      } else if (f.type === 'thief') {
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+        ctx.fillStyle = '#1b1f33'; ctx.fillRect(f.x - f.r, f.y - 5, f.r * 2, 6);
+        if (f.loot) { ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(f.x + f.r - 2, f.y + f.r - 2, 6, 0, 7); ctx.fill();
+          ctx.fillStyle = '#5a3b00'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(f.loot, f.x + f.r - 2, f.y + f.r - 1.5); }
+      }
+      if (f.type !== 'mender') {
+        const ey = f.type === 'thief' ? f.y - 2 : f.y - 3;
+        ctx.fillStyle = f.type === 'thief' ? '#ffe066' : '#ffffff';
+        ctx.beginPath(); ctx.arc(f.x - 4, ey, 2.6, 0, 7); ctx.arc(f.x + 4, ey, 2.6, 0, 7); ctx.fill();
+        if (f.type !== 'thief') { ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(f.x - 4, ey + 0.8, 1.2, 0, 7); ctx.arc(f.x + 4, ey + 0.8, 1.2, 0, 7); ctx.fill(); }
+      }
+      if (f.hp < f.maxhp) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(f.x - 12, f.y - f.r - 8, 24, 3);
+        ctx.fillStyle = d.color; ctx.fillRect(f.x - 12, f.y - f.r - 8, 24 * Math.max(0, f.hp / f.maxhp), 3);
+      }
+    }
+    const B = G.boss;
+    if (B && !B.dead) {
+      const x = B.x - B.w / 2, y = B.y;
+      const col = ['', '#c8874a', '#8a9bb8', '#d4a5ff'][B.kind];
+      ctx.fillStyle = B.flash > 0 ? '#ffffff' : col; rr(x, y, B.w, B.h, 10); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 8, y + 4, B.w - 16, 5);
+      if (B.kind === 1) { ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + B.w - 6, y + B.h - 6); ctx.moveTo(x + B.w - 6, y + 6); ctx.lineTo(x + 6, y + B.h - 6); ctx.stroke();
+        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(x + 40, y); ctx.lineTo(x + 52, y - 16); ctx.lineTo(x + 75, y - 4); ctx.lineTo(x + 98, y - 16); ctx.lineTo(x + 110, y); ctx.fill(); }
+      if (B.kind === 2) { ctx.fillStyle = '#3d4760'; for (const ox of [-50, 50]) ctx.fillRect(B.x + ox - 7, y + B.h - 4, 14, 14); }
+      if (B.kind === 3) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(x + 20, y - 18, B.w - 40, 18); ctx.fillStyle = '#2b1a40'; ctx.fillRect(x + 10, y - 2, B.w - 20, 4); }
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(B.x - 22, y + 24, 8, 0, 7); ctx.arc(B.x + 22, y + 24, 8, 0, 7); ctx.fill();
+      const px = clamp((paddle.x - B.x) / 60, -3, 3);
+      ctx.fillStyle = B.hp < B.maxhp * 0.4 ? '#ff2a4d' : '#1b1f33'; ctx.beginPath(); ctx.arc(B.x - 22 + px, y + 27, 4, 0, 7); ctx.arc(B.x + 22 + px, y + 27, 4, 0, 7); ctx.fill();
+    }
+    for (const s of G.eshots) {
+      ctx.fillStyle = 'rgba(156,255,87,0.35)'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 4, 0, 7); ctx.fill();
+      ctx.fillStyle = '#9cff57'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+    }
+  }
+  function foeAt(x, y, pad = 0) {
+    for (const f of G.foes) if (!f.dead && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
+    return null;
+  }
+  function bossAt(x, y, pad = 0) {
+    const B = G.boss; if (!B || B.dead) return false;
+    return x >= B.x - B.w / 2 - pad && x <= B.x + B.w / 2 + pad && y >= B.y - pad && y <= B.y + B.h + pad;
+  }
+  function levelDone() { return G.boss ? G.boss.dead : destructibleLeft() === 0; }
 
   // ---------- level end ----------
   function finishLevel() {
@@ -962,11 +1337,12 @@
   }
   function drawPaddle() {
     const x = paddle.x - paddle.w / 2, y = PADDLE_Y;
-    const glue = G.fx.glue > 0, fire = G.fx.fire > 0;
-    ctx.globalAlpha = 0.25; ctx.fillStyle = glue ? '#ffe066' : '#5ef0ff';
+    const glue = G.fx.glue > 0, fire = G.fx.fire > 0, stun = G.stun > 0;
+    ctx.globalAlpha = 0.25; ctx.fillStyle = stun ? '#9cff57' : glue ? '#ffe066' : '#5ef0ff';
     rr(x - 4, y - 4, paddle.w + 8, PADDLE_H + 8, 10); ctx.fill(); ctx.globalAlpha = 1;
+    if (G.shield > 0) { ctx.strokeStyle = 'rgba(110,231,255,0.6)'; ctx.lineWidth = 2; rr(x - 7, y - 7, paddle.w + 14, PADDLE_H + 14, 12); ctx.stroke(); }
     const g = ctx.createLinearGradient(0, y, 0, y + PADDLE_H);
-    g.addColorStop(0, glue ? '#fff3a8' : '#bff8ff'); g.addColorStop(1, glue ? '#e0a800' : '#2f8cff');
+    g.addColorStop(0, stun ? '#d8ffb0' : glue ? '#fff3a8' : '#bff8ff'); g.addColorStop(1, stun ? '#4f9a1e' : glue ? '#e0a800' : '#2f8cff');
     ctx.fillStyle = g; rr(x, y, paddle.w, PADDLE_H, 7); ctx.fill();
     // gun mounts
     if (lv('gun_blaster')) { ctx.fillStyle = '#7cf2ff'; ctx.fillRect(x + 3, y - 5, 6, 6); ctx.fillRect(x + paddle.w - 9, y - 5, 6, 6); }
@@ -1095,10 +1471,28 @@
       ctx.fillStyle = PU[k].c; ctx.fillRect(tx + 12, 40, 26 * Math.min(1, G.fx[k] / 15), 5);
       tx += 46;
     }
-    if (G.net > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('NET×' + G.net, tx, 43); }
+    if (G.net > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('NET×' + G.net, tx, 43); tx += 50; }
+    if (G.shield > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('🛡×' + G.shield, tx, 43); tx += 44; }
+    if (G.crumbling) { ctx.fillStyle = '#ffa94d'; ctx.fillText('OVERTIME', tx, 43); }
     if (G.combo >= 5) { ctx.textAlign = 'right'; ctx.fillStyle = '#ffe680'; ctx.fillText(G.combo + ' streak · next +' + streakCoins(Math.ceil((G.combo + 1) / STREAK_STEP) * STREAK_STEP), W - 54, 43); }
   }
 
+  function wrapText(text, x, y, maxW, lh) {
+    let line = '';
+    for (const w of text.split(' ')) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width > maxW && line) { ctx.fillText(line, x, y); y += lh; line = w; } else line = test;
+    }
+    if (line) ctx.fillText(line, x, y);
+  }
+  function drawBossBar() {
+    const B = G.boss; if (!B || B.dead) return;
+    const y = HUD_H + 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(10, y, W - 20, 10);
+    ctx.fillStyle = B.hp < B.maxhp * 0.4 ? '#ff2a4d' : '#ffd23f'; ctx.fillRect(11, y + 1, (W - 22) * Math.max(0, B.hp / B.maxhp), 8);
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(BOSS_NAMES[B.kind], W / 2, y + 5.5);
+  }
   let tAcc = 0;
   function draw(t) {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
@@ -1116,6 +1510,7 @@
     for (const p of G.pus) drawPU(p);
     for (const c of G.coins) drawCoin(c);
     drawShots();
+    drawFoes(t);
     drawDrones(t);
     drawPaddle();
     for (const b of G.balls) drawBall(b);
@@ -1132,10 +1527,12 @@
     ctx.globalAlpha = 1;
     ctx.restore();
     drawHUD();
+    drawBossBar();
     if (mode === 'play' && G.banner > 0) {
       ctx.globalAlpha = Math.min(1, G.banner); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 40px system-ui, sans-serif'; ctx.textAlign = 'center';
       ctx.fillText('LEVEL ' + run.level, W / 2, H * 0.55);
-      if (run.level % 5 === 0) { ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.fillText('★ vault level: extra gold bricks ★', W / 2, H * 0.55 + 34); }
+      ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.fillText(G.def.name, W / 2, H * 0.55 + 32);
+      if (G.def.tip) { ctx.fillStyle = '#c9d0ff'; ctx.font = '15px system-ui, sans-serif'; wrapText(G.def.tip, W / 2, H * 0.55 + 60, 380, 20); }
       ctx.globalAlpha = 1;
     }
     if (mode === 'play' && G.balls.some((b) => b.stuck && b.serve)) {
@@ -1156,9 +1553,12 @@
   // debug hook for automated testing (harmless in normal play)
   window.__bb = {
     get mode() { return mode; }, get run() { return run; }, get G() { return G; },
-    clear() { if (G) for (const b of G.bricks) if (b.type !== 'stone') b.alive = false; },
+    clear() { if (G) { for (const b of G.bricks) if (b.type !== 'stone') b.alive = false; if (G.boss) G.boss.dead = true; } },
     give(n) { if (run) { run.coins += n; } },
     step(dt) { update(dt); },
+    paddle, launch() { launch(); },
+    buyId(id) { return buy(ITEM_BY_ID[id]); },
+    next() { lastSummary = null; startLevel(); },
   };
 
   showMenu();
