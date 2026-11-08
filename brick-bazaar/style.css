@@ -51,9 +51,9 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .summary { margin-top: 0.5em; font-size: 0.8em; color: #b8c0f0; background: #ffffff0d; border-radius: 0.7em;
   padding: 0.45em 0.7em; display: flex; flex-wrap: wrap; gap: 0.2em 0.9em; }
 .summary b { color: #ffe680; }
-.tabs { display: flex; gap: 0.35em; margin: 0.6em 0 0.5em; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35em; margin: 0.6em 0 0.5em; flex-shrink: 0; }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { flex: 1 0 auto; padding: 0.55em 0.6em; border-radius: 0.7em; border: 1px solid #ffffff1c; background: #ffffff0a;
+.tab { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0.55em 0.3em; border-radius: 0.7em; border: 1px solid #ffffff1c; background: #ffffff0a;
   color: #b8c0f0; font-weight: 700; font-size: 0.85em; cursor: pointer; white-space: nowrap; }
 .tab.on { background: #ffe680; color: #251a00; border-color: #ffe680; }
 .items { flex: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5em; align-content: start;
