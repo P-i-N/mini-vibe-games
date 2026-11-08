@@ -485,7 +485,17 @@
   pauseBtn.addEventListener('click', (e) => { e.stopPropagation(); audio(); if (mode === 'play') showPause(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') showPause(); });
   // Right click or Escape pauses (Escape again resumes)
-  document.addEventListener('contextmenu', (e) => { e.preventDefault(); if (mode === 'play') showPause(); });
+  // Pause straight from the right button press (works even where the browser never fires 'contextmenu'),
+  // and also from 'contextmenu' itself (Mac ctrl+click, keyboard menu key). Pausing twice is harmless.
+  function rightPause(e) {
+    if (e.type === 'contextmenu' || e.button === 2) {
+      e.preventDefault();
+      if (mode === 'play') showPause();
+    }
+  }
+  window.addEventListener('pointerdown', rightPause, true);
+  window.addEventListener('mousedown', rightPause, true);
+  window.addEventListener('contextmenu', rightPause, true);
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();
