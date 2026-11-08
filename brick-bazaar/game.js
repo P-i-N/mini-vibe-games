@@ -460,7 +460,7 @@
   }
   canvas.addEventListener('pointerdown', (e) => {
     audio();
-    if (mode !== 'play') return;
+    if (mode !== 'play' || e.button === 2) return;
     const p = toGame(e); paddle.tx = p.x;
     launch();
     e.preventDefault();
@@ -471,7 +471,14 @@
   });
   pauseBtn.addEventListener('click', (e) => { e.stopPropagation(); audio(); if (mode === 'play') showPause(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') showPause(); });
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Right click or Escape pauses (Escape again resumes)
+  document.addEventListener('contextmenu', (e) => { e.preventDefault(); if (mode === 'play') showPause(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    if (mode === 'play') showPause();
+    else if (mode === 'pause') { mode = 'play'; hideOverlay(); }
+  });
 
   // ---------- update ----------
   function update(dt) {
@@ -820,7 +827,7 @@
       <button class="big" data-act="newrun">${saved ? 'New run' : 'Play'}</button>
       <button class="big alt" data-act="mute">Sound: ${muted ? 'off' : 'on'}</button>
       ${best.level ? `<div class="stat" style="margin-top:1em">Best: level <b>${best.level}</b> · score <b>${best.score}</b></div>` : ''}
-      <div class="hint">Drag or move the mouse to steer · tap or click to launch<br>Guns and drones fire on their own. One hand is enough.</div>
+      <div class="hint">Drag or move the mouse to steer · tap or click to launch<br>Right click or Esc pauses. Guns and drones fire on their own. One hand is enough.</div>
     </div>`);
   }
   function showPause() {
