@@ -166,7 +166,7 @@
     { id: 'piggy', cat: 'eco', icon: '🐷', name: 'Piggy Bank', max: 4, base: 80, grow: 1.7,
       desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * 30}).` },
     { id: 'streak', cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 60, grow: 1.7,
-      desc: (l) => `Every ${7 - (l + 1)} bricks in a row without touching the paddle drops a bonus coin.` },
+      desc: (l) => `Streak payouts are ${(l + 1) * 50}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
     { id: 'bounty', cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 25}%.` },
   ];
@@ -304,7 +304,7 @@
     G = {
       bricks: genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: { wide: 0, slow: 0, fire: 0, glue: 0 }, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0,
-      levelCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7 },
+      levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7 },
       shake: 0, banner: 1.8, started: false,
     };
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
@@ -436,10 +436,23 @@
     sfx.pop();
     if (b.type === 'gold') dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5));
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
-    const st = lv('streak');
-    if (st && G.combo % (7 - st) === 0) { dropCoin(cx, cy, 1); }
+    if (G.combo % STREAK_STEP === 0) streakPayout(cx, cy);
     if (Math.random() < 0.075 + 0.02 * lv('puluck')) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
     if (b.type === 'bomb') explode(cx, cy, 62, 2, '#ff6b3d');
+  }
+  // Streaks pay out every STREAK_STEP bricks; each payout is bigger than the last.
+  const STREAK_STEP = 5;
+  function streakCoins(combo) {
+    const tier = Math.floor(combo / STREAK_STEP); // 5 -> 1, 10 -> 2, 15 -> 3 ...
+    return Math.round(Math.min(tier, 15) * (1 + 0.5 * lv('streak')));
+  }
+  function streakPayout(x, y) {
+    const n = streakCoins(G.combo);
+    if (n <= 0) return;
+    dropCoin(x, y, n);
+    G.streakCoins += n * (1 + lv('value'));
+    G.texts.push({ x: clamp(x, 70, W - 70), y: y + 24, t: 1.1, s: `${G.combo} STREAK! +${n} coins`, c: '#ffe680' });
+    beep(660 + Math.min(G.combo, 60) * 12, 0.12, 'triangle', 0.06);
   }
   function explode(x, y, rad, dmg, color) {
     G.shake = Math.min(10, G.shake + 5); sfx.boom();
@@ -790,7 +803,7 @@
     const pl = lv('piggy');
     const interest = pl ? Math.min(Math.floor(run.coins * 0.05 * pl), 30 * pl) : 0;
     run.coins += interest;
-    lastSummary = { level: run.level, picked: G.levelCoins, bonus, interest, combo: G.comboBest };
+    lastSummary = { level: run.level, picked: G.levelCoins, bonus, interest, combo: G.comboBest, streak: G.streakCoins };
     run.score += 100 * run.level;
     run.level++;
     recordBest();
@@ -870,7 +883,7 @@
         ${pips}<div class="ds">${desc}</div>${btn}</div>`;
     }).join('');
     const s = lastSummary;
-    const summary = s ? `<div class="summary"><span>Level ${s.level} cleared!</span><span>Picked up <b>${s.picked}</b></span><span>Clear bonus <b>${s.bonus}</b></span>${s.interest ? `<span>Interest <b>${s.interest}</b></span>` : ''}<span>Best streak <b>${s.combo}</b></span></div>` : '';
+    const summary = s ? `<div class="summary"><span>Level ${s.level} cleared!</span><span>Picked up <b>${s.picked}</b></span><span>Clear bonus <b>${s.bonus}</b></span>${s.interest ? `<span>Interest <b>${s.interest}</b></span>` : ''}<span>Best streak <b>${s.combo}</b>${s.streak ? ` (streak coins <b>${s.streak}</b>)` : ''}</span></div>` : '';
     showOverlay(`<div class="shop">
       <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}</div></div><div class="coins">${run.coins} 🪙</div></div>
       ${summary}
@@ -1073,7 +1086,7 @@
       tx += 46;
     }
     if (G.net > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('NET×' + G.net, tx, 43); }
-    if (G.combo >= 5) { ctx.textAlign = 'right'; ctx.fillStyle = '#ffe680'; ctx.fillText(G.combo + ' streak', W - 54, 43); }
+    if (G.combo >= 5) { ctx.textAlign = 'right'; ctx.fillStyle = '#ffe680'; ctx.fillText(G.combo + ' streak · next +' + streakCoins(Math.ceil((G.combo + 1) / STREAK_STEP) * STREAK_STEP), W - 54, 43); }
   }
 
   let tAcc = 0;
