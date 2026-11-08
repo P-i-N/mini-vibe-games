@@ -258,8 +258,8 @@
   // Hand-made campaign. Map legend: 1-9 brick hit points, S steel, B bomb, G gold, X stone (unbreakable),
   // H hive (spawns blobs), . empty. foes = enemies that join the level; boss = boss kind (1-3).
   const LEVELS = [
-    { name: 'Warm-up', map: ['..........', '..111111..', '.111GG111.', '..111111..'] },
-    { name: 'Archway', map: ['...1111...', '..122221..', '.11.22.11.', '.11....11.', '.11....11.'] },
+    { name: 'Warm-up', map: ['..........', '..........', '..........', '..........', '...1111...', '..11GG11..', '...1111...'] },
+    { name: 'Archway', map: ['..........', '..........', '...1111...', '..122221..', '.11.22.11.', '.11....11.', '.11....11.'] },
     { name: 'Fuse Box', map: ['2222222222', '1111111111', '..........', '11B1111B11', '1111111111'], tip: 'Bomb bricks blast their neighbours' },
     { name: 'Gem', map: ['....11....', '...1221...', '..123321..', '.12333321.', '..123321..', '...1221...', '....11....'] },
     { name: 'Piggy Bank', map: ['.11111111.', '1G2G22G2G1', '1222222221', '1G2G22G2G1', '.11111111.', '..1....1..'], tip: 'Gold bricks burst into coins' },
@@ -359,7 +359,7 @@
       foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
       def: levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
-    G.par = 35 + run.level * 5;
+    G.par = 25 + run.level * 5 + Math.min(run.level, 10) * 1;
     if (G.def.boss) G.boss = makeBoss(G.def.boss);
     const q = [];
     for (const [k, n] of Object.entries(G.def.foes || {})) for (let i = 0; i < n; i++) q.push(k);
@@ -435,7 +435,10 @@
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
     return 'wide';
   }
-  function dropCoin(x, y, n = 1) {
+  // Every coin drop is boosted 1.5x on average (fractions round up at random).
+  const COIN_MULT = 1.5;
+  function dropCoin(x, y, n = 1, exact = false) {
+    if (!exact) { const raw = n * COIN_MULT; n = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
     for (let i = 0; i < n; i++) G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val: 1 + lv('value') });
   }
   function collectCoin(c) {
@@ -514,12 +517,12 @@
   const STREAK_STEP = 5;
   function streakCoins(combo) {
     const tier = Math.floor(combo / STREAK_STEP); // 5 -> 1, 10 -> 2, 15 -> 3 ...
-    return Math.round(Math.min(tier, 15) * (1 + 0.5 * lv('streak')));
+    return Math.round(Math.min(tier, 15) * COIN_MULT * (1 + 0.5 * lv('streak')));
   }
   function streakPayout(x, y) {
     const n = streakCoins(G.combo);
     if (n <= 0) return;
-    dropCoin(x, y, n);
+    dropCoin(x, y, n, true);
     G.streakCoins += n * (1 + lv('value'));
     G.texts.push({ x: clamp(x, 70, W - 70), y: y + 24, t: 1.1, s: `${G.combo} STREAK! +${n} coins`, c: '#ffe680' });
     beep(660 + Math.min(G.combo, 60) * 12, 0.12, 'triangle', 0.06);
@@ -915,6 +918,13 @@
     const pcx = paddle.x, pcy = PADDLE_Y;
     for (const c of G.coins) {
       if (c.dead) continue;
+      if (G.clearT >= 0) {
+        // level cleared: every coin still in the air flies straight to the paddle
+        const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy) || 1, sp = 900 * dt;
+        if (d <= sp + 10) { c.dead = true; collectCoin(c); continue; }
+        c.x += (dx / d) * sp; c.y += (dy / d) * sp; c.spin += dt * 12;
+        continue;
+      }
       c.vy += 420 * dt; c.vy = Math.min(c.vy, 330); c.vx *= 1 - dt * 1.5;
       if (ml) {
         const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy);
@@ -1183,7 +1193,7 @@
   function finishLevel() {
     for (const c of G.coins) collectCoin(c);
     G.coins = [];
-    const bonus = Math.round((15 + run.level * 4) * (1 + 0.25 * lv('bounty')));
+    const bonus = Math.round((15 + run.level * 4) * COIN_MULT * (1 + 0.25 * lv('bounty')));
     run.coins += bonus;
     const pl = lv('piggy');
     const interest = pl ? Math.min(Math.floor(run.coins * 0.05 * pl), 30 * pl) : 0;
