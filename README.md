@@ -7,5 +7,6 @@ Play: https://p-i-n.github.io/mini-vibe-games/
 | Game | Folder |
 | --- | --- |
 | Brick Bazaar: brick breaker with a coin shop, guns, ammo, magnets and drones | [`brick-bazaar/`](brick-bazaar/) |
+| Strata Siege: three-layer tower defense with a weather cloud, digging hamsters and a gem shop | [`strata-siege/`](strata-siege/) |
 
 Every game is plain HTML/CSS/JS with no build step. Pushing to `main` deploys to GitHub Pages.
