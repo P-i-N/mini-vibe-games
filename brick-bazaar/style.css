@@ -146,3 +146,11 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .spin .big { margin: 0 auto; font-size: 1em; padding: 0.7em 1em; border: 2px dashed #ffe68088; }
 .reel { font-size: 2.2em; line-height: 1.2; }
 .prize { font-weight: 900; color: #ffe680; animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+
+/* Stock that arrives level by level */
+.sale.new { background: #2f8cff; }
+.notabs { margin: 0.7em 0 0.6em; color: #9aa3d6; font-size: 0.85em; }
+.teaser { grid-column: 1 / -1; text-align: center; padding: 0.8em; border: 1px dashed #ffffff2a; border-radius: 0.9em; color: #7d86b8; font-size: 0.85em; }
+.unlock { max-width: 20em; margin: 0 auto 0.8em; padding: 0.5em 0.7em; border-radius: 0.8em; background: #12233f; border: 1px solid #5ef0ff55;
+  color: #bfe9ff; font-size: 0.85em; line-height: 1.5; animation: pop 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) 0.9s both; }
+.unlock b { color: #ffffff; white-space: nowrap; }
