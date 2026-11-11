@@ -137,3 +137,12 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .tab.on i { color: #b0124e; }
 .coins.bump { animation: bump 0.3s; }
 @keyframes bump { 40% { transform: scale(1.18); } }
+
+/* Wild tab, lucky spin */
+.lvl { font-size: 0.75em; font-weight: 800; color: #5ef0ff; }
+.shopmsg { margin-top: 0.4em; padding: 0.4em 0.7em; border-radius: 0.7em; background: #2a2410; border: 1px solid #ffd84a55; color: #ffe680;
+  font-weight: 800; font-size: 0.9em; animation: pop 0.35s cubic-bezier(0.2, 1.5, 0.4, 1) both; }
+.spin { max-width: 18em; margin: 0 auto 0.6em; min-height: 3.4em; }
+.spin .big { margin: 0 auto; font-size: 1em; padding: 0.7em 1em; border: 2px dashed #ffe68088; }
+.reel { font-size: 2.2em; line-height: 1.2; }
+.prize { font-weight: 900; color: #ffe680; animation: pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
