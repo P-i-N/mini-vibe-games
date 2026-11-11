@@ -93,95 +93,96 @@
     { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
     { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Economy' }, { id: 'wild', name: '🎲 Wild' },
   ];
+  // at = the level from which the shop stocks the item. A new player sees three items; two or three more arrive per level.
   // Normal items are upgrades: level lv(id), cost base * grow^level, up to max.
   // Wild items have their own price() and use(); full() says when they are not for sale.
   const ITEMS = [
-    { id: 'gun_blaster', cat: 'weap', gun: 'blaster', max: 5, base: 50, grow: 1.9 },
-    { id: 'gun_scatter', cat: 'weap', gun: 'scatter', max: 5, base: 120, grow: 1.9 },
-    { id: 'gun_laser', cat: 'weap', gun: 'laser', max: 5, base: 130, grow: 1.9 },
-    { id: 'gun_rocket', cat: 'weap', gun: 'rocket', max: 5, base: 170, grow: 1.9 },
-    { id: 'gun_arc', cat: 'weap', gun: 'arc', max: 5, base: 230, grow: 1.9 },
-    { id: 'gun_saw', cat: 'weap', gun: 'saw', max: 5, base: 260, grow: 1.9 },
-    { id: 'gun_duck', cat: 'weap', gun: 'duck', max: 5, base: 300, grow: 1.9 },
-    { id: 'rounds', cat: 'weap', icon: '🎯', name: 'Hardened Rounds', max: 4, base: 150, grow: 2.2,
+    { id: 'gun_blaster', at: 3, cat: 'weap', gun: 'blaster', max: 5, base: 40, grow: 1.9 },
+    { id: 'gun_scatter', at: 7, cat: 'weap', gun: 'scatter', max: 5, base: 120, grow: 1.9 },
+    { id: 'gun_laser', at: 10, cat: 'weap', gun: 'laser', max: 5, base: 130, grow: 1.9 },
+    { id: 'gun_rocket', at: 13, cat: 'weap', gun: 'rocket', max: 5, base: 170, grow: 1.9 },
+    { id: 'gun_arc', at: 16, cat: 'weap', gun: 'arc', max: 5, base: 230, grow: 1.9 },
+    { id: 'gun_saw', at: 21, cat: 'weap', gun: 'saw', max: 5, base: 260, grow: 1.9 },
+    { id: 'gun_duck', at: 26, cat: 'weap', gun: 'duck', max: 5, base: 300, grow: 1.9 },
+    { id: 'rounds', at: 12, cat: 'weap', icon: '🎯', name: 'Hardened Rounds', max: 4, base: 150, grow: 2.2,
       desc: (l) => `All guns and drone shots deal +${(l + 1) * 35}% damage.`, req: () => ownsAnyGun() || lv('d_orbit') > 0, reqText: 'Needs a gun' },
-    { id: 'belt', cat: 'weap', icon: '🎒', name: 'Ammo Belt', max: 4, base: 60, grow: 1.7,
+    { id: 'belt', at: 7, cat: 'weap', icon: '🎒', name: 'Ammo Belt', max: 4, base: 60, grow: 1.7,
       desc: (l) => `Clips hold ${(l + 1) * 25}% more shots.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'factory', cat: 'weap', icon: '🏭', name: 'Quick Hands', max: 4, base: 90, grow: 1.7,
+    { id: 'factory', at: 9, cat: 'weap', icon: '🏭', name: 'Quick Hands', max: 4, base: 90, grow: 1.7,
       desc: (l) => `Reloads are ${Math.round((1 - Math.pow(RELOAD_CUT, l + 1)) * 100)}% shorter.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'recycler', cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
+    { id: 'recycler', at: 14, cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
       desc: (l) => `${(l + 1) * 12}% chance a shot uses no ammo.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
 
-    { id: 'd_orbit', cat: 'drone', icon: '🛰️', name: 'Orbiter', max: 3, base: 100, grow: 1.8,
+    { id: 'd_orbit', at: 6, cat: 'drone', icon: '🛰️', name: 'Orbiter', max: 3, base: 100, grow: 1.8,
       desc: (l) => `Circles your paddle and fires free shots. Owned: ${l}/3.` },
-    { id: 'd_hunter', cat: 'drone', icon: '🐝', name: 'Hunter Bee', max: 3, base: 160, grow: 1.9,
+    { id: 'd_hunter', at: 15, cat: 'drone', icon: '🐝', name: 'Hunter Bee', max: 3, base: 160, grow: 1.9,
       desc: (l) => `Flies off and rams bricks on its own. Owned: ${l}/3.` },
-    { id: 'd_collect', cat: 'drone', icon: '🤖', name: 'Collector', max: 2, base: 90, grow: 2.2,
+    { id: 'd_collect', at: 9, cat: 'drone', icon: '🤖', name: 'Collector', max: 2, base: 90, grow: 2.2,
       desc: (l) => `Zips around grabbing falling coins and capsules. Owned: ${l}/2.` },
-    { id: 'd_goalie', cat: 'drone', icon: '🧤', name: 'Goalie', max: 3, base: 140, grow: 1.8,
+    { id: 'd_goalie', at: 12, cat: 'drone', icon: '🧤', name: 'Goalie', max: 3, base: 140, grow: 1.8,
       desc: (l) => l ? `Saves a missed ball. Recharge: ${goalieRecharge(l)}s → ${goalieRecharge(l + 1)}s.` : `Patrols below the paddle and saves a missed ball every ${goalieRecharge(1)}s.` },
-    { id: 'd_over', cat: 'drone', icon: '⚙️', name: 'Overclock', max: 3, base: 120, grow: 1.8,
+    { id: 'd_over', at: 18, cat: 'drone', icon: '⚙️', name: 'Overclock', max: 3, base: 120, grow: 1.8,
       desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => lv('d_orbit') + lv('d_hunter') + lv('d_collect') + lv('d_goalie') > 0, reqText: 'Needs a drone' },
 
-    { id: 'width', cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
+    { id: 'width', at: 2, cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
       desc: () => 'Paddle +12% wider.' },
-    { id: 'magnet', cat: 'gear', icon: '🧲', name: 'Coin Magnet', max: 5, base: 45, grow: 1.6,
+    { id: 'magnet', at: 3, cat: 'gear', icon: '🧲', name: 'Coin Magnet', max: 5, base: 45, grow: 1.6,
       desc: (l) => (l ? 'Bigger, stronger pull.' : 'Pulls falling coins toward the paddle.') + (l >= 2 ? ' Now pulls capsules too.' : ' Level 3 also pulls capsules.') },
-    { id: 'net', cat: 'gear', icon: '🥅', name: 'Safety Net', max: 4, base: 70, grow: 1.8,
+    { id: 'net', at: 4, cat: 'gear', icon: '🥅', name: 'Safety Net', max: 4, base: 70, grow: 1.8,
       desc: (l) => `A barrier that bounces back ${l + 1} missed ball${l ? 's' : ''} each level.` },
-    { id: 'aim', cat: 'gear', icon: '🎯', name: 'Aim Sight', max: 1, base: 25, grow: 1,
+    { id: 'aim', at: 5, cat: 'gear', icon: '🎯', name: 'Aim Sight', max: 1, base: 25, grow: 1,
       desc: () => 'Shows the launch path before you tap.' },
-    { id: 'shield', cat: 'gear', icon: '🛡️', name: 'Deflector', max: 3, base: 70, grow: 1.7,
+    { id: 'shield', at: 10, cat: 'gear', icon: '🛡️', name: 'Deflector', max: 3, base: 70, grow: 1.7,
       desc: (l) => `Blocks ${l + 1} enemy hit${l ? 's' : ''} each level, so your paddle never gets stunned.` },
-    { id: 'second', cat: 'gear', icon: '🌬️', name: 'Second Wind', max: 2, base: 150, grow: 2,
+    { id: 'second', at: 15, cat: 'gear', icon: '🌬️', name: 'Second Wind', max: 2, base: 150, grow: 2,
       desc: (l) => `Losing your last ball costs no life, ${l + 1} time${l ? 's' : ''} per level.` },
-    { id: 'starter', cat: 'gear', icon: '🚦', name: 'Head Start', max: 2, base: 80, grow: 1.9,
+    { id: 'starter', at: 11, cat: 'gear', icon: '🚦', name: 'Head Start', max: 2, base: 80, grow: 1.9,
       desc: (l) => `Start every level with ${l + 1} random power-up${l ? 's' : ''} active.` },
-    { id: 'demo', cat: 'gear', icon: '🧨', name: 'Demolition', max: 3, base: 65, grow: 1.7,
+    { id: 'demo', at: 8, cat: 'gear', icon: '🧨', name: 'Demolition', max: 3, base: 65, grow: 1.7,
       desc: (l) => `Bomb bricks blast a wider area and deal ${l + 3} damage.` },
-    { id: 'puluck', cat: 'gear', icon: '🎁', name: 'Lucky Capsules', max: 4, base: 50, grow: 1.6,
+    { id: 'puluck', at: 6, cat: 'gear', icon: '🎁', name: 'Lucky Capsules', max: 4, base: 50, grow: 1.6,
       desc: () => 'More power-up capsules, and they last 15% longer.' },
 
-    { id: 'dmg', cat: 'ball', icon: '🔩', name: 'Heavy Core', max: 6, base: 90, grow: 1.9,
+    { id: 'dmg', at: 2, cat: 'ball', icon: '🔩', name: 'Heavy Core', max: 6, base: 90, grow: 1.9,
       desc: (l) => `Ball deals ${l + 2} damage per hit.` },
-    { id: 'crit', cat: 'ball', icon: '✨', name: 'Crit Spark', max: 6, base: 60, grow: 1.5,
+    { id: 'crit', at: 5, cat: 'ball', icon: '✨', name: 'Crit Spark', max: 6, base: 60, grow: 1.5,
       desc: (l) => `${(l + 1) * 8}% chance for a triple-damage hit.` },
-    { id: 'pierce', cat: 'ball', icon: '🔥', name: 'Ember Core', max: 4, base: 110, grow: 1.9,
+    { id: 'pierce', at: 14, cat: 'ball', icon: '🔥', name: 'Ember Core', max: 4, base: 110, grow: 1.9,
       desc: (l) => `After each paddle bounce the ball smashes through ${l + 1} brick${l ? 's' : ''} without bouncing.` },
-    { id: 'twin', cat: 'ball', icon: '⚪', name: 'Twin Serve', max: 3, base: 100, grow: 2.2,
+    { id: 'twin', at: 8, cat: 'ball', icon: '⚪', name: 'Twin Serve', max: 3, base: 100, grow: 2.2,
       desc: (l) => `Every serve launches ${l + 2} balls.` },
-    { id: 'bigball', cat: 'ball', icon: '🟠', name: 'Big Ball', max: 3, base: 85, grow: 1.8,
+    { id: 'bigball', at: 6, cat: 'ball', icon: '🟠', name: 'Big Ball', max: 3, base: 85, grow: 1.8,
       desc: () => 'A bigger ball that is easier to hit and clips more bricks.' },
-    { id: 'splash', cat: 'ball', icon: '💥', name: 'Shatter Core', max: 4, base: 95, grow: 1.7,
+    { id: 'splash', at: 11, cat: 'ball', icon: '💥', name: 'Shatter Core', max: 4, base: 95, grow: 1.7,
       desc: (l) => `${(l + 1) * 15}% chance a ball hit also chips every brick around it.` },
-    { id: 'chill', cat: 'ball', icon: '❄️', name: 'Chill Field', max: 3, base: 60, grow: 1.7,
+    { id: 'chill', at: 13, cat: 'ball', icon: '❄️', name: 'Chill Field', max: 3, base: 60, grow: 1.7,
       desc: () => 'Ball moves 7% slower. Easier to follow.' },
 
-    { id: 'luck', cat: 'eco', icon: '🍀', name: 'Lucky Bricks', max: 6, base: 45, grow: 1.7,
+    { id: 'luck', at: 2, cat: 'eco', icon: '🍀', name: 'Lucky Bricks', max: 6, base: 45, grow: 1.7,
       desc: (l) => `Coin drop chance ${Math.round(coinChance(l) * 100)}% → ${Math.round(coinChance(l + 1) * 100)}%.` },
-    { id: 'value', cat: 'eco', icon: '🪙', name: 'Gold Plating', max: 5, base: 90, grow: 2.3,
+    { id: 'value', at: 5, cat: 'eco', icon: '🪙', name: 'Gold Plating', max: 5, base: 90, grow: 2.3,
       desc: (l) => `Each coin is worth ${l + 2}.` },
-    { id: 'piggy', cat: 'eco', icon: '🐷', name: 'Piggy Bank', max: 4, base: 80, grow: 1.7,
+    { id: 'piggy', at: 7, cat: 'eco', icon: '🐷', name: 'Piggy Bank', max: 4, base: 80, grow: 1.7,
       desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * 30}).` },
-    { id: 'streak', cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 70, grow: 2,
+    { id: 'streak', at: 8, cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 70, grow: 2,
       desc: (l) => `Streak payouts are ${(l + 1) * 50}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
-    { id: 'foebounty', cat: 'eco', icon: '🎯', name: 'Monster Bounty', max: 3, base: 70, grow: 1.7,
+    { id: 'foebounty', at: 9, cat: 'eco', icon: '🎯', name: 'Monster Bounty', max: 3, base: 70, grow: 1.7,
       desc: (l) => `Enemies drop +${l + 1} coin${l ? 's' : ''}, bosses drop ${(l + 1) * 25}% more.` },
-    { id: 'bounty', cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
+    { id: 'bounty', at: 4, cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 25}%.` },
 
-    { id: 'power', cat: 'wild', icon: '🔥', name: 'Overcharge', max: 99, base: 150, grow: 1.35,
+    { id: 'power', at: 11, cat: 'wild', icon: '🔥', name: 'Overcharge', max: 99, base: 150, grow: 1.35,
       desc: (l) => `All damage +10%. Now +${l * 10}%. No limit.` },
-    { id: 'box', cat: 'wild', icon: '🎁', name: 'Mystery Box', price: () => 30 + 12 * run.level, full: () => upgradePool().length === 0,
+    { id: 'box', at: 10, cat: 'wild', icon: '🎁', name: 'Mystery Box', price: () => 30 + 12 * run.level, full: () => upgradePool().length === 0,
       desc: () => 'One level of a random upgrade. Often worth more than it costs.',
       use: () => { const it = pick(upgradePool()); run.up[it.id] = lv(it.id) + 1; return `🎁 ${it.icon} ${it.name} level ${lv(it.id)}!`; } },
-    { id: 'reroll', cat: 'wild', icon: '🏷️', name: 'New Sales', price: () => 20 * (1 + shopRerolls),
+    { id: 'reroll', at: 12, cat: 'wild', icon: '🏷️', name: 'New Sales', price: () => 20 * (1 + shopRerolls),
       desc: () => 'Two new upgrades go on sale for 30% off.',
       use: () => { shopRerolls++; rollDeals(); return '🏷️ New sales are up!'; } },
-    { id: 'relicbuy', cat: 'wild', icon: '🗿', name: 'Relic Dealer', price: () => 400 * Math.pow(2, run.relicsBought), full: () => relicChoices().length === 0,
+    { id: 'relicbuy', at: 16, cat: 'wild', icon: '🗿', name: 'Relic Dealer', price: () => 400 * Math.pow(2, run.relicsBought), full: () => relicChoices().length === 0,
       desc: () => 'Pick one of three relics, right now.',
       use: () => { run.relicsBought++; run.pendingRelic = true; } },
-    { id: 'life', cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => Math.round(60 * Math.pow(1.45, run.lifeBought)), full: () => run.lives >= 6,
+    { id: 'life', at: 4, cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => Math.round(60 * Math.pow(1.45, run.lifeBought)), full: () => run.lives >= 6,
       desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.`,
       use: () => { run.lives++; run.lifeBought++; } },
   ];
@@ -196,8 +197,13 @@
   const lv = (id) => (run && run.up[id]) || 0;
   const ownsAnyGun = () => Object.keys(GUNS).some((g) => lv('gun_' + g) > 0);
   const RELOAD_CUT = 0.82; // reload time factor per Quick Hands level
+  // The game holds these features back until the given level, so that a new player meets one thing at a time.
+  const FROM = { capsules: 2, spin: 3, fever: 5, sales: 6, streak: 7, blimp: 8, specials: 13 };
+  // The first level on which each capsule can drop.
+  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, x2: 11, storm: 14, gold: 17, nuke: 20 };
+  const unlocked = (it) => run.level >= it.at || lv(it.id) > 0;
   // upgrades that can still go up: the pool for sales and the Mystery Box
-  const upgradePool = () => ITEMS.filter((it) => it.base && it.id !== 'power' && !(it.req && !it.req()) && lv(it.id) < it.max);
+  const upgradePool = () => ITEMS.filter((it) => it.base && it.id !== 'power' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < it.max);
 
   function itemCost(it) {
     if (it.price) return it.price();
@@ -207,7 +213,7 @@
   const SALE = 0.7;
   const onSale = (it) => run.deals.includes(it.id);
   function itemState(it) {
-    if (it.req && !it.req()) return 'locked';
+    if (!unlocked(it) || (it.req && !it.req())) return 'locked';
     if (it.full ? it.full() : lv(it.id) >= it.max) return 'max';
     return run.coins >= itemCost(it) ? 'ok' : 'poor';
   }
@@ -224,7 +230,7 @@
   // ---------- run / save ----------
   let run = null;
   function newRun() {
-    return { level: 1, coins: 0, lives: 3, up: { gun_blaster: 1 }, lifeBought: 0, relicsBought: 0, score: 0,
+    return { level: 1, coins: 0, lives: 3, up: {}, lifeBought: 0, relicsBought: 0, score: 0,
       relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats() };
   }
   const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0 });
@@ -258,8 +264,8 @@
       punch: 0, delay: r * 0.045 + c * 0.022, loot: 8 };
   }
   // Brick toughness by level: [level, factor], linear between the points. It follows the arsenal that a player
-  // can afford at that level. After level 50 it grows 5% per level.
-  const HP_CURVE = [[1, 1], [8, 1], [16, 2.2], [24, 6], [30, 22], [35, 60], [40, 110], [50, 230]];
+  // can afford at that level. The first five levels have soft bricks. After level 50 it grows 5% per level.
+  const HP_CURVE = [[1, 0.6], [5, 0.6], [6, 1], [8, 1], [16, 2.2], [24, 6], [30, 22], [35, 60], [40, 110], [50, 230]];
   function hpMult(n) {
     if (n >= 50) return 230 * Math.pow(1.05, n - 50);
     const i = HP_CURVE.findIndex(([l]) => l > n), [l0, h0] = HP_CURVE[i - 1], [l1, h1] = HP_CURVE[i];
@@ -315,7 +321,7 @@
     def.map.forEach((row, r) => { for (let c = 0; c < COLS; c++) { const b = brickFor(row[c] || '.', r, c, n); if (b) bricks.push(b); } });
     return bricks;
   }
-  // Today's special: about one level in three has a twist. Never on the first levels or on boss levels.
+  // Today's special: about one level in three has a twist, and always the level that introduces them. Never on boss levels.
   const SPECIALS = [
     { id: 'gold', name: 'GOLD RUSH', text: 'Extra gold bricks' },
     { id: 'tnt', name: 'DEMOLITION DAY', text: 'Extra bomb bricks' },
@@ -327,7 +333,7 @@
     { id: 'twins', name: 'DOUBLE TROUBLE', text: 'Two more balls on every serve' },
   ];
   function rollSpecial(def, bricks) {
-    if (def.boss || run.level < 4 || Math.random() > 0.35) return null;
+    if (def.boss || run.level < FROM.specials || (run.level > FROM.specials && Math.random() > 0.35)) return null;
     const sp = pick(SPECIALS);
     const swap = (type, share) => { for (const b of bricks) if (b.type === 'normal' && Math.random() < share) { b.type = type; if (type === 'bomb') b.hp = b.maxhp = 1; } };
     if (sp.id === 'gold') swap('gold', 0.14);
@@ -342,8 +348,8 @@
   const paddle = { x: W / 2, tx: W / 2, w: 90, y: PADDLE_Y, squish: 0 };
   let lastSummary = null;
 
-  // Generous on the first levels, then it grows slowly: late levels must not drag.
-  const parTime = (n) => Math.min(110, Math.round(45 + 6 * Math.min(n, 8) + 2.5 * clamp(n - 8, 0, 8) + 1.5 * Math.max(0, n - 16)));
+  // Generous on the first levels (more so on the first three), then it grows slowly: late levels must not drag.
+  const parTime = (n) => Math.min(110, Math.round((n <= 3 ? 15 : 0) + 45 + 6 * Math.min(n, 8) + 2.5 * clamp(n - 8, 0, 8) + 1.5 * Math.max(0, n - 16)));
   function basePaddleW() { return 84 * (1 + 0.12 * lv('width')); }
   function puDur(base) { return base * (1 + 0.15 * lv('puluck')); }
 
@@ -362,7 +368,7 @@
     G.par = parTime(run.level);
     G.special = rollSpecial(G.def, G.bricks);
     if (G.def.boss) G.boss = makeBoss(G.def.boss);
-    else if (run.level >= 2) G.blimpT = special('blimps') ? 4 : rand(7, 18);
+    else if (run.level >= FROM.blimp) G.blimpT = special('blimps') ? 4 : rand(7, 18);
     const q = [];
     for (const [k, n] of Object.entries(G.def.foes || {})) for (let i = 0; i < n; i++) q.push(k);
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
@@ -371,7 +377,7 @@
     // Head Start: random power-ups at level start
     // Head Start, plus the lucky-spin prize
     for (let i = 0; i < lv('starter') + run.bonusStart; i++) {
-      const k = pick(['wide', 'slow', 'fire', 'mega', 'x2']);
+      const k = pick(['wide', 'slow', 'fire', 'mega', 'x2'].filter((p) => run.level >= PU_FROM[p]));
       setFx(k, puDur(k === 'fire' ? 7 : 12));
     }
     run.bonusStart = 0;
@@ -425,8 +431,8 @@
     if (any) { G.started = true; sfx.launch(); }
   }
   function ballSpeed() {
-    // a calm pace: the speed stops rising at level 30
-    let s = 372 + Math.min(run.level, 30) * 3.5 + Math.min(40, G.time * 0.6);
+    // A slow ball on the first levels. The speed stops rising at level 30, and it rises less during a level than before.
+    let s = 343 + Math.min(run.level, 10) * 7 + clamp(run.level - 10, 0, 20) * 3 + Math.min(run.level < 4 ? 15 : 40, G.time * 0.6);
     s *= 1 - 0.07 * lv('chill');
     if (G.fx.slow > 0) s *= 0.68;
     return s;
@@ -445,7 +451,7 @@
   function rollPU() {
     const foes = G.foes.length > 0 || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
-      .filter(([k]) => k !== 'freeze' || foes);
+      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]);
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
@@ -544,7 +550,7 @@
     else if (b.type === 'chest') dropCoin(cx, cy, 6);
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
     if (G.combo % STREAK_STEP === 0) streakPayout(cx, cy);
-    if (b.type === 'mystery' || Math.random() < (0.075 + 0.02 * lv('puluck')) * (special('capsules') ? 3 : 1)) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
+    if (b.type === 'mystery' || (G.level >= FROM.capsules && Math.random() < (0.075 + 0.02 * lv('puluck')) * (special('capsules') ? 3 : 1))) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
     if (b.type === 'bomb') explode(cx, cy, 30 + 14 * lv('demo'), Math.round((2 + lv('demo')) * power()), '#ff6b3d');
     else if (b.type === 'tnt') explode(cx, cy, 80 + 14 * lv('demo'), Math.round((4 + lv('demo')) * power()), '#ff8a3d');
     else if (b.type === 'volt') zapRow(b);
@@ -563,7 +569,7 @@
   }
   function streakPayout(x, y) {
     const n = streakCoins(G.combo);
-    if (n <= 0) return;
+    if (n <= 0 || G.level < FROM.streak) return;
     dropCoin(x, y, n, true);
     G.streakCoins += n * (1 + lv('value'));
     say(clamp(x, 80, W - 80), y + 24, `${G.combo} STREAK! +${n} coins`, '#ffe680', 1.1);
@@ -803,10 +809,16 @@
 
   // ---------- keeping levels from dragging ----------
   // After the level's par time the bricks start crumbling; when only a few bricks are left, balls home in on them.
+  // On the first three levels the balls home in sooner.
   function updateOvertime(dt) {
     if (G.clearT >= 0 || !G.started) return;
     if (G.time > G.par) {
-      if (!G.crumbling) { G.crumbling = true; say(W / 2, H * 0.5, 'Overtime! Bricks are crumbling', '#ffa94d', 2.2, true); sfx.warn(); }
+      if (!G.crumbling) {
+      G.crumbling = true;
+      // on the first levels this is a quiet helping hand, not an alarm
+      if (G.level <= 5) say(W / 2, H * 0.5, 'The bricks start to crumble', '#ffd6a0', 2.2);
+      else { say(W / 2, H * 0.5, 'Overtime! Bricks are crumbling', '#ffa94d', 2.2, true); sfx.warn(); }
+    }
       G.crumbleT -= dt;
       if (G.crumbleT <= 0) {
         G.crumbleT = 2;
@@ -815,10 +827,10 @@
         G.shake = Math.max(G.shake, 3);
       }
     }
-    G.seekT = (!G.boss && destructibleLeft() <= 4) ? G.seekT + dt : 0;
+    G.seekT = (!G.boss && destructibleLeft() <= (G.level <= 3 ? 8 : 4)) ? G.seekT + dt : 0;
   }
   function steerBall(b, dt) {
-    if (G.seekT < 3 || b.y > PADDLE_Y - 120) return;
+    if (G.seekT < (G.level <= 3 ? 0.5 : 3) || b.y > PADDLE_Y - 120) return;
     let best = null, bd = Infinity;
     for (const k of G.bricks) if (k.alive && k.type !== 'stone') { const d = Math.hypot(k.x + k.w / 2 - b.x, k.y + k.h / 2 - b.y); if (d < bd) { bd = d; best = k; } }
     if (!best) return;
@@ -1167,6 +1179,7 @@
     const f = spawnFoe('blimp', dir > 0 ? -20 : W + 20, clamp(brickBottom() + 60, TOP + 70, PADDLE_Y - 230));
     f.dir = dir; f.baseY = f.y; f.hp = f.maxhp = FOE.blimp.hp;
     say(W / 2, f.y - 30, 'LOOT BLIMP!', '#ffd23f', 1.4); sfx.blimp();
+    if (G.level === FROM.blimp) say(W / 2, f.y - 8, 'Hit it for coins!', '#ffffff', 2.2);
     if (special('blimps')) G.blimpT = 9;
   }
   function foeScale() { return 1 + (run.level - 1) / 14; }
@@ -1360,7 +1373,7 @@
   ];
   const BOSS_Y = 94, STOMP_Y = 420;
   // Health of the five campaign bosses. A boss that returns in endless mode grows with the brick toughness.
-  const BOSS_HP = [0, 110, 600, 1900, 8500, 20000];
+  const BOSS_HP = [0, 95, 600, 1900, 8500, 20000];
   const bossHp = (n) => (n <= 50 ? BOSS_HP[Math.round(n / 10)] : Math.round((20000 * hpMult(n)) / hpMult(50)));
   function makeBoss(kind) {
     const d = BOSSES[kind], hp = bossHp(run.level);
@@ -1757,11 +1770,16 @@
     shopRerolls = 0; shopMsg = '';
     renderShop(false);
   }
+  const SHOP_TABS_FROM = 10; // with fewer items than this, the shop is one short list without tabs
   function renderShop(keepScroll, flashId) {
     const prev = ov.querySelector('.items');
     const st = keepScroll && prev ? prev.scrollTop : 0;
     const open = (it) => { const s = itemState(it); return s === 'ok' || s === 'poor'; };
-    const cards = ITEMS.filter((it) => it.cat === shopCat).map((it) => {
+    const fresh = (it) => run.level > 2 && it.at === run.level;
+    const stock = ITEMS.filter(unlocked), useTabs = stock.length >= SHOP_TABS_FROM;
+    const cats = CATS.filter((c) => stock.some((it) => it.cat === c.id));
+    if (!cats.some((c) => c.id === shopCat)) shopCat = cats[0].id;
+    const cards = stock.filter((it) => !useTabs || it.cat === shopCat).map((it) => {
       const state = itemState(it);
       const l = it.use ? 0 : lv(it.id);
       const pips = it.max > 8 ? `<div class="lvl">Level ${l}</div>` : it.max > 1 ? `<div class="pips">${Array.from({ length: it.max }, (_, i) => `<span class="pip ${i < l ? 'on' : ''}"></span>`).join('')}</div>` : '';
@@ -1775,22 +1793,24 @@
         btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${verb} · ${itemCost(it)} 🪙</button>`;
       }
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
-        ${sale ? '<span class="sale">−30%</span>' : ''}
+        ${sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
         <div class="top"><span class="ic">${it.icon}</span><span class="nm">${it.name}</span></div>
         ${pips}<div class="ds">${desc}</div>${btn}</div>`;
     }).join('');
-    const tabs = CATS.map((c) => {
-      const items = ITEMS.filter((it) => it.cat === c.id);
+    const tabs = cats.map((c) => {
+      const items = stock.filter((it) => it.cat === c.id);
       const can = items.some((it) => itemState(it) === 'ok'), sale = items.some((it) => onSale(it) && open(it));
-      return `<button class="tab ${c.id === shopCat ? 'on' : ''} ${can ? 'can' : ''}" data-cat="${c.id}">${c.name}${sale ? '<i>%</i>' : ''}</button>`;
+      return `<button class="tab ${c.id === shopCat ? 'on' : ''} ${can ? 'can' : ''}" data-cat="${c.id}">${c.name}${sale ? '<i>%</i>' : items.some(fresh) ? '<i>NEW</i>' : ''}</button>`;
     }).join('');
+    const later = ITEMS.filter((it) => !unlocked(it)).map((it) => it.at);
+    const teaser = later.length ? `<div class="teaser">🔒 More stock arrives after level ${Math.min(...later) - 1}</div>` : '';
     const relics = relicIcons();
     showOverlay(`<div class="shop">
       <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
       ${relics ? `<div class="relicbar">Relics ${relics}</div>` : ''}
       ${shopMsg ? `<div class="shopmsg">${shopMsg}</div>` : ''}
-      <div class="tabs">${tabs}</div>
-      <div class="items">${cards}</div>
+      ${useTabs ? `<div class="tabs">${tabs}</div>` : '<div class="notabs">Spend your coins on upgrades. They last for the whole run.</div>'}
+      <div class="items">${cards}${teaser}</div>
       <div class="shopfoot"><button class="big" data-act="next">Start level ${run.level} ▶</button></div>
     </div>`);
     const items = ov.querySelector('.items'); if (items) items.scrollTop = st;
@@ -1873,7 +1893,7 @@
   const feverOn = () => G.feverT > 0;
   const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0);
   function addFever(v) {
-    if (feverOn() || G.clearT >= 0) return;
+    if (feverOn() || G.clearT >= 0 || G.level < FROM.fever) return;
     G.feverIdle = 0;
     run.fever = Math.min(1, run.fever + v * (relic('engine') ? 1.4 : 1));
     if (run.fever >= 1) startFever();
@@ -1945,7 +1965,7 @@
   const CHEERS = [[10, 'NICE!'], [20, 'GREAT!'], [30, 'AMAZING!'], [45, 'UNSTOPPABLE!'], [60, 'BRICKTASTIC!'], [80, 'LEGENDARY!']];
   function cheer() {
     const i = CHEERS.findIndex(([n]) => n === G.combo);
-    if (i < 0) return;
+    if (i < 0 || G.level < FROM.streak) return;
     say(W / 2, H * 0.4, CHEERS[i][1], RAINBOW[(i * 2 + 2) % RAINBOW.length], 1.3, true);
     sfx.cheer(i); flashScreen('#ffffff', 0.12);
   }
@@ -1999,8 +2019,9 @@
 
   // ---------- shop deals ----------
   function rollDeals() {
-    const pool = upgradePool();
     run.deals = [];
+    if (run.level < FROM.sales) return;
+    const pool = upgradePool();
     for (let i = 0; i < 2 && pool.length; i++) run.deals.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
   }
 
@@ -2008,6 +2029,7 @@
   function showTally() {
     mode = 'tally'; pauseBtn.style.display = 'none'; A.music(0);
     const s = lastSummary;
+    const fresh = run.level > 2 ? ITEMS.filter((it) => it.at === run.level) : [];
     const row = (label, v) => (v ? `<div class="trow"><span>${label}</span><b data-count="${v}">0</b></div>` : '');
     const note = (ok, text) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '✔' : '✖'} ${text}</span>`;
     showOverlay(`<div class="center tally">
@@ -2020,7 +2042,8 @@
         <div class="trow total"><span>Purse</span><b id="purse" data-count="${run.coins}">0</b></div>
       </div>
       <div class="tally-streak">Best streak <b>${s.combo}</b>${s.streak ? ` · streak coins <b>${s.streak}</b>` : ''}</div>
-      <div class="spin"><button class="big alt" data-act="spin">🎰 Free lucky spin</button></div>
+      ${fresh.length ? `<div class="unlock">🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}</div>` : ''}
+      ${s.level >= FROM.spin ? '<div class="spin"><button class="big alt" data-act="spin">🎰 Free lucky spin</button></div>' : ''}
       <button class="big gold" data-act="tallynext">${run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
     </div>`, 'see');
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
@@ -2046,7 +2069,7 @@
     { w: 34, icon: '🪙', get: () => { const n = 10 + 3 * lastSummary.level; run.coins += n; return `+${n} coins`; } },
     { w: 12, icon: '💰', get: () => { const n = 40 + 10 * lastSummary.level; run.coins += n; return `JACKPOT! +${n} coins`; } },
     { w: 16, icon: '🎁', get: () => { const pool = upgradePool(); if (!pool.length) { run.coins += 50; return '+50 coins'; } const it = pick(pool); run.up[it.id] = lv(it.id) + 1; return `Free upgrade: ${it.name}!`; } },
-    { w: 14, icon: '🔥', get: () => { run.fever = 0.98; return 'Fever bar filled!'; } },
+    { w: 14, icon: '🔥', get: () => { if (run.level < FROM.fever) { run.coins += 25; return '+25 coins'; } run.fever = 0.98; return 'Fever bar filled!'; } },
     { w: 16, icon: '🚦', get: () => { run.bonusStart = 3; return '3 power-ups for the next level!'; } },
     { w: 8, icon: '❤️', get: () => { if (run.lives >= 6) { run.coins += 60; return '+60 coins'; } run.lives++; return '+1 life!'; } },
   ];
@@ -2431,7 +2454,7 @@
   }
   // Big faint streak counter behind the action.
   function drawCombo(t) {
-    if (G.combo < 3) return;
+    if (G.combo < 3 || G.level < FROM.streak) return;
     const pop = G.comboPop, y = 455, next = Math.ceil((G.combo + 1) / STREAK_STEP) * STREAK_STEP;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.globalAlpha = 0.1 + pop * 0.18; ctx.fillStyle = feverOn() ? rainbow(t) : '#ffffff';
@@ -2492,6 +2515,7 @@
     ctx.textAlign = 'left'; ctx.font = 'bold 12px system-ui, sans-serif';
     if (G.shield > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('🛡×' + G.shield, tx - 6, 41); }
     // fever gauge
+    if (G.level < FROM.fever) return;
     const fy = HUD_H - 5;
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(0, fy, W, 5);
     if (feverOn()) {
@@ -2530,12 +2554,20 @@
       if (G.def.boss) { ctx.fillStyle = Math.sin(t * 14) > 0 ? '#ff2a4d' : '#ffd23f'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.fillText('⚠ WARNING ⚠', 0, -44); }
       ctx.fillStyle = '#ffffff'; ctx.font = '900 42px system-ui, sans-serif'; ctx.fillText('LEVEL ' + G.level, 0, 0);
       ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.fillText(G.def.name, 0, 34);
-      if (G.def.tip) { ctx.fillStyle = '#c9d0ff'; ctx.font = '15px system-ui, sans-serif'; wrapText(G.def.tip, 0, 62, 380, 20); }
+      if (G.def.tip) {
+        const isNew = G.def.tip.startsWith('NEW');
+        ctx.fillStyle = isNew ? '#7cf2ff' : '#c9d0ff'; ctx.font = (isNew ? 'bold 16px' : '15px') + ' system-ui, sans-serif'; wrapText(G.def.tip, 0, 62, 380, 21);
+      }
       if (G.special) {
         ctx.fillStyle = '#ff7ad9'; ctx.font = 'bold 17px system-ui, sans-serif'; ctx.fillText("TODAY'S SPECIAL: " + G.special.name, 0, -66);
         ctx.fillStyle = '#ffd0f0'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(G.special.text, 0, -44);
       }
       ctx.restore(); ctx.globalAlpha = 1;
+    }
+    if (G.level === 1 && !G.started) {
+      ctx.fillStyle = 'rgba(124,242,255,' + (0.6 + 0.3 * Math.sin(t * 4)) + ')'; ctx.font = 'bold 15px system-ui, sans-serif';
+      const dx = Math.sin(t * 3) * 8;
+      ctx.fillText('◀', paddle.x - paddle.w / 2 - 22 - dx, PADDLE_Y + 8); ctx.fillText('▶', paddle.x + paddle.w / 2 + 22 + dx, PADDLE_Y + 8);
     }
     if (G.balls.some((b) => b.stuck && b.serve)) {
       ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + 0.35 * Math.sin(t * 5)) + ')'; ctx.font = 'bold 16px system-ui, sans-serif';

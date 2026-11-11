@@ -25,4 +25,6 @@ After a change to a game, increase the `?v=` number of its scripts and styleshee
 
 `window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`. To go to a level: `__bb.run.level = 40; __bb.next()`.
 
+A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, lucky spin, fever, sales, streaks, blimps, specials) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
+
 Balance values that belong together: `HP_CURVE` (brick toughness by level), `BOSS_HP`, `GUNS` (rate, clip, reload, damage) and the `base`/`grow` prices in `ITEMS`. Change one, then play some levels at both ends of the campaign.
