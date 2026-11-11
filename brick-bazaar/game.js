@@ -1,6 +1,7 @@
 'use strict';
 /* Brick Bazaar - a one-handed brick breaker with a coin shop.
-   Controls: drag / move the mouse to steer, tap / click to launch. Everything else is automatic. */
+   Controls: drag / move the mouse to steer, tap / click to launch. Everything else is automatic.
+   Sound is in audio.js, the campaign maps are in levels.js. */
 (() => {
   const W = 480, H = 800;
   const HUD_H = 58;
@@ -61,45 +62,55 @@
   }
 
   // ---------- shop catalogue ----------
+  // Guns fire by themselves from a clip and reload when the clip is empty. There is no ammo to buy.
+  // rate = seconds between shots, clip = shots per clip, reload = seconds, dmg = base damage.
   const GUNS = {
-    blaster: { name: 'Pea Blaster', icon: '🔫', rate: 0.45, pack: 40, packCost: 12, color: '#7cf2ff' },
-    laser: { name: 'Prism Lance', icon: '🔆', rate: 0.85, pack: 20, packCost: 18, color: '#ff7cf0' },
-    rocket: { name: 'Pop Rockets', icon: '🚀', rate: 1.5, pack: 10, packCost: 22, color: '#ffb14a' },
-    scatter: { name: 'Fan Cannon', icon: '🎆', rate: 1.15, pack: 20, packCost: 18, color: '#b9ff6b' },
-    arc: { name: 'Arc Coil', icon: '⚡', rate: 1.3, pack: 15, packCost: 22, color: '#9ab8ff' },
+    blaster: { name: 'Pea Blaster', icon: '🔫', rate: 0.42, clip: 16, reload: 5, dmg: 1, color: '#7cf2ff' },
+    scatter: { name: 'Fan Cannon', icon: '🎆', rate: 1.5, clip: 5, reload: 6, dmg: 1, color: '#b9ff6b' },
+    laser: { name: 'Prism Lance', icon: '🔆', rate: 1.4, clip: 6, reload: 5.5, dmg: 2, color: '#ff7cf0' },
+    rocket: { name: 'Pop Rockets', icon: '🚀', rate: 2.2, clip: 3, reload: 7, dmg: 2, color: '#ffb14a' },
+    arc: { name: 'Arc Coil', icon: '⚡', rate: 1.6, clip: 5, reload: 6, dmg: 2, color: '#9ab8ff' },
+    saw: { name: 'Buzz Saw', icon: '🪚', rate: 3.5, clip: 2, reload: 8, dmg: 1, color: '#ffd6a0' },
+    duck: { name: 'Duck Mortar', icon: '🦆', rate: 3.2, clip: 2, reload: 8, dmg: 2, color: '#ffe94a' },
   };
+  // What each gun does at level 1, and what it gains at level 3 and at level 5.
+  const GUN_TEXT = {
+    blaster: ['Twin shots from the paddle tips.', 'A third shot from the centre.', 'Shots pierce one brick.'],
+    scatter: ['Sprays a fan of pellets.', 'Pellets bounce off the walls.', 'Pellets pierce one brick.'],
+    laser: ['A beam that cuts through bricks.', 'Two beams.', 'Three beams.'],
+    rocket: ['Rockets blast everything near the impact.', 'Rockets steer to a target.', 'Each blast scatters three more.'],
+    arc: ['Chain lightning that never misses.', 'Two chains.', 'Three chains.'],
+    saw: ['A saw disc bounces around and cuts bricks.', 'A bigger disc that lasts longer.', 'Two discs.'],
+    duck: ['Lobs a rubber duck that explodes on every bounce.', 'One more bounce.', 'Bigger blasts and one more bounce.'],
+  };
+  function gunDesc(g, l) {
+    const t = GUN_TEXT[g];
+    if (!l) return t[0] + ' Fires and reloads by itself.';
+    const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : '';
+    return `${t[0]} Each level: faster and stronger.${next}`;
+  }
   const CATS = [
-    { id: 'weap', name: '🔫 Guns' }, { id: 'ammo', name: '📦 Ammo' }, { id: 'drone', name: '🛰️ Drones' },
-    { id: 'gear', name: '🧲 Gear' }, { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Economy' },
+    { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
+    { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Economy' }, { id: 'wild', name: '🎲 Wild' },
   ];
+  // Normal items are upgrades: level lv(id), cost base * grow^level, up to max.
+  // Wild items have their own price() and use(); full() says when they are not for sale.
   const ITEMS = [
-    // Guns: level 1 = buy, further levels = faster fire
-    { id: 'gun_blaster', cat: 'weap', gun: 'blaster', max: 5, base: 50, grow: 1.55,
-      desc: (l) => l ? `Twin shots from the paddle tips. Fire rate +15% per level.` : 'Twin shots from the paddle tips. Fires automatically. Comes with 40 ammo.' },
-    { id: 'gun_laser', cat: 'weap', gun: 'laser', max: 5, base: 120, grow: 1.5,
-      desc: (l) => `Piercing beam that cuts through ${3 + Math.max(0, l - 1)} bricks.` + (l ? ' More pierce + rate per level.' : ' Comes with 20 ammo.') },
-    { id: 'gun_rocket', cat: 'weap', gun: 'rocket', max: 5, base: 170, grow: 1.5,
-      desc: (l) => `Rockets explode on impact, damaging everything nearby.` + (l ? ' Bigger blast + rate per level.' : ' Comes with 10 rockets.') },
-    { id: 'gun_scatter', cat: 'weap', gun: 'scatter', max: 5, base: 140, grow: 1.5,
-      desc: (l) => `Sprays a fan of ${5 + Math.max(0, l - 1)} pellets.` + (l ? ' More pellets per level.' : ' Comes with 20 shells.') },
-    { id: 'gun_arc', cat: 'weap', gun: 'arc', max: 5, base: 230, grow: 1.5,
-      desc: (l) => `Chain lightning jumps between ${3 + Math.max(0, l - 1)} bricks. Never misses.` + (l ? '' : ' Comes with 15 cells.') },
-    { id: 'recycler', cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
-      desc: (l) => `${(l + 1) * 12}% chance a shot costs no ammo.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'rounds', cat: 'weap', icon: '🎯', name: 'Hardened Rounds', max: 4, base: 110, grow: 1.8,
-      desc: (l) => `All guns and drone shots deal +${l + 1} damage.`, req: () => ownsAnyGun() || lv('d_orbit') > 0, reqText: 'Needs a gun' },
+    { id: 'gun_blaster', cat: 'weap', gun: 'blaster', max: 5, base: 50, grow: 1.9 },
+    { id: 'gun_scatter', cat: 'weap', gun: 'scatter', max: 5, base: 120, grow: 1.9 },
+    { id: 'gun_laser', cat: 'weap', gun: 'laser', max: 5, base: 130, grow: 1.9 },
+    { id: 'gun_rocket', cat: 'weap', gun: 'rocket', max: 5, base: 170, grow: 1.9 },
+    { id: 'gun_arc', cat: 'weap', gun: 'arc', max: 5, base: 230, grow: 1.9 },
+    { id: 'gun_saw', cat: 'weap', gun: 'saw', max: 5, base: 260, grow: 1.9 },
+    { id: 'gun_duck', cat: 'weap', gun: 'duck', max: 5, base: 300, grow: 1.9 },
+    { id: 'rounds', cat: 'weap', icon: '🎯', name: 'Hardened Rounds', max: 4, base: 150, grow: 2.2,
+      desc: (l) => `All guns and drone shots deal +${(l + 1) * 35}% damage.`, req: () => ownsAnyGun() || lv('d_orbit') > 0, reqText: 'Needs a gun' },
     { id: 'belt', cat: 'weap', icon: '🎒', name: 'Ammo Belt', max: 4, base: 60, grow: 1.7,
-      desc: (l) => `Ammo packs and crates give +${(l + 1) * 25}% more.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-
-    { id: 'ammo_blaster', cat: 'ammo', ammo: 'blaster' },
-    { id: 'ammo_laser', cat: 'ammo', ammo: 'laser' },
-    { id: 'ammo_rocket', cat: 'ammo', ammo: 'rocket' },
-    { id: 'ammo_scatter', cat: 'ammo', ammo: 'scatter' },
-    { id: 'ammo_arc', cat: 'ammo', ammo: 'arc' },
-    { id: 'factory', cat: 'ammo', icon: '🏭', name: 'Ammo Factory', max: 4, base: 90, grow: 1.7,
-      desc: (l) => `Every level starts with free ammo: ${(l + 1) * 15}% of a pack per gun.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'ammo_all', cat: 'ammo', icon: '🧰', name: 'Supply Drop', allAmmo: true,
-      desc: () => 'Half a pack for every gun you own, at a discount.' },
+      desc: (l) => `Clips hold ${(l + 1) * 25}% more shots.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'factory', cat: 'weap', icon: '🏭', name: 'Quick Hands', max: 4, base: 90, grow: 1.7,
+      desc: (l) => `Reloads are ${Math.round((1 - Math.pow(RELOAD_CUT, l + 1)) * 100)}% shorter.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'recycler', cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
+      desc: (l) => `${(l + 1) * 12}% chance a shot uses no ammo.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
 
     { id: 'd_orbit', cat: 'drone', icon: '🛰️', name: 'Orbiter', max: 3, base: 100, grow: 1.8,
       desc: (l) => `Circles your paddle and fires free shots. Owned: ${l}/3.` },
@@ -121,7 +132,7 @@
     { id: 'aim', cat: 'gear', icon: '🎯', name: 'Aim Sight', max: 1, base: 25, grow: 1,
       desc: () => 'Shows the launch path before you tap.' },
     { id: 'shield', cat: 'gear', icon: '🛡️', name: 'Deflector', max: 3, base: 70, grow: 1.7,
-      desc: (l) => `Blocks ${l + 1} enemy slime shot${l ? 's' : ''} each level, so your paddle never gets stunned.` },
+      desc: (l) => `Blocks ${l + 1} enemy hit${l ? 's' : ''} each level, so your paddle never gets stunned.` },
     { id: 'second', cat: 'gear', icon: '🌬️', name: 'Second Wind', max: 2, base: 150, grow: 2,
       desc: (l) => `Losing your last ball costs no life, ${l + 1} time${l ? 's' : ''} per level.` },
     { id: 'starter', cat: 'gear', icon: '🚦', name: 'Head Start', max: 2, base: 80, grow: 1.9,
@@ -130,8 +141,6 @@
       desc: (l) => `Bomb bricks blast a wider area and deal ${l + 3} damage.` },
     { id: 'puluck', cat: 'gear', icon: '🎁', name: 'Lucky Capsules', max: 4, base: 50, grow: 1.6,
       desc: () => 'More power-up capsules, and they last 15% longer.' },
-    { id: 'life', cat: 'gear', icon: '❤️', name: 'Extra Life', consumable: true, base: 60, grow: 1.45,
-      desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.` },
 
     { id: 'dmg', cat: 'ball', icon: '🔩', name: 'Heavy Core', max: 6, base: 90, grow: 1.9,
       desc: (l) => `Ball deals ${l + 2} damage per hit.` },
@@ -160,69 +169,73 @@
       desc: (l) => `Enemies drop +${l + 1} coin${l ? 's' : ''}, bosses drop ${(l + 1) * 25}% more.` },
     { id: 'bounty', cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 25}%.` },
+
+    { id: 'power', cat: 'wild', icon: '🔥', name: 'Overcharge', max: 99, base: 150, grow: 1.35,
+      desc: (l) => `All damage +10%. Now +${l * 10}%. No limit.` },
+    { id: 'box', cat: 'wild', icon: '🎁', name: 'Mystery Box', price: () => 30 + 12 * run.level, full: () => upgradePool().length === 0,
+      desc: () => 'One level of a random upgrade. Often worth more than it costs.',
+      use: () => { const it = pick(upgradePool()); run.up[it.id] = lv(it.id) + 1; return `🎁 ${it.icon} ${it.name} level ${lv(it.id)}!`; } },
+    { id: 'reroll', cat: 'wild', icon: '🏷️', name: 'New Sales', price: () => 20 * (1 + shopRerolls),
+      desc: () => 'Two new upgrades go on sale for 30% off.',
+      use: () => { shopRerolls++; rollDeals(); return '🏷️ New sales are up!'; } },
+    { id: 'relicbuy', cat: 'wild', icon: '🗿', name: 'Relic Dealer', price: () => 400 * Math.pow(2, run.relicsBought), full: () => relicChoices().length === 0,
+      desc: () => 'Pick one of three relics, right now.',
+      use: () => { run.relicsBought++; run.pendingRelic = true; } },
+    { id: 'life', cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => Math.round(60 * Math.pow(1.45, run.lifeBought)), full: () => run.lives >= 6,
+      desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.`,
+      use: () => { run.lives++; run.lifeBought++; } },
   ];
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
   for (const it of ITEMS) {
-    if (it.gun) { it.icon = GUNS[it.gun].icon; it.name = GUNS[it.gun].name; it.gunItem = true; }
-    if (it.ammo) {
-      const g = GUNS[it.ammo]; it.icon = '📦'; it.name = g.name + ' ammo';
-      it.req = () => lv('gun_' + it.ammo) > 0; it.reqText = 'Buy the gun first';
-    }
+    if (!it.gun) continue;
+    it.icon = GUNS[it.gun].icon; it.name = GUNS[it.gun].name; it.gunItem = true; it.desc = (l) => gunDesc(it.gun, l);
   }
 
   const coinChance = (l) => 0.16 + 0.05 * l;
   const goalieRecharge = (l) => [0, 12, 9, 6, 6][Math.min(l, 4)];
   const lv = (id) => (run && run.up[id]) || 0;
   const ownsAnyGun = () => Object.keys(GUNS).some((g) => lv('gun_' + g) > 0);
-  const ammoMult = () => 1 + 0.25 * lv('belt');
+  const RELOAD_CUT = 0.82; // reload time factor per Quick Hands level
+  // upgrades that can still go up: the pool for sales and the Mystery Box
+  const upgradePool = () => ITEMS.filter((it) => it.base && it.id !== 'power' && !(it.req && !it.req()) && lv(it.id) < it.max);
 
   function itemCost(it) {
-    if (it.ammo) return GUNS[it.ammo].packCost;
-    if (it.allAmmo) {
-      let c = 0; for (const g in GUNS) if (lv('gun_' + g)) c += GUNS[g].packCost * 0.5;
-      return Math.max(5, Math.round(c * 0.8));
-    }
-    const l = it.consumable ? run.lifeBought : lv(it.id);
-    return Math.round(it.base * Math.pow(it.grow, l) * (onSale(it) ? SALE : 1));
+    if (it.price) return it.price();
+    return Math.round(it.base * Math.pow(it.grow, lv(it.id)) * (onSale(it) ? SALE : 1));
   }
   // Two random upgrades are discounted on every shop visit.
   const SALE = 0.7;
   const onSale = (it) => run.deals.includes(it.id);
   function itemState(it) {
     if (it.req && !it.req()) return 'locked';
-    if (it.allAmmo && !ownsAnyGun()) return 'locked';
-    if (it.consumable) { if (it.id === 'life' && run.lives >= 6) return 'max'; }
-    else if (it.max && lv(it.id) >= it.max) return 'max';
+    if (it.full ? it.full() : lv(it.id) >= it.max) return 'max';
     return run.coins >= itemCost(it) ? 'ok' : 'poor';
   }
+  let shopMsg = '', shopRerolls = 0;
   function buy(it) {
     if (itemState(it) !== 'ok') { sfx.nope(); return false; }
     run.coins -= itemCost(it);
-    if (it.ammo) run.ammo[it.ammo] += Math.round(GUNS[it.ammo].pack * ammoMult());
-    else if (it.allAmmo) { for (const g in GUNS) if (lv('gun_' + g)) run.ammo[g] += Math.round(GUNS[g].pack * 0.5 * ammoMult()); }
-    else if (it.id === 'life') { run.lives++; run.lifeBought++; }
-    else {
-      run.up[it.id] = lv(it.id) + 1;
-      if (it.gunItem && run.up[it.id] === 1) run.ammo[it.gun] += GUNS[it.gun].pack;
-    }
+    shopMsg = '';
+    if (it.use) shopMsg = it.use() || '';
+    else run.up[it.id] = lv(it.id) + 1;
     sfx.buy(); buzz(12); saveRun(); return true;
   }
 
   // ---------- run / save ----------
   let run = null;
   function newRun() {
-    return { level: 1, coins: 0, lives: 3, up: {}, ammo: { blaster: 0, laser: 0, rocket: 0, scatter: 0, arc: 0 }, lifeBought: 0, score: 0,
-      relics: {}, fever: 0, deals: [], pendingRelic: false, won: false, stats: newStats() };
+    return { level: 1, coins: 0, lives: 3, up: { gun_blaster: 1 }, lifeBought: 0, relicsBought: 0, score: 0,
+      relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats() };
   }
   const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0 });
   function saveRun() { if (run) store.set(SAVE_KEY, run); }
   function loadRun() {
     const r = store.get(SAVE_KEY, null);
     if (!r || typeof r.level !== 'number') return null;
-    r.ammo = Object.assign({ blaster: 0, laser: 0, rocket: 0, scatter: 0, arc: 0 }, r.ammo || {});
     r.up = r.up || {};
-    // saves from before relics, fever and stats
+    // older saves do not have these fields
     r.relics = r.relics || {}; r.fever = r.fever || 0; r.deals = r.deals || [];
+    r.lifeBought = r.lifeBought || 0; r.relicsBought = r.relicsBought || 0; r.bonusStart = r.bonusStart || 0;
     r.stats = Object.assign(newStats(), r.stats || {});
     return r;
   }
@@ -236,88 +249,64 @@
   }
 
   // ---------- levels ----------
-  // Hand-made campaign. Map legend: 1-9 brick hit points, S steel, B bomb, G gold, X stone (unbreakable),
-  // H hive (spawns blobs), Z volt (zaps its row), P prism (splits the ball), ? mystery (drops a capsule), . empty. foes = enemies that join the level; boss = boss kind (1-3).
-  const LEVELS = [
-    { name: 'Warm-up', map: ['..........', '..........', '..........', '..........', '...1111...', '..11GG11..', '...1111...'], tip: 'Break bricks to fill the fever bar for double coins and double damage' },
-    { name: 'Archway', map: ['..........', '..........', '...1111...', '..122221..', '.11.??.11.', '.11....11.', '.11....11.'], tip: 'Mystery bricks always drop a capsule' },
-    { name: 'Fuse Box', map: ['2222222222', '1111111111', '..........', '11B1111B11', '1111111111'], tip: 'Bomb bricks blast their neighbours' },
-    { name: 'Gem', map: ['....11....', '...1221...', '..123321..', '.123PP321.', '..123321..', '...1221...', '....11....'], tip: 'Prism bricks split your ball' },
-    { name: 'Piggy Bank', map: ['.11111111.', '1G2G22G2G1', '1222222221', '1G2G22G2G1', '.11111111.', '..1....1..'], tip: 'Gold bricks burst into coins' },
-    { name: 'Open Field', map: ['3333333333', '2.2.2.2.2.', '.1.1.1.1.1', '2.2.2.2.2.', '.1.1.1.1.1'], foes: { drifter: 2 }, tip: 'Blobs drift around and knock your ball off course' },
-    { name: 'Fortress', map: ['S11111111S', 'S12222221S', 'S12BGGB21S', 'S12222221S', 'S11111111S'], tip: 'Steel bricks take a beating' },
-    { name: 'Stone Garden', map: ['2222222222', 'X.X.XX.X.X', '3333333333', '.2.2..2.2.', '1111111111'], foes: { drifter: 2 }, tip: 'Grey stone never breaks. Aim through the gaps' },
-    { name: 'Twin Towers', map: ['33......33', '33..GG..33', '22.2222.22', '22.2..2.22', '11.1..1.11', '11.1111.11'], foes: { shooter: 1, drifter: 1 }, tip: 'Spitters shoot slime that shrinks and slows your paddle' },
-    { name: 'Crate King', map: ['..........', '..........', '..........', '..........', '1111111111', '.2.?..?.2.'], boss: 1, tip: 'BOSS! Knock out the Crate King' },
-    { name: 'Zigzag', map: ['33........', '2Z33......', '112233....', '..11Z233..', '....112233', '......1Z22', '........11'], foes: { drifter: 2, shooter: 1 }, tip: 'Volt bricks zap their whole row' },
-    { name: 'Greenhouse', map: ['4444444444', '3.3.33.3.3', '3.3.33.3.3', '22?2222?22', '1G111111G1'], foes: { mender: 1, drifter: 1 }, tip: 'Menders patch damaged bricks. Take them out first' },
-    { name: 'Bomb Alley', map: ['3B3B3B3B3B', '4444444444', 'B3B3B3B3B3', '4444444444', '3333333333'], foes: { shooter: 1 } },
-    { name: 'The Nest', map: ['3333333333', '3S......S3', '3S..HH..S3', '3S......S3', '3SSS..SSS3', '2222222222'], tip: 'Hives keep spawning blobs until you break them' },
-    { name: 'Treasury', map: ['SGSGSGSGSG', '4444444444', '4G4G44G4G4', '3Z333333Z3', '2222222222', '1111111111'], foes: { thief: 1, shooter: 1 }, tip: 'Thieves steal falling coins. Pop them to get double back' },
-    { name: 'Checker Storm', map: ['5.5.5.5.5.', '.4.4.4.4.4', 'P.3.3.3.P.', '.2.2.2.2.2', '4.?.4.?.4.', '.3.3.3.3.3', '2.2.2.2.2.'], foes: { drifter: 2, shooter: 1, mender: 1 } },
-    { name: 'Steel Bars', map: ['5555555555', 'SSS.SS.SSS', '44Z4444Z44', 'S.SSSSSS.S', '3333333333', '2222222222'], foes: { shooter: 2, thief: 1 } },
-    { name: 'Hive Cluster', map: ['44H4444H44', '3333333333', 'X3X3XX3X3X', '22P2222P22', '1111111111'], foes: { mender: 1 } },
-    { name: 'Golden Pyramid', map: ['....GG....', '...5555...', '..444444..', '.3?3333?3.', '2222222222', '1111111111', 'S1S1S1S1S1'], foes: { shooter: 2, thief: 1, drifter: 1 } },
-    { name: 'Twin Cannon', map: ['..........', '..........', '..........', '..........', '33P3333P33', 'S2S2SS2S2S'], boss: 2, tip: 'BOSS! The Twin Cannon calls in blobs' },
-    { name: 'Rings', map: ['5555555555', '5444444445', '543333B345', '543.HH.345', '543333B345', '5444444445', '5555555555'], foes: { mender: 1, shooter: 1 } },
-    { name: 'Stairway', map: ['66......66', '555....555', '4Z44..44Z4', '333.GG.333', '22......22', '11.SSSS.11'], foes: { drifter: 3, thief: 1, shooter: 1 } },
-    { name: 'Bomb Factory', map: ['SBSBSBSBSB', '5555555555', '4B44B44B44', '4444444444', '3B33B33B33', '3333333333'], foes: { shooter: 2, mender: 1 } },
-    { name: 'Hive Wall', map: ['6666666666', 'H55555555H', '55P5555P55', '4444444444', '3.3.3.3.3.'], foes: { thief: 2, mender: 1 } },
-    { name: 'Gold Rush', map: ['GGGGGGGGGG', '6666666666', '5S5S55S5S5', '5?555555?5', '4444G44444', '3333333333'], foes: { thief: 3, shooter: 1 } },
-    { name: 'Fortress II', map: ['SSSSSSSSSS', 'S66666666S', 'S6G5HH5G6S', 'S65555556S', 'S66666666S', 'SSS....SSS', '4444444444'], foes: { shooter: 2, drifter: 2, mender: 1 } },
-    { name: 'Labyrinth', map: ['5555555555', 'X..XXXX..X', '4Z444444Z4', 'XXX....XXX', '3333333333', 'X..XXXX..X', '22P2222P22'], foes: { drifter: 2, shooter: 2 } },
-    { name: 'Everything', map: ['7777777777', '6B666666B6', '5555HH5555', '4S4G44G4S4', '3Z3?33?3Z3', '22P2222P22', '1111111111'], foes: { shooter: 2, mender: 1, thief: 1, drifter: 2 } },
-    { name: 'Last Stand', map: ['8888888888', '7777777777', 'SSSS66SSSS', '6Z666666Z6', '55B5555B55', '44?4444?44', '3333333333'], foes: { shooter: 3, mender: 2, thief: 1 } },
-    { name: 'The Baron', map: ['..........', '..........', '..........', '..........', '5555555555', 'S5S5S5S5S5', '4P4Z44Z4P4'], boss: 3, tip: 'FINAL BOSS! The Bazaar Baron' },
-  ];
-  const BOSS_NAMES = ['', 'Crate King', 'Twin Cannon', 'Bazaar Baron'];
+  // The campaign maps are in levels.js.
+  const LEVELS = window.BB_LEVELS;
   const BRICK_COLORS = ['#5ef0ff', '#7cf2a8', '#ffe066', '#ffa94d', '#ff6b8b', '#c08cff', '#7c8cff'];
 
   function makeBrick(r, c, type, hp) {
     return { x: LEFT + c * (BW + GAP), y: TOP + r * (BH + GAP), w: BW, h: BH, hp, maxhp: hp, type, alive: true, flash: 0, col: c, row: r, spawnT: 6 + Math.random() * 4,
-      punch: 0, delay: r * 0.045 + c * 0.022 };
+      punch: 0, delay: r * 0.045 + c * 0.022, loot: 8 };
   }
-  // Later levels toughen up so they keep pace with your growing arsenal.
-  const hpMult = (n) => 1 + Math.max(0, n - 8) * 0.1 + Math.max(0, n - 16) * 0.15 + Math.max(0, n - 24) * 0.3;
+  // Brick toughness by level: [level, factor], linear between the points. It follows the arsenal that a player
+  // can afford at that level. After level 50 it grows 5% per level.
+  const HP_CURVE = [[1, 1], [8, 1], [16, 2.2], [24, 6], [30, 22], [35, 60], [40, 110], [50, 230]];
+  function hpMult(n) {
+    if (n >= 50) return 230 * Math.pow(1.05, n - 50);
+    const i = HP_CURVE.findIndex(([l]) => l > n), [l0, h0] = HP_CURVE[i - 1], [l1, h1] = HP_CURVE[i];
+    return h0 + ((h1 - h0) * (n - l0)) / (l1 - l0);
+  }
   function brickFor(ch, r, c, n) {
-    const m = hpMult(n) * (n > LEVELS.length ? 1.5 + (n - LEVELS.length) * 0.05 : 1);
+    const m = hpMult(n);
     if (ch >= '1' && ch <= '9') return makeBrick(r, c, 'normal', Math.round(+ch * m));
-    if (ch === 'S') return makeBrick(r, c, 'steel', Math.round((4 + Math.floor(n / 6)) * m));
+    if (ch === 'S') return makeBrick(r, c, 'steel', Math.round((4 + Math.floor(Math.min(n, 50) / 6)) * m));
     if (ch === 'B') return makeBrick(r, c, 'bomb', 1);
-    if (ch === 'G') return makeBrick(r, c, 'gold', Math.round((2 + Math.floor(n / 8)) * m));
+    if (ch === 'T') return makeBrick(r, c, 'tnt', 1);
+    if (ch === 'G') return makeBrick(r, c, 'gold', Math.round((2 + Math.floor(Math.min(n, 50) / 8)) * m));
     if (ch === 'X') return makeBrick(r, c, 'stone', 999);
-    if (ch === 'H') return makeBrick(r, c, 'hive', Math.round((6 + Math.floor(n / 5)) * m));
+    if (ch === 'H') return makeBrick(r, c, 'hive', Math.round((6 + Math.floor(Math.min(n, 50) / 5)) * m));
     if (ch === 'Z') return makeBrick(r, c, 'volt', Math.round(2 * m));
     if (ch === 'P') return makeBrick(r, c, 'prism', Math.round(2 * m));
+    if (ch === 'D') return makeBrick(r, c, 'dice', Math.round(2 * m));
+    if (ch === 'C') return makeBrick(r, c, 'chest', Math.round(6 * m));
     if (ch === '?') return makeBrick(r, c, 'mystery', Math.round(m));
     return null;
   }
   // Endless mode after the campaign: seeded symmetric maps, more enemies, a boss every 10 levels.
+  const SPECIAL_BRICKS = [[0.08, 'S'], [0.1, 'B'], [0.13, 'G'], [0.145, 'H'], [0.165, 'Z'], [0.185, 'P'], [0.2, '?'], [0.212, 'T'], [0.226, 'C'], [0.24, 'D']];
   function endlessLevel(n) {
-    const rnd = mulberry32(n * 7919 + 13);
+    const rnd = mulberry32(n * 7919 + 13), over = n - LEVELS.length;
     const R = 7 + Math.floor(rnd() * 3);
-    const top = Math.min(9, 6 + Math.floor((n - 30) / 5));
-    const boss = n % 10 === 0 ? 1 + ((n / 10 - 1) % 3) : 0;
+    const top = Math.min(9, 7 + Math.floor(over / 5));
+    const boss = n % 10 === 0 ? 1 + ((n / 10 - 1) % (BOSSES.length - 1)) : 0;
     const map = [];
-    if (boss) for (let r = 0; r < 4; r++) map.push('..........');
+    if (boss) for (let r = 0; r < 5; r++) map.push('..........');
     const rows = boss ? 3 : R;
     for (let r = 0; r < rows; r++) {
       const half = [];
       for (let c = 0; c < 5; c++) {
         const roll = rnd();
-        let ch = '.';
-        if (roll < 0.78) ch = String(Math.max(1, Math.min(9, top - Math.floor(r / 2) - Math.floor(rnd() * 2))));
-        if (roll < 0.08) ch = 'S'; else if (roll < 0.1) ch = 'B'; else if (roll < 0.13) ch = 'G'; else if (roll < 0.145 && !boss) ch = 'H';
-        else if (roll < 0.165) ch = 'Z'; else if (roll < 0.185) ch = 'P'; else if (roll < 0.2) ch = '?';
+        let ch = roll < 0.78 ? String(Math.max(1, Math.min(9, top - Math.floor(r / 2) - Math.floor(rnd() * 2)))) : '.';
+        const sp = SPECIAL_BRICKS.find(([p]) => roll < p);
+        if (sp && !(boss && sp[1] === 'H')) ch = sp[1];
         half.push(ch);
       }
       map.push(half.join('') + half.slice().reverse().join(''));
     }
-    const kinds = ['drifter', 'shooter', 'mender', 'thief'];
+    const kinds = ['drifter', 'shooter', 'mender', 'thief', 'splitter', 'bomber'];
     const foes = {};
-    const count = Math.min(7, 3 + Math.floor((n - 30) / 4));
+    const count = Math.min(7, 4 + Math.floor(over / 4));
     for (let i = 0; i < count; i++) { const k = kinds[Math.floor(rnd() * kinds.length)]; foes[k] = (foes[k] || 0) + 1; }
-    return { name: boss ? BOSS_NAMES[boss] + ' returns' : 'Endless ' + (n - 30), map, foes, boss };
+    return { name: boss ? BOSSES[boss].name + ' returns' : 'Endless ' + over, map, foes: boss ? {} : foes, boss };
   }
   function levelDef(n) { return n <= LEVELS.length ? LEVELS[n - 1] : endlessLevel(n); }
   function genLevel(n) {
@@ -326,6 +315,26 @@
     def.map.forEach((row, r) => { for (let c = 0; c < COLS; c++) { const b = brickFor(row[c] || '.', r, c, n); if (b) bricks.push(b); } });
     return bricks;
   }
+  // Today's special: about one level in three has a twist. Never on the first levels or on boss levels.
+  const SPECIALS = [
+    { id: 'gold', name: 'GOLD RUSH', text: 'Extra gold bricks' },
+    { id: 'tnt', name: 'DEMOLITION DAY', text: 'Extra bomb bricks' },
+    { id: 'capsules', name: 'CAPSULE RAIN', text: 'Three times the capsules' },
+    { id: 'big', name: 'BIG BALL DAY', text: 'Giant balls all level' },
+    { id: 'storm', name: 'THUNDERSTORM', text: 'Lightning helps all level' },
+    { id: 'blimps', name: 'BLIMP PARADE', text: 'Loot blimps keep coming' },
+    { id: 'party', name: 'FEVER PARTY', text: 'Fever fills twice as fast' },
+    { id: 'twins', name: 'DOUBLE TROUBLE', text: 'Two more balls on every serve' },
+  ];
+  function rollSpecial(def, bricks) {
+    if (def.boss || run.level < 4 || Math.random() > 0.35) return null;
+    const sp = pick(SPECIALS);
+    const swap = (type, share) => { for (const b of bricks) if (b.type === 'normal' && Math.random() < share) { b.type = type; if (type === 'bomb') b.hp = b.maxhp = 1; } };
+    if (sp.id === 'gold') swap('gold', 0.14);
+    if (sp.id === 'tnt') swap('bomb', 0.1);
+    return sp;
+  }
+  const special = (id) => !!G.special && G.special.id === id;
 
   // ---------- game state ----------
   let mode = 'menu'; // menu | play | pause | shop | over
@@ -334,7 +343,7 @@
   let lastSummary = null;
 
   // Generous on the first levels, then it grows slowly: late levels must not drag.
-  const parTime = (n) => Math.round(45 + 6 * Math.min(n, 8) + 2.5 * clamp(n - 8, 0, 8) + 1.5 * Math.max(0, n - 16));
+  const parTime = (n) => Math.min(110, Math.round(45 + 6 * Math.min(n, 8) + 2.5 * clamp(n - 8, 0, 8) + 1.5 * Math.max(0, n - 16)));
   function basePaddleW() { return 84 * (1 + 0.12 * lv('width')); }
   function puDur(base) { return base * (1 + 0.15 * lv('puluck')); }
 
@@ -344,25 +353,28 @@
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
       flash: 0, flashC: '#ffffff', flawless: true, paddleHits: 0, coinChain: 0, coinChainT: 0, celebT: 0, blimpT: -1,
-      levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7 },
+      lasers: [], clip: {}, reload: {}, special: null, coinCount: 0,
+      levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7, saw: 1, duck: 1.2 },
       shake: 0, banner: 3.2, started: false,
       foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
       def: levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
     G.par = parTime(run.level);
+    G.special = rollSpecial(G.def, G.bricks);
     if (G.def.boss) G.boss = makeBoss(G.def.boss);
-    else if (run.level >= 2) G.blimpT = rand(7, 18);
+    else if (run.level >= 2) G.blimpT = special('blimps') ? 4 : rand(7, 18);
     const q = [];
     for (const [k, n] of Object.entries(G.def.foes || {})) for (let i = 0; i < n; i++) q.push(k);
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
     G.foeQueue = q;
-    // Ammo Factory: free ammo every level
-    if (lv('factory')) for (const g in GUNS) if (lv('gun_' + g)) run.ammo[g] += Math.round(GUNS[g].pack * 0.15 * lv('factory'));
+    for (const g in GUNS) { G.clip[g] = clipSize(g); G.reload[g] = 0; }
     // Head Start: random power-ups at level start
-    for (let i = 0; i < lv('starter'); i++) {
-      const k = pick(['wide', 'slow', 'fire', 'wide']);
+    // Head Start, plus the lucky-spin prize
+    for (let i = 0; i < lv('starter') + run.bonusStart; i++) {
+      const k = pick(['wide', 'slow', 'fire', 'mega', 'x2']);
       setFx(k, puDur(k === 'fire' ? 7 : 12));
     }
+    run.bonusStart = 0;
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
     serve();
     // drones
@@ -374,11 +386,12 @@
     hideOverlay();
     pauseBtn.style.display = 'block';
     hud.coins = run.coins;
-    A.music(G.boss ? 2 : 1);
+    A.tune(run.level); A.music(G.boss ? 2 : 1);
     if (G.boss) sfx.warn();
   }
-  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0 });
+  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0 });
 
+  const MAX_BALLS = 8;
   function makeBall(x, y, vx, vy) {
     const r0 = 7 + 1.5 * lv('bigball');
     return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, inside: new Set(), trail: [], serve: false };
@@ -402,7 +415,7 @@
       b.pierce = lv('pierce');
       if (b.serve) {
         b.serve = false;
-        for (let i = 0; i < lv('twin'); i++) {
+        for (let i = 0; i < lv('twin') + (special('twins') ? 2 : 0); i++) {
           const a2 = a + (i % 2 ? -1 : 1) * (0.32 + 0.15 * Math.floor(i / 2));
           const nb = makeBall(b.x, b.y, Math.sin(a2) * s, -Math.cos(a2) * s); nb.pierce = lv('pierce');
           G.balls.push(nb);
@@ -412,7 +425,8 @@
     if (any) { G.started = true; sfx.launch(); }
   }
   function ballSpeed() {
-    let s = 372 + Math.min(run.level, 40) * 5 + Math.min(60, G.time * 0.8);
+    // a calm pace: the speed stops rising at level 30
+    let s = 372 + Math.min(run.level, 30) * 3.5 + Math.min(40, G.time * 0.6);
     s *= 1 - 0.07 * lv('chill');
     if (G.fx.slow > 0) s *= 0.68;
     return s;
@@ -424,10 +438,10 @@
     fire: { c: '#ff8a3d', l: 'F', w: 2 }, glue: { c: '#ffe066', l: 'G', w: 1.6 }, ammo: { c: '#d8dee9', l: 'A', w: 3 },
     life: { c: '#ff5c8a', l: '♥', w: 0.45 }, cash: { c: '#ffd700', l: '$', w: 1.8 }, net: { c: '#6ee7ff', l: 'N', w: 1 },
     mega: { c: '#ff7ad9', l: 'B', w: 1.6 }, storm: { c: '#fff27a', l: '⚡', w: 1.4 }, x2: { c: '#ffb02e', l: '×2', w: 1.4 },
-    freeze: { c: '#a8e6ff', l: '❄', w: 1.3 },
+    freeze: { c: '#a8e6ff', l: '❄', w: 1.3 }, gold: { c: '#ffd23f', l: '★', w: 1.1 }, nuke: { c: '#ff5c5c', l: '☢', w: 0.5 },
   };
-  const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'AMMO!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
-    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!' };
+  const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
+    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!' };
   function rollPU() {
     const foes = G.foes.length > 0 || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
@@ -446,6 +460,7 @@
   }
   function collectCoin(c) {
     run.coins += c.val; G.levelCoins += c.val; run.stats.coins += c.val;
+    if (relic('overload') && ++G.coinCount % 30 === 0) for (let i = 0; i < 3; i++) after(i * 0.15, stormStrike);
     // quick pickups climb the scale
     G.coinChain = G.coinChainT > 0 ? G.coinChain + 1 : 0; G.coinChainT = 0.6;
     sfx.coin(G.coinChain); hud.coinPop = 1;
@@ -476,12 +491,14 @@
     else if (k === 'life') { run.lives = Math.min(6, run.lives + 1); sfx.life(); }
     else if (k === 'net') G.net++;
     else if (k === 'cash') dropCoin(p.x, p.y - 20, 8);
-    else if (k === 'ammo') { for (const g in GUNS) if (lv('gun_' + g)) run.ammo[g] += Math.round(GUNS[g].pack * 0.35 * ammoMult()); }
+    else if (k === 'ammo') { for (const g in GUNS) { G.clip[g] = clipSize(g); G.reload[g] = 0; } setFx('over', puDur(6)); sfx.overdrive(); }
+    else if (k === 'gold') setFx('gold', puDur(8));
+    else if (k === 'nuke') nuke();
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
       const src = G.balls.slice();
       for (const b of src) {
-        if (G.balls.length >= 15) break;
+        if (G.balls.length >= MAX_BALLS) break;
         for (const d of [-0.4, 0.4]) {
           const c = Math.cos(d), s = Math.sin(d);
           const nb = makeBall(b.x, b.y, b.vx * c - b.vy * s, b.vx * s + b.vy * c);
@@ -492,7 +509,7 @@
   }
 
   // ---------- bricks ----------
-  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9' };
+  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff' };
   function brickColor(b) {
     return TYPE_COLOR[b.type] || BRICK_COLORS[(b.maxhp - 1 + b.row) % BRICK_COLORS.length];
   }
@@ -503,6 +520,8 @@
       dmg *= 3; say(b.x + b.w / 2, b.y, 'CRIT', '#fff27a', 0.6);
     }
     b.hp -= dmg; b.flash = 0.12; b.punch = 1;
+    if (b.type === 'chest' && b.loot > 0) { b.loot--; dropCoin(b.x + b.w / 2, b.y + b.h, 1); }
+    if (fromBall && G.fx.gold > 0 && Math.random() < 0.35) dropCoin(b.x + b.w / 2, b.y + b.h, 1);
     if (fromBall && lv('splash') && Math.random() < 0.15 * lv('splash')) {
       const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
       burst(cx, cy, '#e8f0ff', 6, 140);
@@ -520,14 +539,18 @@
     G.combo++; G.comboPop = 1; G.comboBest = Math.max(G.comboBest, G.combo);
     run.stats.bricks++; run.stats.streak = Math.max(run.stats.streak, G.combo);
     sfx.pop(G.combo);
-    addFever(0.04);
-    if (b.type === 'gold') dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5));
+    addFever(special('party') ? 0.08 : 0.04);
+    if (b.type === 'gold') { dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5)); if (relic('bombardier')) explode(cx, cy, 44, Math.round(2 * power()), '#ffd23f', true); }
+    else if (b.type === 'chest') dropCoin(cx, cy, 6);
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
     if (G.combo % STREAK_STEP === 0) streakPayout(cx, cy);
-    if (b.type === 'mystery' || Math.random() < 0.075 + 0.02 * lv('puluck')) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
-    if (b.type === 'bomb') explode(cx, cy, 30 + 14 * lv('demo'), 2 + lv('demo'), '#ff6b3d');
+    if (b.type === 'mystery' || Math.random() < (0.075 + 0.02 * lv('puluck')) * (special('capsules') ? 3 : 1)) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
+    if (b.type === 'bomb') explode(cx, cy, 30 + 14 * lv('demo'), Math.round((2 + lv('demo')) * power()), '#ff6b3d');
+    else if (b.type === 'tnt') explode(cx, cy, 80 + 14 * lv('demo'), Math.round((4 + lv('demo')) * power()), '#ff8a3d');
     else if (b.type === 'volt') zapRow(b);
     else if (b.type === 'prism') splitBall(cx, cy);
+    else if (b.type === 'dice') rollDice(cx, cy);
+    cheer();
     relicBricks(b, cx, cy);
     // the last brick falls in slow motion
     if (!G.boss && G.clearT < 0 && destructibleLeft() === 0) { G.slowmo = 0.7; flashScreen('#ffffff', 0.3); ring(cx, cy, 160, '#ffffff', 0.6, 4); }
@@ -536,7 +559,7 @@
   const STREAK_STEP = 5;
   function streakCoins(combo) {
     const tier = Math.floor(combo / STREAK_STEP); // 5 -> 1, 10 -> 2, 15 -> 3 ...
-    return Math.round(Math.min(tier, 15) * COIN_MULT * (1 + 0.5 * lv('streak')));
+    return Math.round(Math.min(tier, 8) * COIN_MULT * (1 + 0.5 * lv('streak')));
   }
   function streakPayout(x, y) {
     const n = streakCoins(G.combo);
@@ -556,7 +579,7 @@
       if (!o.alive) continue;
       const dx = clamp(x, o.x, o.x + o.w) - x, dy = clamp(y, o.y, o.y + o.h) - y;
       if (dx * dx + dy * dy > rad * rad) continue;
-      const chain = relic('chain') && o.type !== 'bomb' && o.type !== 'stone';
+      const chain = relic('chain') && o.type !== 'bomb' && o.type !== 'tnt' && o.type !== 'stone';
       if (hitBrick(o, dmg, false) && chain) after(0.09, () => explode(o.x + o.w / 2, o.y + o.h / 2, 26, 1, '#ffd23f', true));
     }
     for (const f of G.foes) if (Math.hypot(f.x - x, f.y - y) <= rad + f.r) damageFoe(f, dmg);
@@ -618,7 +641,7 @@
     if (G.coinChainT > 0) G.coinChainT -= dt;
     runTimers(dt);
     updateFever(dt);
-    if (G.fx.storm > 0 && G.clearT < 0 && (G.stormT -= dt) <= 0) { G.stormT = 0.28; stormStrike(); }
+    if ((G.fx.storm > 0 || (special('storm') && G.started)) && G.clearT < 0 && (G.stormT -= dt) <= 0) { G.stormT = G.fx.storm > 0 ? 0.28 : 2; stormStrike(); }
     if (G.blimpT > 0 && G.started && G.clearT < 0 && (G.blimpT -= dt) <= 0) spawnBlimp();
 
     // paddle (slime stun shrinks and slows it)
@@ -651,7 +674,7 @@
     const fire = G.fx.fire > 0;
     const dmg = ballDmg();
     for (const b of G.balls) {
-      b.r += (b.r0 * (G.fx.mega > 0 ? 1.7 : 1) - b.r) * Math.min(1, dt * 10);
+      b.r += (b.r0 * (mega() ? 1.7 : 1) - b.r) * Math.min(1, dt * 10);
       if (b.stuck) {
         b.x = clamp(paddle.x + b.off, b.r, W - b.r); b.y = PADDLE_Y - b.r - 1;
         b.stuckT += dt;
@@ -695,12 +718,15 @@
         if (G.net > 0 && b.vy > 0 && b.y + b.r >= NET_Y) {
           b.vy = -Math.abs(b.vy); b.y = NET_Y - b.r; G.net--; sfx.net(); burst(b.x, NET_Y, '#6ee7ff', 14);
         }
-        if (b.y - b.r > H) { b.dead = true; break; }
+        if (b.y - b.r > H) {
+          if (!relic('boomerang') || Math.random() > 0.35) { b.dead = true; break; }
+          b.y = HUD_H + b.r + 2; b.vy = Math.abs(b.vy); sfx.net(); say(b.x, HUD_H + 30, 'BOOMERANG!', '#6ee7ff', 0.9);
+        }
         // enemies, boss, slime
         const dmgE = dmg;
         for (const f of G.foes) {
           if (f.dead || !ballVsCircle(b, f.x, f.y, f.r)) continue;
-          if (f.hitCd <= 0) { damageFoe(f, dmgE); f.hitCd = 0.15; }
+          if (f.hitCd <= 0) { damageFoe(f, dmgE); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
         }
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
@@ -720,7 +746,7 @@
           if (passes) {
             nowInside.add(k);
             if (!fire) b.pierce--;
-            hitBrick(k, fire ? Math.max(dmg, k.hp) : dmg, true);
+            hitBrick(k, dmg, true);
             continue;
           }
           // bounce
@@ -739,7 +765,8 @@
     G.balls = G.balls.filter((b) => !b.dead);
     if (before && G.balls.length === 0 && G.clearT < 0) loseLife();
   }
-  const ballDmg = () => (1 + lv('dmg')) * (G.fx.fire > 0 ? 2 : 1) * (feverOn() ? 2 : 1) + (G.fx.mega > 0 ? 2 : 0);
+  const mega = () => G.fx.mega > 0 || special('big');
+  const ballDmg = () => Math.round(((1 + lv('dmg')) * (G.fx.fire > 0 ? 3 : 1) * (feverOn() ? 2 : 1) + (mega() ? 2 : 0)) * power());
   function paddles() {
     return relic('mirror') ? [paddle, { x: W - paddle.x, w: paddle.w * 0.7 }] : [paddle];
   }
@@ -749,7 +776,11 @@
     G.paddleHits++;
     if (relic('hydra') && G.balls.length < HYDRA_MAX && Math.random() < 0.15) splitBall(b.x, b.y, b.vx, b.vy);
     if (relic('aftershock') && G.paddleHits % 4 === 0 && anyTarget()) {
-      G.shots.push({ x: b.x, y: PADDLE_Y - 4, vx: 0, vy: -380, dmg: gunDmg(2), k: 'rocket', rad: 52 }); sfx.rocket();
+      G.shots.push({ x: b.x, y: PADDLE_Y - 4, vx: 0, vy: -380, dmg: gunDmg(3), k: 'rocket', rad: 52 }); sfx.rocket();
+    }
+    if (relic('seismic') && G.paddleHits % 6 === 0) {
+      shake(6); ring(paddle.x, PADDLE_Y, 300, '#ffd6a0', 0.5, 4); sfx.boom(true);
+      for (const k of G.bricks) if (k.alive && k.type !== 'stone') hitBrick(k, Math.round(power()), false);
     }
   }
   function launchOne(b) {
@@ -806,96 +837,193 @@
     return false;
   }
   function anyTarget() { return destructibleLeft() > 0 || G.foes.length > 0 || (G.boss && !G.boss.dead); }
-  const gunDmg = (d) => d + lv('rounds');
-  function useAmmo(g) {
-    if (run.ammo[g] <= 0) return false;
-    if (Math.random() >= lv('recycler') * 0.12) run.ammo[g]--;
-    return true;
+  // Targets are bricks (x, y = top left), foes (x, y = centre, r) or the boss (x = centre, y = top, kind).
+  const centerOf = (o) => (o.r ? [o.x, o.y] : o.kind ? [o.x, o.y + o.h / 2] : [o.x + o.w / 2, o.y + o.h / 2]);
+  const targetLive = (o) => (o.r || o.kind ? !o.dead : o.alive);
+  function allTargets() {
+    const out = G.bricks.filter((k) => k.alive && k.type !== 'stone');
+    for (const f of G.foes) if (!f.dead) out.push(f);
+    if (G.boss && !G.boss.dead) out.push(G.boss);
+    return out;
   }
+  function nearestTarget(x, y) {
+    let best = null, bd = Infinity;
+    for (const o of allTargets()) { const [cx, cy] = centerOf(o), d = Math.hypot(cx - x, cy - y); if (d < bd) { bd = d; best = o; } }
+    return best;
+  }
+  function hitTarget(o, dmg) { if (o.r) damageFoe(o, dmg); else if (o.kind) damageBoss(dmg); else hitBrick(o, dmg, false); }
+
+  const power = () => 1 + 0.1 * lv('power');
+  // Base damage, scaled by the gun level (30% per level), Hardened Rounds (35% per level) and Overcharge.
+  const gunDmg = (d, gl = 1) => Math.max(1, Math.round(d * (1 + 0.3 * (gl - 1)) * (1 + 0.35 * lv('rounds')) * power()));
+  const clipSize = (g) => Math.round(GUNS[g].clip * (1 + 0.25 * lv('belt')));
+  const reloadTime = (g) => GUNS[g].reload * Math.pow(RELOAD_CUT, lv('factory'));
+  const overdrive = () => G.fx.over > 0;
   function updateGuns(dt) {
     const active = G.balls.some((b) => !b.stuck) && G.clearT < 0;
     const px = paddle.x, py = PADDLE_Y - 4;
     for (const g in GUNS) {
       const l = lv('gun_' + g); if (!l) continue;
-      G.gunCd[g] -= dt;
-      if (!active || G.gunCd[g] > 0 || run.ammo[g] <= 0) continue;
-      const rate = GUNS[g].rate * Math.pow(0.85, l - 1);
-      if (g === 'blaster') {
-        const xl = px - paddle.w / 2 + 6, xr = px + paddle.w / 2 - 6;
-        if (!(brickAbove(xl) || brickAbove(xr))) continue;
-        if (!useAmmo(g)) continue;
-        G.shots.push({ x: xl, y: py, vx: 0, vy: -720, dmg: gunDmg(1), k: g }, { x: xr, y: py, vx: 0, vy: -720, dmg: gunDmg(1), k: g });
-        sfx.shot();
-      } else if (g === 'laser') {
-        if (!brickAbove(px)) continue; if (!useAmmo(g)) continue;
-        G.shots.push({ x: px, y: py, vx: 0, vy: -900, dmg: gunDmg(2), k: g, pierce: 3 + (l - 1), hit: new Set() });
-        sfx.laser();
-      } else if (g === 'rocket') {
-        if (!brickAbove(px, 30)) continue; if (!useAmmo(g)) continue;
-        G.shots.push({ x: px, y: py, vx: 0, vy: -380, dmg: gunDmg(2), k: g, rad: 52 + 10 * (l - 1) });
-        sfx.rocket();
-      } else if (g === 'scatter') {
-        if (!anyTarget()) continue; if (!useAmmo(g)) continue;
-        const n = 5 + (l - 1);
-        for (let i = 0; i < n; i++) { const a = -0.55 + (1.1 * i) / (n - 1); G.shots.push({ x: px, y: py, vx: Math.sin(a) * 620, vy: -Math.cos(a) * 620, dmg: gunDmg(1), k: g, life: 0.75 }); }
-        sfx.shot();
-      } else if (g === 'arc') {
-        if (!anyTarget()) continue; if (!useAmmo(g)) continue;
-        arcZap(px, py, 3 + (l - 1));
+      if (G.reload[g] > 0) {
+        G.reload[g] -= dt * (overdrive() ? 4 : 1);
+        if (G.reload[g] <= 0) { G.clip[g] = clipSize(g); if (active) sfx.reload(); }
+        continue;
       }
-      G.gunCd[g] = rate;
+      G.gunCd[g] -= dt;
+      if (!active || G.gunCd[g] > 0 || !fireGun(g, l, px, py)) continue;
+      if (!overdrive() && Math.random() >= lv('recycler') * 0.12 && --G.clip[g] <= 0) G.reload[g] = reloadTime(g);
+      G.gunCd[g] = GUNS[g].rate * Math.pow(0.9, l - 1) * (overdrive() ? 0.5 : 1);
+      burst(px, py, GUNS[g].color, 2, 70);
     }
   }
-  function arcZap(x, y, jumps) {
-    const pts = [[x, y]]; const used = new Set(); let cx = x, cy = y;
-    for (let j = 0; j < jumps; j++) {
-      let bestK = null, bd = Infinity;
-      const cands = [];
-      for (const k of G.bricks) if (k.alive && k.type !== 'stone') cands.push({ o: k, x: k.x + k.w / 2, y: k.y + k.h / 2, hit: (d) => hitBrick(k, d, false) });
-      for (const f of G.foes) cands.push({ o: f, x: f.x, y: f.y, hit: (d) => damageFoe(f, d) });
-      if (G.boss && !G.boss.dead) cands.push({ o: G.boss, x: G.boss.x, y: G.boss.y + G.boss.h / 2, hit: (d) => damageBoss(d) });
-      for (const c of cands) {
-        if (used.has(c.o)) continue;
-        const d = Math.hypot(c.x - cx, c.y - cy);
-        if (j > 0 && d > 140) continue;
-        if (d < bd) { bd = d; bestK = c; }
+  // Fires gun g at level l. Returns false when there is nothing to shoot at.
+  function fireGun(g, l, px, py) {
+    const dmg = gunDmg(GUNS[g].dmg, l);
+    if (g === 'blaster') {
+      const xl = px - paddle.w / 2 + 6, xr = px + paddle.w / 2 - 6;
+      if (!(brickAbove(xl) || brickAbove(xr) || (l >= 3 && brickAbove(px)))) return false;
+      for (const x of l >= 3 ? [xl, px, xr] : [xl, xr]) G.shots.push({ x, y: py, vx: 0, vy: -720, dmg, k: g, pierce: l >= 5 ? 2 : 1, hit: new Set() });
+      sfx.shot();
+    } else if (g === 'laser') {
+      const xs = l >= 5 ? [-16, 0, 16] : l >= 3 ? [-10, 10] : [0];
+      if (!xs.some((o) => brickAbove(px + o))) return false;
+      for (const o of xs) G.shots.push({ x: px + o, y: py, vx: 0, vy: -900, dmg, k: g, pierce: 3 + (l - 1), hit: new Set() });
+      sfx.laser();
+    } else if (g === 'rocket') {
+      if (l >= 3 ? !anyTarget() : !brickAbove(px, 30)) return false;
+      G.shots.push({ x: px, y: py, vx: 0, vy: -380, dmg, k: g, rad: 52 + 8 * (l - 1), homing: l >= 3, cluster: l >= 5 });
+      sfx.rocket();
+    } else if (g === 'scatter') {
+      if (!anyTarget()) return false;
+      const n = 5 + (l - 1);
+      for (let i = 0; i < n; i++) {
+        const a = -0.55 + (1.1 * i) / (n - 1);
+        G.shots.push({ x: px, y: py, vx: Math.sin(a) * 620, vy: -Math.cos(a) * 620, dmg, k: g, life: l >= 3 ? 1.2 : 0.75, bounce: l >= 3 ? 2 : 0, pierce: l >= 5 ? 2 : 1, hit: new Set() });
       }
-      if (!bestK) break;
-      used.add(bestK.o); cx = bestK.x; cy = bestK.y; pts.push([cx, cy]);
-      bestK.hit(gunDmg(2));
+      sfx.shot();
+    } else if (g === 'arc') {
+      if (!anyTarget()) return false;
+      const used = new Set(), chains = l >= 5 ? 3 : l >= 3 ? 2 : 1;
+      for (let c = 0; c < chains; c++) arcZap(px + (c - (chains - 1) / 2) * 16, py, 3 + (l - 1), dmg, used);
+    } else if (g === 'saw') {
+      if (!anyTarget()) return false;
+      for (const a of l >= 5 ? [-0.45, 0.45] : [rand(-0.5, 0.5)]) {
+        G.shots.push({ x: px, y: py - 6, vx: Math.sin(a) * 430, vy: -Math.cos(a) * 430, dmg, k: g, life: 4 + 0.5 * l + (l >= 3 ? 1.5 : 0), r: l >= 3 ? 13 : 9, cd: new Map(), spin: 0 });
+      }
+      sfx.saw();
+    } else if (g === 'duck') {
+      const targets = allTargets();
+      if (!targets.length) return false;
+      // a high lob: the duck flies over everything on the way up and lands on the target
+      const [tx, ty] = centerOf(pick(targets)), apex = HUD_H + 16, v0 = Math.sqrt(2 * DUCK_G * (py - apex));
+      const flight = v0 / DUCK_G + Math.sqrt((2 * Math.max(10, ty - apex)) / DUCK_G);
+      G.shots.push({ x: px, y: py, vx: (tx - px) / flight, vy: -v0, dmg, k: g, rad: l >= 5 ? 60 : 44, bounces: 1 + (l >= 3 ? 1 : 0) + (l >= 5 ? 1 : 0), first: true, spin: 0 });
+      sfx.launch();
+    }
+    return true;
+  }
+  const DUCK_G = 900;
+  function arcZap(x, y, jumps, dmg, used) {
+    const pts = [[x, y]]; let cx = x, cy = y;
+    for (let j = 0; j < jumps; j++) {
+      let best = null, bd = Infinity;
+      for (const o of allTargets()) {
+        if (used.has(o)) continue;
+        const [ox, oy] = centerOf(o), d = Math.hypot(ox - cx, oy - cy);
+        if (j > 0 && d > 140) continue;
+        if (d < bd) { bd = d; best = o; }
+      }
+      if (!best) break;
+      used.add(best); [cx, cy] = centerOf(best); pts.push([cx, cy]);
+      hitTarget(best, dmg);
     }
     if (pts.length > 1) { G.bolts.push({ pts, t: 0.18, T: 0.18 }); sfx.zap(); }
   }
+  function rocketBoom(s, x, y, scale = 1) {
+    explode(x, y, s.rad * scale, s.dmg, '#ffb14a');
+    if (!s.cluster) return;
+    for (let i = 0; i < 3; i++) after(0.1 + i * 0.06, () => explode(x + rand(-55, 55), y + rand(-40, 40), 30, Math.ceil(s.dmg / 2), '#ffb14a', true));
+  }
+  function steer(s, dt) {
+    if (!s.target || !targetLive(s.target)) s.target = nearestTarget(s.x, s.y);
+    if (!s.target) return;
+    const [tx, ty] = centerOf(s.target), sp = Math.hypot(s.vx, s.vy), cur = Math.atan2(s.vy, s.vx);
+    let diff = Math.atan2(ty - s.y, tx - s.x) - cur;
+    while (diff > Math.PI) diff -= 2 * Math.PI; while (diff < -Math.PI) diff += 2 * Math.PI;
+    const a = cur + clamp(diff, -4 * dt, 4 * dt);
+    s.vx = Math.cos(a) * sp; s.vy = Math.sin(a) * sp;
+  }
+  // The saw bounces like a ball that never falls. It cuts through bricks that it destroys.
+  function updateSaw(s, dt) {
+    s.life -= dt; s.spin += dt * 22;
+    if (s.life <= 0) { s.dead = true; burst(s.x, s.y, '#ffd6a0', 8, 140); return; }
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    if (s.x < s.r) { s.x = s.r; s.vx = Math.abs(s.vx); } if (s.x > W - s.r) { s.x = W - s.r; s.vx = -Math.abs(s.vx); }
+    if (s.y < HUD_H + s.r) { s.y = HUD_H + s.r; s.vy = Math.abs(s.vy); }
+    if (s.y > PADDLE_Y - 30) { s.y = PADDLE_Y - 30; s.vy = -Math.abs(s.vy); }
+    const fresh = (o) => { const t = s.cd.get(o); if (t != null && G.time - t < 0.3) return false; s.cd.set(o, G.time); return true; };
+    for (const k of G.bricks) {
+      if (!k.alive) continue;
+      const cx = clamp(s.x, k.x, k.x + k.w), cy = clamp(s.y, k.y, k.y + k.h), dx = s.x - cx, dy = s.y - cy;
+      if (dx * dx + dy * dy > s.r * s.r || !fresh(k)) continue;
+      burst(cx, cy, '#ffd6a0', 3, 120);
+      if (hitBrick(k, s.dmg, false)) continue;
+      if (Math.abs(dx) > Math.abs(dy)) s.vx = Math.sign(dx || 1) * Math.abs(s.vx); else s.vy = Math.sign(dy || 1) * Math.abs(s.vy);
+    }
+    for (const f of G.foes) if (!f.dead && Math.hypot(f.x - s.x, f.y - s.y) < f.r + s.r && fresh(f)) damageFoe(f, s.dmg);
+    if (bossAt(s.x, s.y, s.r) && fresh(G.boss)) { damageBoss(s.dmg * 2); s.vy = Math.abs(s.vy); }
+  }
+  function updateDuck(s, dt) {
+    s.vy += DUCK_G * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.spin += dt * 7;
+    if (s.x < 10) { s.x = 10; s.vx = Math.abs(s.vx); } if (s.x > W - 10) { s.x = W - 10; s.vx = -Math.abs(s.vx); }
+    if (s.y > PADDLE_Y - 20) { s.dead = true; burst(s.x, s.y, '#ffe94a', 6, 100); return; }
+    if (s.vy < 0) return;
+    let hit = !!foeAt(s.x, s.y, 8) || bossAt(s.x, s.y, 8);
+    if (!hit) for (const k of G.bricks) if (k.alive && s.x > k.x - 6 && s.x < k.x + k.w + 6 && s.y > k.y - 8 && s.y < k.y + k.h) { hit = true; break; }
+    if (!hit) return;
+    explode(s.x, s.y, s.rad, s.dmg, '#ffe94a', !s.first);
+    s.first = false;
+    sfx.quack(); say(s.x, s.y - 18, 'QUACK!', '#ffe94a', 0.7);
+    if (s.bounces-- <= 0) { s.dead = true; return; }
+    s.vy = -430; s.vx = rand(-150, 150);
+  }
   function updateShots(dt) {
     for (const s of G.shots) {
+      if (s.k === 'saw') { updateSaw(s, dt); continue; }
+      if (s.k === 'duck') { updateDuck(s, dt); continue; }
+      if (s.homing) steer(s, dt);
       s.x += s.vx * dt; s.y += s.vy * dt;
       if (s.life != null) { s.life -= dt; if (s.life <= 0) s.dead = true; }
-      if (s.y < HUD_H || s.x < 0 || s.x > W) { s.dead = true; if (s.k === 'rocket') explode(s.x, Math.max(s.y, HUD_H), s.rad * 0.6, s.dmg, '#ffb14a'); continue; }
+      if (s.bounce > 0) {
+        if (s.x < 0 || s.x > W) { s.vx = -s.vx; s.x = clamp(s.x, 0, W); s.bounce--; }
+        if (s.y < HUD_H) { s.vy = Math.abs(s.vy); s.y = HUD_H; s.bounce--; }
+      }
+      if (s.y < HUD_H || s.x < 0 || s.x > W || s.y > H) { s.dead = true; if (s.k === 'rocket') rocketBoom(s, s.x, Math.max(s.y, HUD_H), 0.6); continue; }
       const f = foeAt(s.x, s.y, 3);
       if (f && !(s.hit && s.hit.has(f))) {
-        if (s.k === 'rocket') { explode(s.x, s.y, s.rad, s.dmg, '#ffb14a'); s.dead = true; continue; }
+        if (s.k === 'rocket') { rocketBoom(s, s.x, s.y); s.dead = true; continue; }
         damageFoe(f, s.dmg);
-        if (s.k === 'laser') { s.hit.add(f); if (--s.pierce <= 0) { s.dead = true; continue; } }
-        else { s.dead = true; continue; }
+        if (!s.hit) { s.dead = true; continue; }
+        s.hit.add(f);
+        if (--s.pierce <= 0) { s.dead = true; continue; }
       }
       if (bossAt(s.x, s.y)) {
-        if (s.k === 'rocket') explode(s.x, s.y, s.rad, s.dmg, '#ffb14a'); else damageBoss(s.dmg);
+        if (s.k === 'rocket') rocketBoom(s, s.x, s.y); else damageBoss(s.dmg);
         s.dead = true; continue;
       }
       for (const e of G.eshots) if (!e.dead && Math.hypot(e.x - s.x, e.y - s.y) < e.r + 4) { e.dead = true; s.dead = true; burst(e.x, e.y, '#9cff57', 6, 100); }
       if (s.dead) continue;
+      const color = GUNS[s.k] ? GUNS[s.k].color : '#ffffff';
       for (const k of G.bricks) {
         if (!k.alive || s.x < k.x - 2 || s.x > k.x + k.w + 2 || s.y < k.y || s.y > k.y + k.h + 6) continue;
-        if (s.k === 'laser') {
-          if (s.hit.has(k)) continue;
-          s.hit.add(k);
-          if (k.type === 'stone') { s.dead = true; k.flash = 0.12; break; }
-          hitBrick(k, s.dmg, false); burst(s.x, s.y, '#ff7cf0', 3, 80);
-          if (--s.pierce <= 0) { s.dead = true; break; }
-          continue;
-        }
-        if (s.k === 'rocket') { explode(s.x, s.y, s.rad, s.dmg, '#ffb14a'); s.dead = true; break; }
-        hitBrick(k, s.dmg, false); burst(s.x, s.y, GUNS[s.k] ? GUNS[s.k].color : '#ffffff', 3, 80); s.dead = true; break;
+        if (s.k === 'rocket') { rocketBoom(s, s.x, s.y); s.dead = true; break; }
+        if (!s.hit) { hitBrick(k, s.dmg, false); burst(s.x, s.y, color, 3, 80); s.dead = true; break; }
+        // piercing shots damage each brick once and stop at stone
+        if (s.hit.has(k)) continue;
+        s.hit.add(k);
+        if (k.type === 'stone') { s.dead = true; k.flash = 0.12; break; }
+        hitBrick(k, s.dmg, false); burst(s.x, s.y, color, 3, 80);
+        if (--s.pierce <= 0) { s.dead = true; break; }
       }
     }
     G.shots = G.shots.filter((s) => !s.dead);
@@ -932,7 +1060,7 @@
         if (v > vm) { d.vx *= vm / v; d.vy *= vm / v; }
         d.x += d.vx * dt; d.y += d.vy * dt;
         if (d.target && G.started && dist < 18 && d.cd <= 0) {
-          hitBrick(d.target, 1, false); d.cd = 0.55 / oc; d.vx *= -0.6; d.vy = Math.abs(d.vy) + 120;
+          hitBrick(d.target, gunDmg(1), false); d.cd = 0.55 / oc; d.vx *= -0.6; d.vy = Math.abs(d.vy) + 120;
           if (!d.target.alive || Math.random() < 0.3) d.target = null;
         }
       } else if (d.type === 'collect') {
@@ -977,6 +1105,11 @@
         c.x += (dx / d) * sp; c.y += (dy / d) * sp; c.spin += dt * 12;
         continue;
       }
+      // the Auditor's tractor beam takes coins that are in the air
+      if (tractorOn(c)) {
+        c.vy -= 1300 * dt; c.x += (G.boss.x - c.x) * Math.min(1, dt * 3);
+        if (c.y < G.boss.y + G.boss.h) { c.dead = true; say(c.x, c.y + 20, 'TAXED!', '#ff5c5c', 0.6); sfx.steal(); continue; }
+      }
       c.vy += 420 * dt; c.vy = Math.min(c.vy, 330); c.vx *= 1 - dt * 1.5;
       if (ml) {
         const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy);
@@ -1018,13 +1151,15 @@
     G.beams = G.beams.filter((b) => b.t > 0);
   }
 
-  // ---------- enemies & bosses ----------
+  // ---------- enemies ----------
   const FOE = {
     drifter: { r: 13, hp: 3, color: '#c08cff', coins: 2 },
     shooter: { r: 14, hp: 4, color: '#ff9a4d', coins: 3 },
     mender: { r: 12, hp: 4, color: '#5ee08a', coins: 3 },
     thief: { r: 12, hp: 2, color: '#8b93b8', coins: 2 },
     blimp: { r: 17, hp: 3, color: '#ffd23f', coins: 8 },
+    splitter: { r: 20, hp: 9, color: '#8f5cff', coins: 4 },
+    bomber: { r: 11, hp: 2, color: '#ff5c5c', coins: 3 },
   };
   // Loot Blimp: a bonus target that crosses the field once per level. Every hit shakes coins loose.
   function spawnBlimp() {
@@ -1032,56 +1167,35 @@
     const f = spawnFoe('blimp', dir > 0 ? -20 : W + 20, clamp(brickBottom() + 60, TOP + 70, PADDLE_Y - 230));
     f.dir = dir; f.baseY = f.y; f.hp = f.maxhp = FOE.blimp.hp;
     say(W / 2, f.y - 30, 'LOOT BLIMP!', '#ffd23f', 1.4); sfx.blimp();
+    if (special('blimps')) G.blimpT = 9;
   }
   function foeScale() { return 1 + (run.level - 1) / 14; }
   function brickBottom() { let y = TOP; for (const b of G.bricks) if (b.alive && b.y + b.h > y) y = b.y + b.h; return y; }
   function foeZone() {
-    const top = Math.max(G.boss ? 140 : TOP, brickBottom() + 24);
+    const top = Math.max(G.boss ? 190 : TOP, brickBottom() + 24);
     return { top, bot: Math.max(top + 60, Math.min(top + 200, PADDLE_Y - 190)) };
   }
   function spawnFoe(type, x, y) {
     const d = FOE[type], z = foeZone();
     const hp = Math.round(d.hp * foeScale());
     const f = { type, x: x != null ? x : rand(40, W - 40), y: y != null ? y : rand(z.top, z.bot), r: d.r, hp, maxhp: hp,
-      vx: rand(-1, 1) * 55, vy: rand(-1, 1) * 30, t: Math.random() * 6, cd: rand(1.5, 3.5), hitCd: 0, flash: 0, loot: 0, dir: Math.random() < 0.5 ? -1 : 1 };
+      vx: rand(-1, 1) * 55, vy: rand(-1, 1) * 30, t: Math.random() * 6, cd: rand(1.5, 3.5), hitCd: 0, flash: 0, loot: 0, dir: Math.random() < 0.5 ? -1 : 1, frozenT: 0 };
     G.foes.push(f); burst(f.x, f.y, d.color, 10, 120);
     return f;
-  }
-  function makeBoss(kind) {
-    // each boss first appears at level 10 * kind; later visits in endless mode are tougher
-    const hp = Math.round([0, 90, 420, 1200][kind] * (1 + Math.max(0, run.level - 10 * kind) * 0.15));
-    return { kind, x: W / 2, y: 94, w: 150, h: 46, hp, maxhp: hp, t: 0, fireT: 2.5, spawnT: 7, flash: 0, dead: false };
   }
   function damageFoe(f, dmg) {
     if (f.dead) return;
     // a blimp takes three hits whatever the damage; the level-clear sweep still pops it
     if (f.type === 'blimp' && G.clearT < 0) { dmg = Math.min(dmg, 1); dropCoin(f.x, f.y, 2); }
     f.hp -= dmg; f.flash = 0.12; sfx.foeHit();
-    if (f.hp <= 0) {
-      f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
-      run.score += 50; run.stats.foes++; addFever(0.06);
-      dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
-      if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
-      if (f.type === 'blimp' && G.clearT < 0) { G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() }); say(f.x, f.y - 20, 'JACKPOT!', '#ffd23f', 1.2); shake(6); }
-    }
-  }
-  function damageBoss(dmg) {
-    const B = G.boss; if (!B || B.dead) return;
-    const calm = B.hp >= B.maxhp * 0.4;
-    B.hp -= dmg; B.flash = 0.1; sfx.bossHit();
-    if (calm && B.hp > 0 && B.hp < B.maxhp * 0.4) {
-      say(W / 2, B.y + B.h + 40, 'ENRAGED!', '#ff2a4d', 1.6, true); sfx.warn(); flashScreen('#ff2a4d', 0.3); shake(8);
-    }
-    if (B.hp <= 0) {
-      B.dead = true; shake(16); sfx.bossDie(); buzz([40, 40, 40, 40, 120]);
-      G.slowmo = 1.2; flashScreen('#ffffff', 0.6);
-      for (let i = 0; i < 7; i++) after(i * 0.07, () => { const x = B.x + rand(-60, 60), y = B.y + rand(-5, B.h); burst(x, y, pick(RAINBOW), 20, 260); ring(x, y, 50, '#ffd23f'); });
-      dropCoin(B.x, B.y + 20, Math.round((15 + 10 * B.kind) * (1 + 0.25 * lv('foebounty'))));
-      run.score += 2000 * B.kind;
-      say(W / 2, H / 2, BOSS_NAMES[B.kind] + ' defeated!', '#ffd23f', 2, true);
-      for (const b of G.bricks) if (b.alive && b.type !== 'stone') destroyBrick(b);
-      for (const f of G.foes) damageFoe(f, 999);
-    }
+    if (f.hp > 0) return;
+    f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
+    run.score += 50; run.stats.foes++; addFever(0.06);
+    dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
+    if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
+    if (G.clearT >= 0) return;
+    if (f.type === 'blimp') { G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() }); say(f.x, f.y - 20, 'JACKPOT!', '#ffd23f', 1.2); shake(6); }
+    if (f.type === 'splitter') for (const s of [-1, 1]) spawnFoe('drifter', f.x + s * 14, f.y).vx = s * 55;
   }
   // circle-vs-ball bounce; returns true on contact
   function ballVsCircle(b, cx, cy, r) {
@@ -1101,10 +1215,19 @@
     else { const sg = Math.sign(b.y - ky) || 1; b.vy = sg * Math.abs(b.vy); b.y += sg * oy; }
     return true;
   }
-  function enemyShot(x, y, angle, speed) {
-    G.eshots.push({ x, y, vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed, r: 6 });
+  // Enemy projectiles. k: undefined = slime, 'curse' = cursed coin (falls, takes coins), 'paper' = tax form (zigzag).
+  function enemyShot(x, y, angle, speed, k) {
+    G.eshots.push({ x, y, vx: Math.sin(angle) * speed, vy: Math.cos(angle) * speed, r: k ? 8 : 6, k, t: 0 });
   }
   function aimAtPaddle(x, y) { return Math.atan2(paddle.x - x, PADDLE_Y - y); }
+  // Something nasty reached the paddle. The Deflector absorbs it; otherwise the paddle is small and slow for a moment.
+  function hurtPaddle(x, color = '#9cff57') {
+    if (G.shield > 0) { G.shield--; burst(x, PADDLE_Y, '#6ee7ff', 12, 160); sfx.net(); say(x, PADDLE_Y - 20, 'Blocked!', '#6ee7ff', 0.8); return false; }
+    G.stun = 1.5; burst(x, PADDLE_Y, color, 14, 160); sfx.stun(); shake(5); buzz(30);
+    return true;
+  }
+  // A laser column: a warning first, then the beam. It stuns the paddle if the paddle stays in it.
+  function laserAt(x, warn = 1) { G.lasers.push({ x, w: 36, warn, fire: 0.45, hit: false }); sfx.beamWarn(); }
 
   function updateFoes(dt) {
     const frozen = G.fx.freeze > 0;
@@ -1125,14 +1248,15 @@
     const z = foeZone();
     for (const f of G.foes) {
       if (f.flash > 0) f.flash -= dt; if (f.hitCd > 0) f.hitCd -= dt;
-      if (frozen) continue;
+      if (f.frozenT > 0) f.frozenT -= dt;
+      if (frozen || f.frozenT > 0) continue;
       f.t += dt;
       if (f.type === 'blimp') {
         f.x += f.dir * 62 * dt; f.y = f.baseY + Math.sin(f.t * 2) * 8;
         if (f.x < -40 || f.x > W + 40) f.dead = true;
-      } else if (f.type === 'drifter') {
+      } else if (f.type === 'drifter' || f.type === 'splitter') {
         f.vx += Math.sin(f.t * 0.9) * 12 * dt; f.vy += Math.cos(f.t * 0.7) * 10 * dt;
-        const sp = Math.hypot(f.vx, f.vy) || 1, want = 55; f.vx *= want / sp; f.vy *= want / sp;
+        const sp = Math.hypot(f.vx, f.vy) || 1, want = f.type === 'splitter' ? 36 : 55; f.vx *= want / sp; f.vy *= want / sp;
         f.x += f.vx * dt; f.y += f.vy * dt;
       } else if (f.type === 'shooter') {
         f.x += f.dir * 70 * dt;
@@ -1151,7 +1275,7 @@
             if (!b.alive || b.type === 'stone' || b.hp >= b.maxhp) continue;
             const d = Math.hypot(b.x + b.w / 2 - f.x, b.y + b.h / 2 - f.y); if (d < bd) { bd = d; best = b; }
           }
-          if (best) { best.hp++; best.flash = 0.15; G.bolts.push({ pts: [[f.x, f.y], [best.x + best.w / 2, best.y + best.h / 2]], t: 0.3, c: '#5ee08a' }); }
+          if (best) { best.hp++; best.flash = 0.15; G.bolts.push({ pts: [[f.x, f.y], [best.x + best.w / 2, best.y + best.h / 2]], t: 0.3, T: 0.3, c: '#5ee08a' }); }
         }
       } else if (f.type === 'thief') {
         let target = null, bd = Infinity;
@@ -1168,10 +1292,12 @@
         }
         if (f.fleeing && f.y < HUD_H - 10) {
           f.dead = true; f.escaped = true;
-          G.texts.push({ x: clamp(f.x, 80, W - 80), y: HUD_H + 20, t: 1.4, s: `Thief got away with ${f.loot}!`, c: '#ff6b8b' });
+          say(clamp(f.x, 80, W - 80), HUD_H + 20, `Thief got away with ${f.loot}!`, '#ff6b8b', 1.4);
         }
+      } else if (f.type === 'bomber') {
+        updateBomber(f, dt, z);
       }
-      if (f.type !== 'thief' && f.type !== 'blimp') {
+      if (f.type !== 'thief' && f.type !== 'blimp' && !f.dive) {
         if (f.x < f.r) { f.x = f.r; f.vx = Math.abs(f.vx); } if (f.x > W - f.r) { f.x = W - f.r; f.vx = -Math.abs(f.vx); }
         if (f.y < z.top) { f.y = Math.min(f.y + 60 * dt, z.top); f.vy = Math.abs(f.vy); }
         if (f.y > z.bot) { f.y = z.bot; f.vy = -Math.abs(f.vy); }
@@ -1179,43 +1305,229 @@
     }
     G.foes = G.foes.filter((f) => !f.dead);
 
-    // boss
-    const B = G.boss;
-    if (B && B.flash > 0) B.flash -= dt;
-    if (B && !B.dead && !frozen) {
-      const enraged = B.hp < B.maxhp * 0.4;
-      B.t += dt * (enraged ? 1.5 : 1);
-      B.x = W / 2 + Math.sin(B.t * 0.55) * (W / 2 - B.w / 2 - 8);
-      if (G.started && G.clearT < 0) {
-        B.fireT -= dt * (enraged ? 1.4 : 1);
-        if (B.fireT <= 0) {
-          const by = B.y + B.h;
-          if (B.kind === 1) { B.fireT = 2.6; for (const a of [-0.35, 0, 0.35]) enemyShot(B.x, by, a, 160); }
-          else if (B.kind === 2) { B.fireT = 2.1; for (const ox of [-50, 50]) enemyShot(B.x + ox, by, aimAtPaddle(B.x + ox, by), 185); }
-          else { B.fireT = 2.1; const aim = aimAtPaddle(B.x, by); for (const a of [-0.5, -0.25, 0, 0.25, 0.5]) enemyShot(B.x, by, (B.t % 2 < 1 ? aim : 0) + a, 165); }
-          sfx.bossFire();
-        }
-        if (B.kind >= 2) {
-          B.spawnT -= dt;
-          if (B.spawnT <= 0) { B.spawnT = B.kind === 3 ? 8 : 9; if (G.foes.length < 5) spawnFoe(B.kind === 3 && Math.random() < 0.4 ? 'mender' : 'drifter', B.x, B.y + B.h + 20); }
-        }
-      }
-    }
+    updateBoss(dt);
+    if (frozen) return;
 
-    // enemy slime shots
     for (const s of G.eshots) {
-      if (frozen) continue;
+      s.t += dt;
+      if (s.k === 'curse') s.vy = Math.min(s.vy + 320 * dt, 260);
+      if (s.k === 'paper') s.x += Math.cos(s.t * 6) * 110 * dt;
       s.x += s.vx * dt; s.y += s.vy * dt;
+      if (s.k && (s.x < 8 || s.x > W - 8)) { s.vx = -s.vx; s.x = clamp(s.x, 8, W - 8); }
       if (s.x < -10 || s.x > W + 10 || s.y > H + 10) { s.dead = true; continue; }
       if (s.vy > 0 && s.y + s.r >= PADDLE_Y && s.y - s.r <= PADDLE_Y + PADDLE_H && Math.abs(s.x - paddle.x) <= paddle.w / 2 + s.r) {
         s.dead = true;
-        if (G.shield > 0) { G.shield--; burst(s.x, PADDLE_Y, '#6ee7ff', 12, 160); sfx.net(); say(s.x, PADDLE_Y - 20, 'Blocked!', '#6ee7ff', 0.8); }
-        else { G.stun = 1.5; burst(s.x, PADDLE_Y, '#9cff57', 14, 160); sfx.stun(); shake(5); buzz(30); }
+        if (hurtPaddle(s.x, s.k === 'curse' ? '#ff5c5c' : '#9cff57') && s.k === 'curse') {
+          const tax = Math.min(run.coins, 3 + Math.floor(run.level / 5));
+          run.coins -= tax; sfx.curse(); say(s.x, PADDLE_Y - 24, `TAXED −${tax}`, '#ff5c5c', 1.1);
+        }
       }
     }
     G.eshots = G.eshots.filter((s) => !s.dead);
+
+    for (const l of G.lasers) {
+      if (l.warn > 0) { l.warn -= dt; if (l.warn <= 0) { sfx.beam(); shake(4); } continue; }
+      l.fire -= dt;
+      if (!l.hit && Math.abs(paddle.x - l.x) < paddle.w / 2 + l.w / 2) { l.hit = true; hurtPaddle(paddle.x, '#ff2a4d'); }
+    }
+    G.lasers = G.lasers.filter((l) => l.fire > 0);
   }
-  function drawBlimp(f, t) {
+  // Bomber: hovers, flashes a warning, then dives at the place where the paddle was. Pop it before it lands.
+  function updateBomber(f, dt, z) {
+    if (!f.dive) {
+      f.x += f.dir * 60 * dt; if (f.x < 30 || f.x > W - 30) f.dir *= -1;
+      f.y += (z.top + 10 - f.y) * Math.min(1, dt * 1.5);
+      if (G.clearT >= 0 || (f.cd -= dt) > -0.7) return; // the last 0.7 s is the warning
+      const dx = paddle.x - f.x, dy = PADDLE_Y - f.y, d = Math.hypot(dx, dy) || 1;
+      f.dive = true; f.vx = (dx / d) * 340; f.vy = (dy / d) * 340; sfx.spit();
+      return;
+    }
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    if (f.y < PADDLE_Y - 4) return;
+    f.dead = true; burst(f.x, f.y, '#ff5c5c', 14, 200); ring(f.x, f.y, 40, '#ff5c5c'); sfx.boom(true);
+    if (Math.abs(f.x - paddle.x) <= paddle.w / 2 + f.r) hurtPaddle(f.x, '#ff5c5c');
+  }
+
+  // ---------- bosses ----------
+  // Every boss has three phases (at 66% and 33% health) and its own attacks. An attack can stun the paddle or take
+  // a few coins; it never takes a life. Overtime damage guarantees that every boss falls.
+  const BOSSES = [null,
+    { name: 'Crate King', w: 150, h: 46, says: ['Fragile? ME?', 'Ship it!', 'Handle with care!', 'This side up!'], dies: 'Return to sender...' },
+    { name: 'Twin Cannon', w: 160, h: 44, says: ['Pew. Pew.', 'Have you tried dodging?', 'Reloading...', 'Target acquired!'], dies: 'Out of ammo...' },
+    { name: 'Bazaar Baron', w: 140, h: 48, says: ['No refunds!', 'Everything must go!', 'Prices just went up!', 'That will cost you!'], dies: 'I am ruined!' },
+    { name: 'Slime Queen', w: 130, h: 66, says: ['Wobble wobble!', 'Bow to the goo!', 'Sticky situation!', 'Bloop.'], dies: 'I am melting...' },
+    { name: 'The Auditor', w: 170, h: 50, says: ['Receipts, please.', 'That is not deductible.', 'You owe 3 coins. And interest.', 'Audit time!'], dies: 'Filing... for... bankruptcy...' },
+  ];
+  const BOSS_Y = 94, STOMP_Y = 420;
+  // Health of the five campaign bosses. A boss that returns in endless mode grows with the brick toughness.
+  const BOSS_HP = [0, 110, 600, 1900, 8500, 20000];
+  const bossHp = (n) => (n <= 50 ? BOSS_HP[Math.round(n / 10)] : Math.round((20000 * hpMult(n)) / hpMult(50)));
+  function makeBoss(kind) {
+    const d = BOSSES[kind], hp = bossHp(run.level);
+    return { kind, x: W / 2, y: BOSS_Y, w: d.w, h: d.h, hp, maxhp: hp, t: 0, phase: 1, atkT: 3, moveT: 4, talkT: 5, flash: 0, dead: false,
+      coinAcc: 0, talk: null, state: 'idle', stateT: 0, vx: 95, vy: 40 };
+  }
+  function bossSay(s) { G.boss.talk = { s, t: 2.2 }; sfx.taunt(); }
+  function damageBoss(dmg) {
+    const B = G.boss; if (!B || B.dead) return;
+    B.hp -= dmg; B.flash = 0.1; sfx.bossHit();
+    // a boss leaks coins as it takes damage: 25 drops over the fight
+    B.coinAcc += Math.min(dmg / B.maxhp, 0.2);
+    while (B.coinAcc >= 0.04) { B.coinAcc -= 0.04; dropCoin(B.x + rand(-40, 40), B.y + B.h, 1); }
+    const phase = B.hp > B.maxhp * 0.66 ? 1 : B.hp > B.maxhp * 0.33 ? 2 : 3;
+    if (phase > B.phase && B.hp > 0) {
+      B.phase = phase; B.atkT = 1.5;
+      say(W / 2, clamp(B.y + B.h + 54, 170, 420), phase === 3 ? 'ENRAGED!' : 'PHASE 2!', '#ff2a4d', 1.6, true);
+      sfx.warn(); flashScreen('#ff2a4d', 0.3); shake(8); G.hitstop = 0.08;
+      bossSay(pick(BOSSES[B.kind].says));
+      BOSS_PHASE[B.kind](B);
+    }
+    if (B.hp > 0) return;
+    B.dead = true; shake(16); sfx.bossDie(); buzz([40, 40, 40, 40, 120]);
+    G.slowmo = 1.2; flashScreen('#ffffff', 0.6); G.lasers = []; G.eshots = [];
+    for (let i = 0; i < 7; i++) after(i * 0.07, () => { const x = B.x + rand(-60, 60), y = B.y + rand(-5, B.h); burst(x, y, pick(RAINBOW), 20, 260); ring(x, y, 50, '#ffd23f'); });
+    dropCoin(B.x, B.y + 20, Math.round((15 + 10 * B.kind) * (1 + 0.25 * lv('foebounty'))));
+    run.score += 2000 * B.kind;
+    say(W / 2, H / 2, BOSSES[B.kind].name + ' defeated!', '#ffd23f', 2, true);
+    say(W / 2, H / 2 + 34, `"${BOSSES[B.kind].dies}"`, '#ffffff', 2);
+    for (const b of G.bricks) if (b.alive && b.type !== 'stone') destroyBrick(b);
+    for (const f of G.foes) damageFoe(f, 999);
+  }
+  // Drops n new bricks into free cells below the boss.
+  function dropBricks(n, type, hp) {
+    const free = [];
+    for (let r = 4; r <= 8; r++) for (let c = 0; c < COLS; c++) if (!G.bricks.some((b) => b.alive && b.row === r && b.col === c)) free.push([r, c]);
+    for (let i = 0; i < n && free.length; i++) {
+      const [r, c] = free.splice((Math.random() * free.length) | 0, 1)[0];
+      const b = makeBrick(r, c, type, Math.max(1, Math.round(hp * hpMult(run.level))));
+      b.delay = G.time; G.bricks.push(b);
+    }
+    sfx.stone();
+  }
+  function poof(x, y, color) { burst(x, y, color, 16, 200); ring(x, y, 60, color, 0.35); }
+  const sweepX = (B, speed) => W / 2 + Math.sin(B.t * speed) * (W / 2 - B.w / 2 - 8);
+
+  // One-time events when a boss enters phase 2 or 3.
+  const BOSS_PHASE = [null,
+    () => dropBricks(4, 'normal', 2),
+    (B) => { for (const x of [80, 240, 400]) laserAt(x + rand(-30, 30), 1.3); },
+    (B) => { for (let i = 0; i < 2 + B.phase; i++) enemyShot(B.x + rand(-30, 30), B.y + B.h, rand(-0.5, 0.5), 60, 'curse'); },
+    (B) => { for (const s of [-1, 1]) spawnFoe(B.phase === 2 ? 'splitter' : 'drifter', clamp(B.x + s * 80, 30, W - 30), 230); },
+    (B) => { dropBricks(4, 'steel', 3); for (let i = 0; i < B.phase - 1; i++) spawnFoe('bomber'); },
+  ];
+  // Movement and attacks. live = the ball is in play, so attacks are allowed.
+  const BOSS_AI = [null,
+    // Crate King: sweeps, throws crates and slime; from phase 2 he stomps down at the paddle.
+    (B, dt, live) => {
+      if (B.state === 'idle') {
+        B.x = sweepX(B, 0.55); B.y += (BOSS_Y - B.y) * Math.min(1, dt * 4);
+        if (!live || (B.atkT -= dt) > 0) return;
+        const roll = Math.random();
+        if (B.phase >= 2 && roll < 0.35) { B.state = 'aim'; B.stateT = 0.9; bossSay('STOMP!'); }
+        else if (roll < 0.65) { B.atkT = 3.6 - B.phase * 0.4; dropBricks(B.phase, 'normal', 2); }
+        else { B.atkT = 2.9 - B.phase * 0.3; for (const a of [-0.35, 0, 0.35]) enemyShot(B.x, B.y + B.h, a, 160); sfx.bossFire(); }
+      } else if (B.state === 'aim') {
+        B.x = clamp(B.x + clamp(paddle.x - B.x, -280 * dt, 280 * dt) + rand(-2, 2), B.w / 2, W - B.w / 2);
+        if ((B.stateT -= dt) <= 0) B.state = 'drop';
+      } else if (B.state === 'drop') {
+        B.y += 900 * dt;
+        if (B.y < STOMP_Y) return;
+        B.y = STOMP_Y; B.state = 'rest'; B.stateT = 1.2;
+        shake(12); sfx.boom(); ring(B.x, B.y + B.h, 130, '#c8874a', 0.5, 4);
+        for (const a of [-1.1, -0.6, 0.6, 1.1]) enemyShot(B.x, B.y + B.h, a, 190);
+      } else if (B.state === 'rest') {
+        if ((B.stateT -= dt) <= 0) B.state = 'rise';
+      } else {
+        B.y -= 260 * dt;
+        if (B.y > BOSS_Y) return;
+        // continue the sweep from where he is
+        B.y = BOSS_Y; B.state = 'idle'; B.atkT = 2; B.t = Math.asin(clamp((B.x - W / 2) / (W / 2 - B.w / 2 - 8), -1, 1)) / 0.55;
+      }
+    },
+    // Twin Cannon: aimed double shots, laser columns on the paddle, blob minions.
+    (B, dt, live) => {
+      B.x = sweepX(B, 0.7);
+      if (!live || (B.atkT -= dt) > 0) return;
+      const roll = Math.random(), by = B.y + B.h;
+      if (roll < 0.4) { B.atkT = 2.3; for (const ox of [-55, 55]) enemyShot(B.x + ox, by, aimAtPaddle(B.x + ox, by), 185); sfx.bossFire(); }
+      else if (roll < 0.78) {
+        B.atkT = 2.8;
+        const xs = [paddle.x];
+        if (B.phase >= 2) xs.push(clamp(paddle.x + (Math.random() < 0.5 ? -130 : 130), 40, W - 40));
+        if (B.phase >= 3) xs.push(rand(40, W - 40));
+        for (const x of xs) laserAt(x);
+      } else { B.atkT = 3; if (G.foes.length < 4) { for (let i = 0; i < B.phase; i++) spawnFoe('drifter', clamp(B.x + rand(-60, 60), 30, W - 30), 230); bossSay('Minions!'); } }
+    },
+    // Bazaar Baron: teleports, throws coins (some are cursed), fans of slime, hired help.
+    (B, dt, live) => {
+      B.y = BOSS_Y + Math.sin(B.t * 2) * 5;
+      if (!live) return;
+      if ((B.moveT -= dt) <= 0) {
+        B.moveT = 5.5 - B.phase; poof(B.x, B.y + B.h / 2, '#d4a5ff');
+        B.x = pick([90, W / 2, W - 90].filter((x) => Math.abs(x - B.x) > 40));
+        poof(B.x, B.y + B.h / 2, '#d4a5ff'); sfx.teleport();
+      }
+      if ((B.atkT -= dt) > 0) return;
+      const roll = Math.random(), by = B.y + B.h;
+      if (roll < 0.4) {
+        B.atkT = 2.7; dropCoin(B.x, by, 3);
+        for (let i = 0; i < B.phase; i++) enemyShot(B.x + rand(-30, 30), by, rand(-0.7, 0.7), 110, 'curse');
+        if (Math.random() < 0.5) bossSay('Free samples!');
+      } else if (roll < 0.72) { B.atkT = 2.3; const aim = aimAtPaddle(B.x, by); for (const a of [-0.5, -0.25, 0, 0.25, 0.5]) enemyShot(B.x, by, aim + a, 165); sfx.bossFire(); }
+      else if (B.phase >= 3 && roll < 0.88) { B.atkT = 3.2; for (let i = 0; i < 10; i++) after(i * 0.12, () => { if (!B.dead) enemyShot(B.x, B.y + B.h, -1.2 + i * 0.27, 150); }); }
+      else { B.atkT = 3.2; if (G.foes.length < 5) spawnFoe(Math.random() < 0.5 ? 'thief' : 'mender', B.x, 230); }
+    },
+    // Slime Queen: bounces around the top, rains slime, spawns blobs.
+    (B, dt, live, fast) => {
+      B.x += B.vx * fast * dt; B.y += B.vy * fast * dt;
+      if (B.x < B.w / 2) { B.x = B.w / 2; B.vx = Math.abs(B.vx); } if (B.x > W - B.w / 2) { B.x = W - B.w / 2; B.vx = -Math.abs(B.vx); }
+      if (B.y < 66) { B.y = 66; B.vy = Math.abs(B.vy); } if (B.y > 116) { B.y = 116; B.vy = -Math.abs(B.vy); }
+      if (!live || (B.atkT -= dt) > 0) return;
+      const roll = Math.random();
+      if (roll < 0.45) { B.atkT = 2.8; for (let i = 0; i < 3 + B.phase; i++) enemyShot(rand(20, W - 20), HUD_H + 4, 0, rand(190, 250)); sfx.bossFire(); bossSay('Rain!'); }
+      else if (roll < 0.75) { B.atkT = 2.4; for (const a of [-0.6, -0.3, 0, 0.3, 0.6]) enemyShot(B.x, B.y + B.h, a, 170); sfx.bossFire(); }
+      else { B.atkT = 3; if (G.foes.length < 5) spawnFoe('drifter', B.x, B.y + B.h + 30); }
+    },
+    // The Auditor: a saucer. Tax forms, laser columns, and a tractor beam that takes falling coins.
+    (B, dt, live) => {
+      if (B.state === 'tractor') {
+        if ((B.stateT -= dt) <= 0) { B.state = 'idle'; B.atkT = 1.5; }
+        return;
+      }
+      B.x = sweepX(B, 0.5); B.y = BOSS_Y + Math.sin(B.t * 1.7) * 14;
+      if (!live || (B.atkT -= dt) > 0) return;
+      const roll = Math.random(), by = B.y + B.h;
+      if (roll < 0.3) { B.atkT = 2.6; for (let i = 0; i < 1 + B.phase; i++) enemyShot(B.x + rand(-50, 50), by, rand(-0.3, 0.3), 125, 'paper'); sfx.bossFire(); }
+      else if (roll < 0.6) { B.atkT = 2.8; laserAt(paddle.x); for (let i = 0; i < B.phase; i++) laserAt(rand(40, W - 40), 1 + i * 0.35); }
+      else if (roll < 0.8 && G.coins.length > 2) { B.state = 'tractor'; B.stateT = 2.4; bossSay('Mine now.'); sfx.teleport(); }
+      else { B.atkT = 3; if (G.foes.length < 4) spawnFoe(Math.random() < 0.5 ? 'bomber' : 'shooter'); }
+    },
+  ];
+  function updateBoss(dt) {
+    const B = G.boss;
+    if (!B) return;
+    if (B.flash > 0) B.flash -= dt;
+    if (B.talk && (B.talk.t -= dt) <= 0) B.talk = null;
+    if (B.dead || G.fx.freeze > 0) return;
+    const fast = 1 + 0.25 * (B.phase - 1), live = G.started && G.clearT < 0;
+    B.t += dt * fast;
+    BOSS_AI[B.kind](B, dt, live, fast);
+    if (live && (B.talkT -= dt) <= 0) { B.talkT = rand(7, 11); bossSay(pick(BOSSES[B.kind].says)); }
+  }
+  const tractorOn = (c) => G.boss && !G.boss.dead && G.boss.state === 'tractor' && Math.abs(c.x - G.boss.x) < 70 && c.y > G.boss.y;
+
+  function foeAt(x, y, pad = 0) {
+    for (const f of G.foes) if (!f.dead && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
+    return null;
+  }
+  function bossAt(x, y, pad = 0) {
+    const B = G.boss; if (!B || B.dead) return false;
+    return x >= B.x - B.w / 2 - pad && x <= B.x + B.w / 2 + pad && y >= B.y - pad && y <= B.y + B.h + pad;
+  }
+  function levelDone() { return G.boss ? G.boss.dead : destructibleLeft() === 0; }
+
+  // ---------- drawing: enemies and bosses ----------
+  function drawBlimp(f) {
     const w = 26, h = 15, y = f.y;
     ctx.fillStyle = '#7a4a1e'; rr(f.x - 7, y + h - 1, 14, 7, 2); ctx.fill();
     ctx.fillStyle = f.flash > 0 ? '#ffffff' : '#ffd23f'; ctx.beginPath(); ctx.ellipse(f.x, y, w, h, 0, 0, 7); ctx.fill();
@@ -1228,13 +1540,19 @@
     ctx.fillStyle = '#5a3b00'; ctx.font = 'bold 13px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', f.x, y + 1);
     for (let i = 0; i < f.hp; i++) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(f.x - 6 + i * 6, y - h - 6, 2, 0, 7); ctx.fill(); }
   }
+  function eyes(x, y, gap, r, look, pupil = '#1b1f33') {
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - gap, y, r, 0, 7); ctx.arc(x + gap, y, r, 0, 7); ctx.fill();
+    ctx.fillStyle = pupil; ctx.beginPath(); ctx.arc(x - gap + look, y + r * 0.3, r * 0.5, 0, 7); ctx.arc(x + gap + look, y + r * 0.3, r * 0.5, 0, 7); ctx.fill();
+  }
   function drawFoes(t) {
     for (const f of G.foes) {
       const d = FOE[f.type], wob = Math.sin(f.t * 4) * 1.5;
       ctx.fillStyle = f.flash > 0 ? '#ffffff' : d.color;
-      if (f.type === 'blimp') { drawBlimp(f, t); continue; }
-      if (f.type === 'drifter') { ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r + wob, f.r - wob, 0, 0, 7); ctx.fill(); }
-      else if (f.type === 'shooter') {
+      if (f.type === 'blimp') { drawBlimp(f); continue; }
+      if (f.type === 'drifter' || f.type === 'splitter') {
+        ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r + wob, f.r - wob, 0, 0, 7); ctx.fill();
+        if (f.type === 'splitter') { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(f.x, f.y - f.r + 3); ctx.lineTo(f.x, f.y + f.r - 3); ctx.stroke(); ctx.setLineDash([]); }
+      } else if (f.type === 'shooter') {
         ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
         ctx.fillStyle = '#7a3a10'; ctx.fillRect(f.x - 4, f.y + f.r - 4, 8, 9);
         ctx.fillStyle = d.color; for (const s of [-1, 1]) ctx.fillRect(f.x + s * (f.r + 2) - 3, f.y - 2 + wob, 6, 4);
@@ -1246,6 +1564,12 @@
         ctx.fillStyle = '#1b1f33'; ctx.fillRect(f.x - f.r, f.y - 5, f.r * 2, 6);
         if (f.loot) { ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(f.x + f.r - 2, f.y + f.r - 2, 6, 0, 7); ctx.fill();
           ctx.fillStyle = '#5a3b00'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(f.loot, f.x + f.r - 2, f.y + f.r - 1.5); }
+      } else if (f.type === 'bomber') {
+        // the warning: it blinks white before the dive
+        if (!f.dive && f.cd < 0 && Math.sin(f.t * 40) > 0) ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(f.x - f.r, f.y - 2); ctx.lineTo(f.x - f.r - 8, f.y - 9); ctx.lineTo(f.x - 3, f.y - 7); ctx.moveTo(f.x + f.r, f.y - 2); ctx.lineTo(f.x + f.r + 8, f.y - 9); ctx.lineTo(f.x + 3, f.y - 7); ctx.fill();
+        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(f.x, f.y - f.r - 2, 2.5, 0, 7); ctx.fill();
       }
       if (f.type !== 'mender') {
         const ey = f.type === 'thief' ? f.y - 2 : f.y - 3;
@@ -1253,42 +1577,100 @@
         ctx.beginPath(); ctx.arc(f.x - 4, ey, 2.6, 0, 7); ctx.arc(f.x + 4, ey, 2.6, 0, 7); ctx.fill();
         if (f.type !== 'thief') { ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(f.x - 4, ey + 0.8, 1.2, 0, 7); ctx.arc(f.x + 4, ey + 0.8, 1.2, 0, 7); ctx.fill(); }
       }
-      if (G.fx.freeze > 0) { ctx.fillStyle = 'rgba(168,230,255,0.5)'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 3, 0, 7); ctx.fill(); }
+      if (G.fx.freeze > 0 || f.frozenT > 0) { ctx.fillStyle = 'rgba(168,230,255,0.5)'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 3, 0, 7); ctx.fill(); }
       if (f.hp < f.maxhp) {
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(f.x - 12, f.y - f.r - 8, 24, 3);
         ctx.fillStyle = d.color; ctx.fillRect(f.x - 12, f.y - f.r - 8, 24 * Math.max(0, f.hp / f.maxhp), 3);
       }
     }
-    const B = G.boss;
-    if (B && !B.dead) {
-      const x = B.x - B.w / 2, y = B.y;
-      const col = ['', '#c8874a', '#8a9bb8', '#d4a5ff'][B.kind];
-      ctx.globalCompositeOperation = 'lighter'; glow(B.x, y + B.h / 2, B.w * 0.75, B.hp < B.maxhp * 0.4 ? '#ff2a4d' : '#ffd23f', 0.3 + 0.1 * Math.sin(t * 5), 60);
-      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-      ctx.fillStyle = B.flash > 0 ? '#ffffff' : G.fx.freeze > 0 ? '#a8e6ff' : col; rr(x, y, B.w, B.h, 10); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 8, y + 4, B.w - 16, 5);
-      if (B.kind === 1) { ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + B.w - 6, y + B.h - 6); ctx.moveTo(x + B.w - 6, y + 6); ctx.lineTo(x + 6, y + B.h - 6); ctx.stroke();
-        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(x + 40, y); ctx.lineTo(x + 52, y - 16); ctx.lineTo(x + 75, y - 4); ctx.lineTo(x + 98, y - 16); ctx.lineTo(x + 110, y); ctx.fill(); }
-      if (B.kind === 2) { ctx.fillStyle = '#3d4760'; for (const ox of [-50, 50]) ctx.fillRect(B.x + ox - 7, y + B.h - 4, 14, 14); }
-      if (B.kind === 3) { ctx.fillStyle = '#ffd23f'; ctx.fillRect(x + 20, y - 18, B.w - 40, 18); ctx.fillStyle = '#2b1a40'; ctx.fillRect(x + 10, y - 2, B.w - 20, 4); }
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(B.x - 22, y + 24, 8, 0, 7); ctx.arc(B.x + 22, y + 24, 8, 0, 7); ctx.fill();
-      const px = clamp((paddle.x - B.x) / 60, -3, 3);
-      ctx.fillStyle = B.hp < B.maxhp * 0.4 ? '#ff2a4d' : '#1b1f33'; ctx.beginPath(); ctx.arc(B.x - 22 + px, y + 27, 4, 0, 7); ctx.arc(B.x + 22 + px, y + 27, 4, 0, 7); ctx.fill();
-    }
+    drawLasers(t);
+    drawBoss(t);
     for (const s of G.eshots) {
-      ctx.fillStyle = 'rgba(156,255,87,0.35)'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 4, 0, 7); ctx.fill();
-      ctx.fillStyle = '#9cff57'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+      if (s.k === 'curse') {
+        ctx.fillStyle = '#7a0f1e'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+        ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r - 2, 0, 7); ctx.fill();
+        ctx.fillStyle = '#3a0008'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('☠', s.x, s.y + 1);
+      } else if (s.k === 'paper') {
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.sin(s.t * 6) * 0.5);
+        ctx.fillStyle = '#f4f6ff'; ctx.fillRect(-7, -9, 14, 18);
+        ctx.fillStyle = '#9aa6c9'; for (let i = 0; i < 3; i++) ctx.fillRect(-4, -5 + i * 4, 8, 1.5);
+        ctx.fillStyle = '#ff5c5c'; ctx.fillRect(-4, 6, 5, 1.5);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = 'rgba(156,255,87,0.35)'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 4, 0, 7); ctx.fill();
+        ctx.fillStyle = '#9cff57'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+      }
     }
   }
-  function foeAt(x, y, pad = 0) {
-    for (const f of G.foes) if (!f.dead && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
-    return null;
+  function drawLasers(t) {
+    for (const l of G.lasers) {
+      if (l.warn > 0) {
+        ctx.fillStyle = `rgba(255,42,77,${0.1 + 0.12 * (Math.sin(t * 30) > 0 ? 1 : 0)})`; ctx.fillRect(l.x - l.w / 2, HUD_H, l.w, H - HUD_H);
+        ctx.fillStyle = '#ff2a4d'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', l.x, PADDLE_Y - 40);
+      } else {
+        const k = clamp(l.fire / 0.45, 0, 1);
+        ctx.fillStyle = `rgba(255,42,77,${0.75 * k})`; ctx.fillRect(l.x - l.w / 2, HUD_H, l.w, H - HUD_H);
+        ctx.fillStyle = `rgba(255,255,255,${k})`; ctx.fillRect(l.x - l.w / 6, HUD_H, l.w / 3, H - HUD_H);
+      }
+    }
   }
-  function bossAt(x, y, pad = 0) {
-    const B = G.boss; if (!B || B.dead) return false;
-    return x >= B.x - B.w / 2 - pad && x <= B.x + B.w / 2 + pad && y >= B.y - pad && y <= B.y + B.h + pad;
+  function drawBoss(t) {
+    const B = G.boss;
+    if (!B || B.dead) return;
+    const x = B.x - B.w / 2, y = B.y, hot = B.phase === 3, look = clamp((paddle.x - B.x) / 60, -3, 3);
+    const frozen = G.fx.freeze > 0, body = (c) => (B.flash > 0 ? '#ffffff' : frozen ? '#a8e6ff' : c);
+    ctx.globalCompositeOperation = 'lighter'; glow(B.x, y + B.h / 2, B.w * 0.75, hot ? '#ff2a4d' : '#ffd23f', 0.3 + 0.1 * Math.sin(t * 5), 60);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    if (B.kind === 1) {
+      ctx.fillStyle = body('#c8874a'); rr(x, y, B.w, B.h, 8); ctx.fill();
+      ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 3; ctx.beginPath();
+      ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + B.w - 6, y + B.h - 6); ctx.moveTo(x + B.w - 6, y + 6); ctx.lineTo(x + 6, y + B.h - 6); ctx.stroke();
+      rr(x + 1.5, y + 1.5, B.w - 3, B.h - 3, 7); ctx.stroke();
+      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(x + 40, y); ctx.lineTo(x + 52, y - 16); ctx.lineTo(x + 75, y - 4); ctx.lineTo(x + 98, y - 16); ctx.lineTo(x + 110, y); ctx.fill();
+      eyes(B.x, y + 22, 22, 8, look, hot ? '#ff2a4d' : '#1b1f33');
+    } else if (B.kind === 2) {
+      ctx.fillStyle = '#3d4760'; for (const ox of [-55, 55]) { rr(B.x + ox - 9, y + B.h - 6, 18, 20, 4); ctx.fill(); }
+      ctx.fillStyle = body('#8a9bb8'); rr(x, y, B.w, B.h, 12); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 10, y + 4, B.w - 20, 5);
+      ctx.fillStyle = '#26303f'; for (const ox of [-66, 66]) { ctx.beginPath(); ctx.arc(B.x + ox, y + 12, 3, 0, 7); ctx.fill(); }
+      eyes(B.x, y + 24, 20, 8, look, hot ? '#ff2a4d' : '#1b1f33');
+    } else if (B.kind === 3) {
+      ctx.fillStyle = '#2b1a40'; ctx.fillRect(x + 8, y - 4, B.w - 16, 6);
+      ctx.fillStyle = '#ffd23f'; rr(x + 24, y - 24, B.w - 48, 22, 4); ctx.fill();
+      ctx.fillStyle = '#7a5300'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', B.x, y - 12);
+      ctx.fillStyle = body('#d4a5ff'); rr(x, y, B.w, B.h, 14); ctx.fill();
+      eyes(B.x, y + 20, 20, 8, look, hot ? '#ff2a4d' : '#1b1f33');
+      // a moustache
+      ctx.fillStyle = '#2b1a40'; ctx.beginPath(); ctx.ellipse(B.x - 11, y + 36, 12, 4, -0.25, 0, 7); ctx.ellipse(B.x + 11, y + 36, 12, 4, 0.25, 0, 7); ctx.fill();
+    } else if (B.kind === 4) {
+      const wob = Math.sin(t * 6) * 5;
+      ctx.fillStyle = body('#7ee05a'); ctx.beginPath(); ctx.ellipse(B.x, y + B.h / 2 + 4, B.w / 2 + wob, B.h / 2 - wob * 0.6, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(B.x - 22, y + 16, 22, 7, -0.3, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(B.x - 22, y + 6); ctx.lineTo(B.x - 16, y - 12); ctx.lineTo(B.x - 6, y); ctx.lineTo(B.x, y - 16); ctx.lineTo(B.x + 6, y); ctx.lineTo(B.x + 16, y - 12); ctx.lineTo(B.x + 22, y + 6); ctx.fill();
+      eyes(B.x, y + 30, 20, 9, look, hot ? '#ff2a4d' : '#1b1f33');
+      ctx.strokeStyle = '#1e5a12'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(B.x, y + 44, 10, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    } else {
+      if (B.state === 'tractor') {
+        ctx.fillStyle = `rgba(126,224,255,${0.18 + 0.08 * Math.sin(t * 20)})`;
+        ctx.beginPath(); ctx.moveTo(B.x - 24, y + B.h); ctx.lineTo(B.x + 24, y + B.h); ctx.lineTo(B.x + 70, PADDLE_Y); ctx.lineTo(B.x - 70, PADDLE_Y); ctx.fill();
+      }
+      ctx.fillStyle = frozen ? '#a8e6ff' : '#bfe9ff'; ctx.beginPath(); ctx.ellipse(B.x, y + 14, 40, 22, 0, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = body('#9aa6c9'); ctx.beginPath(); ctx.ellipse(B.x, y + 26, B.w / 2, 18, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#5d6b80'; ctx.beginPath(); ctx.ellipse(B.x, y + 34, B.w / 2 - 14, 9, 0, 0, Math.PI); ctx.fill();
+      for (let i = 0; i < 5; i++) { ctx.fillStyle = Math.floor(t * 4 + i) % 2 ? '#ffd23f' : '#ff5c5c'; ctx.beginPath(); ctx.arc(B.x - 60 + i * 30, y + 28, 4, 0, 7); ctx.fill(); }
+      eyes(B.x, y + 6, 12, 6, look * 0.7, hot ? '#ff2a4d' : '#1b1f33');
+      // glasses
+      ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(B.x - 12, y + 6, 8, 0, 7); ctx.moveTo(B.x + 20, y + 6); ctx.arc(B.x + 12, y + 6, 8, 0, 7); ctx.stroke();
+    }
+    if (!B.talk) return;
+    ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(B.talk.s).width + 18, bx = clamp(B.x, tw / 2 + 6, W - tw / 2 - 6), by = y + B.h + 22;
+    ctx.globalAlpha = Math.min(1, B.talk.t * 3);
+    ctx.fillStyle = '#ffffff'; rr(bx - tw / 2, by - 12, tw, 24, 10); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(B.x - 6, by - 11); ctx.lineTo(B.x, by - 20); ctx.lineTo(B.x + 6, by - 11); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.fillText(B.talk.s, bx, by + 1);
+    ctx.globalAlpha = 1;
   }
-  function levelDone() { return G.boss ? G.boss.dead : destructibleLeft() === 0; }
 
   // ---------- level end ----------
   function finishLevel() {
@@ -1372,6 +1754,7 @@
   let shopCat = 'weap';
   function openShop() {
     mode = 'shop'; pauseBtn.style.display = 'none'; A.music(0);
+    shopRerolls = 0; shopMsg = '';
     renderShop(false);
   }
   function renderShop(keepScroll, flashId) {
@@ -1380,17 +1763,15 @@
     const open = (it) => { const s = itemState(it); return s === 'ok' || s === 'poor'; };
     const cards = ITEMS.filter((it) => it.cat === shopCat).map((it) => {
       const state = itemState(it);
-      const l = it.consumable || it.ammo || it.allAmmo ? 0 : lv(it.id);
-      const pips = it.max && it.max > 1 ? `<div class="pips">${Array.from({ length: it.max }, (_, i) => `<span class="pip ${i < l ? 'on' : ''}"></span>`).join('')}</div>` : '';
-      let desc;
-      if (it.ammo) desc = `+${Math.round(GUNS[it.ammo].pack * ammoMult())} shots. You have ${run.ammo[it.ammo]}.`;
-      else desc = it.desc(l);
+      const l = it.use ? 0 : lv(it.id);
+      const pips = it.max > 8 ? `<div class="lvl">Level ${l}</div>` : it.max > 1 ? `<div class="pips">${Array.from({ length: it.max }, (_, i) => `<span class="pip ${i < l ? 'on' : ''}"></span>`).join('')}</div>` : '';
+      const desc = it.desc(l);
       const sale = onSale(it) && open(it);
       let btn;
       if (state === 'locked') btn = `<button class="buy no" disabled>🔒 ${it.reqText || 'Locked'}</button>`;
-      else if (state === 'max') btn = `<button class="buy max" disabled>${it.id === 'life' ? 'Full' : 'Maxed'}</button>`;
+      else if (state === 'max') btn = `<button class="buy max" disabled>${it.id === 'life' ? 'Full' : it.use ? 'Sold out' : 'Maxed'}</button>`;
       else {
-        const verb = it.gunItem ? (l ? 'Faster' : 'Buy') : it.ammo || it.allAmmo ? 'Buy' : it.consumable ? 'Buy' : l ? 'Upgrade' : 'Buy';
+        const verb = l ? 'Upgrade' : 'Buy';
         btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${verb} · ${itemCost(it)} 🪙</button>`;
       }
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
@@ -1407,6 +1788,7 @@
     showOverlay(`<div class="shop">
       <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
       ${relics ? `<div class="relicbar">Relics ${relics}</div>` : ''}
+      ${shopMsg ? `<div class="shopmsg">${shopMsg}</div>` : ''}
       <div class="tabs">${tabs}</div>
       <div class="items">${cards}</div>
       <div class="shopfoot"><button class="big" data-act="next">Start level ${run.level} ▶</button></div>
@@ -1422,7 +1804,7 @@
     audio();
     const t = e.target.closest('button'); if (!t) return;
     if (t.dataset.cat) { shopCat = t.dataset.cat; sfx.tab(); renderShop(false); return; }
-    if (t.dataset.buy) { const it = ITEM_BY_ID[t.dataset.buy]; const ok = buy(it); renderShop(true, ok ? it.id : null); return; }
+    if (t.dataset.buy) { const it = ITEM_BY_ID[t.dataset.buy]; const ok = buy(it); if (ok && run.pendingRelic) showRelics(); else renderShop(true, ok ? it.id : null); return; }
     if (t.dataset.relic) { takeRelic(t.dataset.relic); return; }
     const act = t.dataset.act;
     if (act === 'newrun') { run = newRun(); lastSummary = null; store.del(SAVE_KEY); saveRun(); startLevel(); }
@@ -1434,6 +1816,7 @@
     }
     else if (act === 'next') { lastSummary = null; startLevel(); }
     else if (act === 'tallynext') afterTally();
+    else if (act === 'spin') luckySpin();
     else if (act === 'unpause') { mode = 'play'; hideOverlay(); playMusic(); }
     else if (act === 'quit') { showMenu(); }
     else if (act === 'menu') { showMenu(); }
@@ -1500,6 +1883,7 @@
     say(W / 2, H * 0.46, 'FEVER! ×2', '#ffe066', 1.8, true);
     sfx.fever(); buzz([30, 40, 30]); flashScreen('#ffe066', 0.35); A.music(2);
     for (let i = 0; i < 3; i++) after(i * 0.12, () => ring(paddle.x, PADDLE_Y, 260, RAINBOW[i * 2], 0.6, 4));
+    if (relic('twinfever')) for (const b of G.balls.slice()) if (!b.stuck) splitBall(b.x, b.y, b.vx, b.vy);
   }
   function updateFever(dt) {
     if (feverOn()) {
@@ -1523,7 +1907,7 @@
     burst(c.x, c.y, '#fff6a0', 6, 160); sfx.zap(); c.hit();
   }
   function zapRow(b) {
-    const cy = b.y + b.h / 2, dmg = 2 + Math.floor(G.level / 8) + lv('rounds');
+    const cy = b.y + b.h / 2, dmg = gunDmg(2 + Math.floor(Math.min(G.level, 50) / 8));
     G.beams.push({ y: cy, t: 0.3 });
     sfx.zap(); sfx.boom(true); flashScreen('#ffe94a', 0.18); shake(5);
     for (const o of G.bricks) if (o.alive && o !== b && o.row === b.row) hitBrick(o, dmg, false);
@@ -1532,11 +1916,38 @@
   function splitBall(x, y, vx, vy) {
     const s = ballSpeed(), base = vx == null ? 0 : Math.atan2(vx, -vy);
     for (const d of vx == null ? [-0.6, 0.6] : [0.45]) {
-      if (G.balls.length >= 15) break;
+      if (G.balls.length >= MAX_BALLS) break;
       const a = base + d, nb = makeBall(x, y, Math.sin(a) * s, -Math.cos(a) * s);
       nb.pierce = lv('pierce'); G.balls.push(nb);
     }
     ring(x, y, 46, '#ffffff', 0.35); sfx.split();
+  }
+
+  function nuke() {
+    sfx.nuke(); flashScreen('#ffffff', 0.8); shake(16); buzz([60, 30, 120]); G.hitstop = 0.1;
+    ring(W / 2, H / 2, 420, '#ff5c5c', 0.7, 6);
+    const dmg = Math.round(3 * power());
+    for (const k of G.bricks) if (k.alive && k.type !== 'stone') hitBrick(k, dmg, false);
+    for (const f of G.foes) damageFoe(f, dmg * 2);
+    if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * 0.06));
+  }
+  function rollDice(x, y) {
+    const n = 1 + ((Math.random() * 6) | 0);
+    sfx.dice(); say(x, y - 14, `🎲 ${n}: ${['', 'COINS!', 'CAPSULE!', 'BOOM!', 'SPLIT!', 'FEVER!', 'ZAP!'][n]}`, '#ffffff', 1.1);
+    if (n === 1) dropCoin(x, y, 6);
+    else if (n === 2) G.pus.push({ x, y, vy: 110, k: rollPU() });
+    else if (n === 3) explode(x, y, 60, Math.round(3 * power()), '#f4f6ff');
+    else if (n === 4) splitBall(x, y);
+    else if (n === 5) addFever(0.35);
+    else for (let i = 0; i < 4; i++) after(i * 0.12, stormStrike);
+  }
+  // Streak milestones get a shout.
+  const CHEERS = [[10, 'NICE!'], [20, 'GREAT!'], [30, 'AMAZING!'], [45, 'UNSTOPPABLE!'], [60, 'BRICKTASTIC!'], [80, 'LEGENDARY!']];
+  function cheer() {
+    const i = CHEERS.findIndex(([n]) => n === G.combo);
+    if (i < 0) return;
+    say(W / 2, H * 0.4, CHEERS[i][1], RAINBOW[(i * 2 + 2) % RAINBOW.length], 1.3, true);
+    sfx.cheer(i); flashScreen('#ffffff', 0.12);
   }
 
   // ---------- relics ----------
@@ -1551,6 +1962,12 @@
     { id: 'engine', icon: '🔥', name: 'Fever Engine', desc: 'Fever fills 40% faster and lasts 4 seconds longer.' },
     { id: 'aftershock', icon: '🌋', name: 'Aftershock', desc: 'Every 4th paddle bounce launches a free rocket.' },
     { id: 'leech', icon: '🧛', name: 'Brick Leech', desc: 'Every 60 bricks broken restores a life. Full lives pay 15 coins.' },
+    { id: 'boomerang', icon: '🪃', name: 'Boomerang', desc: 'A lost ball has a 35% chance to come back from the top.' },
+    { id: 'twinfever', icon: '👯', name: 'Fever Twins', desc: 'When a fever starts, every ball splits in two.' },
+    { id: 'bombardier', icon: '💣', name: 'Bombardier', desc: 'Gold bricks explode when they break.' },
+    { id: 'overload', icon: '🌩️', name: 'Coin Storm', desc: 'Every 30 coins you grab call down 3 lightning strikes.' },
+    { id: 'frost', icon: '🧊', name: 'Frostbite', desc: 'A ball hit freezes a monster for 2 seconds.' },
+    { id: 'seismic', icon: '🥁', name: 'Seismic Paddle', desc: 'Every 6th paddle bounce cracks every brick.' },
   ];
   const relic = (id) => !!(run && run.relics[id]);
   function relicChoices() {
@@ -1582,7 +1999,7 @@
 
   // ---------- shop deals ----------
   function rollDeals() {
-    const pool = ITEMS.filter((it) => it.base && !it.consumable && !(it.req && !it.req()) && lv(it.id) < it.max);
+    const pool = upgradePool();
     run.deals = [];
     for (let i = 0; i < 2 && pool.length; i++) run.deals.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
   }
@@ -1600,9 +2017,10 @@
       <div class="starnotes">${note(true, 'Cleared')}${note(s.time <= s.par, `Par ${s.time}s / ${s.par}s`)}${note(s.flawless, 'No ball lost')}</div>
       <div class="trows">
         ${row('Coins grabbed', s.picked)}${row('Clear bonus', s.bonus)}${row('Star bonus', s.starBonus)}${row('Piggy interest', s.interest)}
-        <div class="trow total"><span>Purse</span><b data-count="${run.coins}">0</b></div>
+        <div class="trow total"><span>Purse</span><b id="purse" data-count="${run.coins}">0</b></div>
       </div>
       <div class="tally-streak">Best streak <b>${s.combo}</b>${s.streak ? ` · streak coins <b>${s.streak}</b>` : ''}</div>
+      <div class="spin"><button class="big alt" data-act="spin">🎰 Free lucky spin</button></div>
       <button class="big gold" data-act="tallynext">${run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
     </div>`, 'see');
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
@@ -1623,8 +2041,34 @@
     }
     requestAnimationFrame(tick);
   }
+  // One free spin for every cleared level.
+  const PRIZES = [
+    { w: 34, icon: '🪙', get: () => { const n = 10 + 3 * lastSummary.level; run.coins += n; return `+${n} coins`; } },
+    { w: 12, icon: '💰', get: () => { const n = 40 + 10 * lastSummary.level; run.coins += n; return `JACKPOT! +${n} coins`; } },
+    { w: 16, icon: '🎁', get: () => { const pool = upgradePool(); if (!pool.length) { run.coins += 50; return '+50 coins'; } const it = pick(pool); run.up[it.id] = lv(it.id) + 1; return `Free upgrade: ${it.name}!`; } },
+    { w: 14, icon: '🔥', get: () => { run.fever = 0.98; return 'Fever bar filled!'; } },
+    { w: 16, icon: '🚦', get: () => { run.bonusStart = 3; return '3 power-ups for the next level!'; } },
+    { w: 8, icon: '❤️', get: () => { if (run.lives >= 6) { run.coins += 60; return '+60 coins'; } run.lives++; return '+1 life!'; } },
+  ];
+  function luckySpin() {
+    const box = ov.querySelector('.spin');
+    if (!box || lastSummary.spun) return;
+    lastSummary.spun = true;
+    let roll = Math.random() * PRIZES.reduce((a, p) => a + p.w, 0), prize = PRIZES[0];
+    for (const p of PRIZES) { roll -= p.w; if (roll <= 0) { prize = p; break; } }
+    const text = prize.get(); saveRun();
+    box.innerHTML = '<div class="reel"></div>';
+    const reel = box.firstChild; let n = 0;
+    const timer = setInterval(() => {
+      if (!reel.isConnected) { clearInterval(timer); return; }
+      if (++n < 16) { reel.textContent = PRIZES[n % PRIZES.length].icon; sfx.tick(); return; }
+      clearInterval(timer);
+      reel.textContent = prize.icon; box.insertAdjacentHTML('beforeend', `<div class="prize">${text}</div>`); sfx.jackpot();
+      const purse = ov.querySelector('#purse'); if (purse) { purse.dataset.count = run.coins; purse.textContent = run.coins; }
+    }, 80);
+  }
   function afterTally() {
-    if (lastSummary && lastSummary.level === LEVELS.length && !run.won) { run.won = true; saveRun(); showVictory(); return; }
+    if (lastSummary && lastSummary.level === LEVELS.length && !run.champion) { run.champion = true; saveRun(); showVictory(); return; }
     if (run.pendingRelic) { showRelics(); return; }
     openShop();
   }
@@ -1632,8 +2076,8 @@
     mode = 'victory'; sfx.clear();
     const st = run.stats;
     showOverlay(`<div class="center tally">
-      <div class="tally-sub">THE BAZAAR IS YOURS</div>
-      <div class="tally-title">THE BARON<br>IS BROKE!</div>
+      <div class="tally-sub">THE AUDIT IS OVER</div>
+      <div class="tally-title">THE BAZAAR<br>IS YOURS!</div>
       <div class="stat">Score <b>${run.score}</b> · Stars <b>${st.stars}</b>/${LEVELS.length * 3}</div>
       <div class="stat">Bricks smashed <b>${st.bricks}</b> · Monsters popped <b>${st.foes}</b></div>
       <div class="stat">Coins earned <b>${st.coins}</b> · Best streak <b>${st.streak}</b></div>
@@ -1753,9 +2197,19 @@
         c.moveTo(mx, my - 7); c.lineTo(mx + 7, my); c.lineTo(mx, my + 7); c.lineTo(mx - 7, my); c.closePath(); c.fill();
       } else if (type === 'mystery') {
         c.fillStyle = '#4a0f3a'; c.font = 'bold 15px system-ui, sans-serif'; c.fillText('?', mx, my + 1);
+      } else if (type === 'tnt') {
+        c.fillStyle = '#5a1500'; c.font = 'bold 11px system-ui, sans-serif'; c.fillText('TNT', mx, my + 1);
+      } else if (type === 'chest') {
+        c.fillStyle = '#ffd23f'; c.fillRect(1, my - 2, BW - 2, 4);
+        c.fillStyle = '#5a3b00'; c.beginPath(); c.arc(mx, my, 3.5, 0, TAU); c.fill();
+      } else if (type === 'dice') {
+        c.fillStyle = '#1b1f33';
+        for (const [dx, dy] of [[-9, -4], [9, -4], [0, 0], [-9, 4], [9, 4]]) { c.beginPath(); c.arc(mx + dx, my + dy + 0.5, 2, 0, TAU); c.fill(); }
       }
     });
   }
+  // 1854 -> 1.9k, so that a number fits on a brick
+  const short = (n) => (n < 1000 ? n : n < 10000 ? (n / 1000).toFixed(1) + 'k' : Math.round(n / 1000) + 'k');
   const CRACKS = [[[8, 0], [13, 7], [9, 12], [15, 20]], [[32, 0], [27, 8], [33, 13], [29, 20]], [[0, 9], [10, 11], [20, 8], [30, 12], [44, 10]]];
   const INTRO = 0.35; // seconds a brick takes to drop into place
   function drawBricks(t) {
@@ -1769,7 +2223,7 @@
       ctx.globalAlpha = it < 1 ? Math.min(1, it * 2) : 1;
       ctx.drawImage(brickSprite(b.type, brickColor(b)), cx - w / 2, cy - h / 2, w, h);
       if ((b.type === 'normal' && b.maxhp > 1) || b.type === 'steel') {
-        ctx.fillStyle = b.type === 'steel' ? '#26303f' : 'rgba(0,0,0,0.45)'; ctx.fillText(b.hp, cx, cy + 1);
+        ctx.fillStyle = b.type === 'steel' ? '#26303f' : 'rgba(0,0,0,0.45)'; ctx.fillText(short(b.hp), cx, cy + 1);
       }
       if (b.type !== 'stone' && b.hp < b.maxhp) {
         const n = Math.min(3, 1 + Math.floor((1 - b.hp / b.maxhp) * 3));
@@ -1790,6 +2244,9 @@
       else if (b.type === 'prism') glow(cx, cy, 18, rainbow(t * 0.5, b.col), 0.4);
       else if (b.type === 'mystery') glow(cx, cy, 16, '#ff7ad9', 0.3 + 0.2 * Math.sin(t * 5 + b.col));
       else if (b.type === 'hive') glow(cx, cy, 14, '#d15cff', 0.2 + 0.4 * clamp(1 - b.spawnT / 9, 0, 1));
+      else if (b.type === 'tnt') glow(cx, cy, 22 + 5 * Math.sin(t * 8 + b.col), '#ff8a3d', 0.55);
+      else if (b.type === 'chest') glow(cx, cy, 14, '#ffd23f', 0.25 + 0.2 * Math.sin(t * 4 + b.col));
+      else if (b.type === 'dice') glow(cx, cy, 14, rainbow(t * 0.4, b.col), 0.35);
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
@@ -1822,7 +2279,7 @@
     }
   }
   function ballGlowColor(b, t) {
-    return G.fx.fire > 0 ? '#ff8a3d' : feverOn() ? rainbow(t, b.r0) : b.pierce > 0 ? '#ffb36b' : '#7fe9ff';
+    return G.fx.fire > 0 ? '#ff8a3d' : G.fx.gold > 0 ? '#ffd23f' : feverOn() ? rainbow(t, b.r0) : b.pierce > 0 ? '#ffb36b' : '#7fe9ff';
   }
   function drawBall(b) {
     const fire = G.fx.fire > 0;
@@ -1891,8 +2348,25 @@
       }
     }
   }
+  function drawSaw(s) {
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.spin);
+    ctx.fillStyle = '#dfe6f2'; ctx.beginPath();
+    for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU, r = i % 2 ? s.r : s.r * 0.72; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#8b93b8'; ctx.beginPath(); ctx.arc(0, 0, s.r * 0.3, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  function drawDuck(s) {
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.sin(s.spin) * 0.5);
+    ctx.fillStyle = '#ffe94a'; ctx.beginPath(); ctx.ellipse(0, 2, 10, 7, 0, 0, TAU); ctx.arc(6, -6, 5.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ff9a3d'; ctx.beginPath(); ctx.moveTo(10, -7); ctx.lineTo(16, -5); ctx.lineTo(10, -3); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(7.5, -7.5, 1.2, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
   function drawShots() {
     for (const s of G.shots) {
+      if (s.k === 'saw') { drawSaw(s); continue; }
+      if (s.k === 'duck') { drawDuck(s); continue; }
       if (s.k === 'laser') { ctx.fillStyle = '#ff7cf0'; ctx.fillRect(s.x - 2, s.y - 14, 4, 22); ctx.fillStyle = '#ffffff'; ctx.fillRect(s.x - 0.75, s.y - 12, 1.5, 18); }
       else if (s.k === 'rocket') {
         ctx.fillStyle = '#ffb14a'; rr(s.x - 3.5, s.y - 10, 7, 16, 3); ctx.fill();
@@ -1974,7 +2448,8 @@
     ctx.fillText('NET ×' + G.net, W - 8, NET_Y - 10); ctx.globalAlpha = 1;
   }
 
-  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄']];
+  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A']];
+  const fxColor = (k) => (PU[k] || PU.ammo).c;
   function drawHUD(t) {
     const g = ctx.createLinearGradient(0, 0, 0, HUD_H);
     g.addColorStop(0, 'rgba(8,10,26,0.94)'); g.addColorStop(1, 'rgba(8,10,26,0.74)');
@@ -1992,14 +2467,17 @@
     drawCoin({ x: 70, y: 19, spin: 0, val: 0 });
     ctx.fillStyle = '#ffd84a'; ctx.font = `bold ${Math.round(20 * (1 + hud.coinPop * 0.25))}px system-ui, sans-serif`; ctx.fillText(Math.round(hud.coins), 82, 20);
     ctx.font = '15px system-ui, sans-serif'; ctx.fillStyle = '#ff5c8a'; ctx.fillText('♥'.repeat(Math.max(0, run.lives)), 62, 41);
-    // ammo
-    let ax = 180;
-    ctx.font = 'bold 12px system-ui, sans-serif';
+    // guns: the bar is the clip, or the reload progress in grey
+    let ax = 176;
+    ctx.font = '13px system-ui, sans-serif';
     for (const gk in GUNS) {
       if (!lv('gun_' + gk)) continue;
-      ctx.fillStyle = run.ammo[gk] > 0 ? GUNS[gk].color : '#5a6080';
-      ctx.fillText(GUNS[gk].icon + run.ammo[gk], ax, 19); ax += 50;
-      if (ax > 400) break;
+      const loading = G.reload[gk] > 0;
+      ctx.globalAlpha = loading ? 0.4 : 1; ctx.fillStyle = '#ffffff'; ctx.fillText(GUNS[gk].icon, ax + 2, 15); ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(ax, 25, 24, 3);
+      ctx.fillStyle = loading ? '#8b93b8' : GUNS[gk].color;
+      ctx.fillRect(ax, 25, 24 * clamp(loading ? 1 - G.reload[gk] / reloadTime(gk) : G.clip[gk] / clipSize(gk), 0, 1), 3);
+      ax += 33;
     }
     // active capsules: a dial per effect
     let tx = 190;
@@ -2007,9 +2485,9 @@
     for (const [k, l] of FX_HUD) {
       if (G.fx[k] <= 0) continue;
       ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.beginPath(); ctx.arc(tx, 40, 9, 0, TAU); ctx.fill();
-      ctx.strokeStyle = PU[k].c; ctx.beginPath(); ctx.arc(tx, 40, 9, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(G.fx[k] / (G.fxMax[k] || 1), 0, 1)); ctx.stroke();
-      ctx.fillStyle = PU[k].c; ctx.fillText(l, tx, 40.5);
-      tx += 25;
+      ctx.strokeStyle = fxColor(k); ctx.beginPath(); ctx.arc(tx, 40, 9, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(G.fx[k] / (G.fxMax[k] || 1), 0, 1)); ctx.stroke();
+      ctx.fillStyle = fxColor(k); ctx.fillText(l, tx, 40.5);
+      tx += 23;
     }
     ctx.textAlign = 'left'; ctx.font = 'bold 12px system-ui, sans-serif';
     if (G.shield > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('🛡×' + G.shield, tx - 6, 41); }
@@ -2041,7 +2519,7 @@
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; rr(10, y, W - 20, 11, 5); ctx.fill();
     ctx.fillStyle = B.hp < B.maxhp * 0.4 ? '#ff2a4d' : '#ffd23f'; rr(11, y + 1, Math.max(8, (W - 22) * Math.max(0, B.hp / B.maxhp)), 9, 4); ctx.fill();
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(BOSS_NAMES[B.kind], W / 2, y + 6);
+    ctx.fillText(BOSSES[B.kind].name, W / 2, y + 6);
   }
   function drawBanner(t) {
     if (mode !== 'play') return;
@@ -2053,6 +2531,10 @@
       ctx.fillStyle = '#ffffff'; ctx.font = '900 42px system-ui, sans-serif'; ctx.fillText('LEVEL ' + G.level, 0, 0);
       ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.fillText(G.def.name, 0, 34);
       if (G.def.tip) { ctx.fillStyle = '#c9d0ff'; ctx.font = '15px system-ui, sans-serif'; wrapText(G.def.tip, 0, 62, 380, 20); }
+      if (G.special) {
+        ctx.fillStyle = '#ff7ad9'; ctx.font = 'bold 17px system-ui, sans-serif'; ctx.fillText("TODAY'S SPECIAL: " + G.special.name, 0, -66);
+        ctx.fillStyle = '#ffd0f0'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(G.special.text, 0, -44);
+      }
       ctx.restore(); ctx.globalAlpha = 1;
     }
     if (G.balls.some((b) => b.stuck && b.serve)) {
