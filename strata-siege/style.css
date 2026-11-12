@@ -250,3 +250,5 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .entry.letter { background: #f6e7c1; transform: rotate(-0.4deg); }
 .entry.letter span { color: #3a2a12; }
 .entry.letter .sm { color: #8a6a3a; text-align: right; font-style: italic; }
+.alm .tbody { justify-content: flex-start; overflow: hidden; }
+.alm .almpage { flex: 1 1 0; min-height: 0; overflow-y: auto; width: 100%; -webkit-overflow-scrolling: touch; }
