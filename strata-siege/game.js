@@ -1613,7 +1613,7 @@
     if (n >= FROM.heat) { if (G.leaks === 0) run.heat = Math.min(5, run.heat + 1); else if (G.leaks >= 4) run.heat = Math.max(0, run.heat - 1); }
     summary = { n, name: G.name, stars, rows, total, leaks: G.leaks, hearts: G.hearts, kills: G.kills, digs: G.digs, loot: G.loot, time: G.time, usedSky: G.used.sky, usedDig: G.used.dig,
       heat0, heat1: run.heat, boss, lode: G.lodeFound, victory: n === CAMPAIGN, dare: dareNote };
-    summary.news = gazette({ level: n, leaks: G.leaks, hearts: G.hearts, kills: G.kills, stomps: G.stompN, swats: G.swatN, built: G.builtN, digs: G.digs, loot: G.loot, hazards: G.hazN, boltKills: G.boltKills, combos: G.combos, early: G.early, boss: boss ? BOSS_NAMES[boss] : null, flawless: G.leaks === 0, coins: Math.floor(G.coins) });
+    run.news = summary.news = gazette({ level: n, leaks: G.leaks, hearts: G.hearts, kills: G.kills, stomps: G.stompN, swats: G.swatN, built: G.builtN, digs: G.digs, loot: G.loot, hazards: G.hazN, boltKills: G.boltKills, combos: G.combos, early: G.early, boss: boss ? BOSS_NAMES[boss] : null, flawless: G.leaks === 0, coins: Math.floor(G.coins) });
     pendingRelics = (boss ? 1 : 0) + (G.lodeFound ? 1 : 0);
     run.level++; run.gems += total; run.stars += stars; run.score += total;
     saveRun(); recordBest(); saveMeta();
@@ -1710,7 +1710,7 @@
     const all = VO.gazette || [], fit = [], any = [];
     for (const q of all) { try { if (new Function('s', `return (${q.when});`)(z)) (String(q.when).trim() === 'true' ? any : fit).push(q); } catch (e) { /* a bad rule prints nothing */ } }
     const q = fit.length && (Math.random() < 0.85 || !any.length) ? pick(fit) : any.length ? pick(any) : null;
-    return q ? q.text.replace(/\{(\w+)\}/g, (m, k) => (z[k] == null ? '' : z[k])) : '';
+    return q ? q.text.replace(/\{(\w+)\}/g, (m, k) => (z[k] == null ? '' : z[k])).toUpperCase() : '';
   }
   function showMenu() {
     mode = 'menu'; screen = 'menu'; G = null; pauseBtn.style.display = 'none'; closePop(); A.music(0);
@@ -1741,7 +1741,7 @@
       <div class="stat">Level <b>${G.n}</b>: ${G.name}</div>
       ${relicBar()}
       ${run.dare && DARE_BY_ID[run.dare] ? `<div class="chip hot">Dare: ${DARE_BY_ID[run.dare].text}</div>` : ''}
-      ${keeperBubble(keeperLine('gazette') || keeperLine('tips'), 0)}
+      ${run.news ? `<div class="gazette"><b>The Garden Gazette</b><span>${esc(run.news)}</span></div>` : keeperBubble(keeperLine('gazette') || keeperLine('tips'), 0)}
       <button class="big" data-act="resume">Resume</button>
       <button class="big alt" data-act="restart">Restart level</button>
       ${LORE.premise ? '<button class="big alt" data-act="almanac">📖 The Garden Almanac</button>' : ''}
@@ -2120,6 +2120,12 @@
       return;
     }
     if (sy < HUD_H) return;
+    // who's that? a tap on the next-wave strip introduces the guest
+    if (G.layer === 'ground' && canCallWave() && sy < HUD_H + 52 && LORE.foes) {
+      const kinds = [...new Set(G.waves[G.waveIdx])].slice(0, 6), x0 = W / 2 - (kinds.length - 1) * 23 + 20;
+      const q = Math.round((sx - x0 + 6) / 46);
+      if (sx > x0 - 70 && q < kinds.length) { const k = kinds[clamp(q, 0, kinds.length - 1)], L = LORE.foes[k]; if (L) { toast(`${L.name || k}: ${L.bio}`); sfx.tab(); } return; }
+    }
     if (G.layer !== 'ground' && ringing() && inRect(BELL, sx, sy)) { swat(); return; }
     const vx = sx / ZOOM, vy = (sy - VIEW_Y0) / ZOOM;
     if (G.layer === 'ground') tapGround(vx, vy);
