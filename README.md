@@ -23,9 +23,10 @@ After a change to a game, increase the `?v=` number of its scripts and styleshee
 | `audio.js` | Synthesised sound effects and generative music. Effects take their pitch from the chord that the music plays. The music has five channels; the menu and the shop fade to an ambient mix. The music follows the game through `fever(on)`, `streak(n)`, `rush(secondsLeft)` and `beat()`. The effects that fire most often play the next note of a riff, on the grid of the music, each family with its own instrument; big moments end on the tonic. Each level has one of six styles (mode, tempo, swing). |
 | `snail.js` | The lines of Mortimer, the snail who keeps the shop. Data only: `BB_SNAIL.lines[key]` is a list, and the game picks one line at random. |
 | `minigames.js`, `minigames.css` | The arcade mini-games of the shop (`BBMini.list`, `BBMini.play`). They do not use game.js. |
+| `rounds.js` | Bonus rounds that are other games (pachinko, a salad tower, a kart lap, karaoke). Each is a plug-in: it talks to the game only through the `api` object of `roundApi` in game.js. |
 | `style.css` | Menus, shop, results screens |
 
-`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`. To go to a level: `__bb.run.level = 40; __bb.next()`.
+`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`, `critter(kind)`, `seals(n)`, `special(id)`, `set(id)`, `flare(n)`, `loose()`, `starRun(relicId)`, `daily()`, `victory()`, `tap(x, y)`. To go to a level: `__bb.run.level = 40; __bb.next()`.
 
 A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, fever, sales, streaks, blimps, the clock, the sweet spot, heat, specials, the smash) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
 
@@ -59,6 +60,17 @@ A dev check for these rules is not in the repository; the level numbers of the `
 The results screen (`showTally`) shows two sums, one line of the snail and a few one-line notes. Its button is outside the part that scrolls. Keep it short: put new information in a note, not in a new row.
 
 The shop has an arcade tab: each mini-game of `BBMini.list` is a shop item whose price is the stake (`startMini`). After every third level from `FORK_FROM`, the snail offers a fork in the road (`showFork`).
+
+Things that a late run earns or meets (each has a `*_FROM` constant for its first level):
+
+*   **Creatures:** frogs that take the ball and spit it back as a fireball, ledge walkers that fall when their brick breaks (the paddle can catch them), peekaboos behind bricks, pigeons, the snail on his lunch break, and a boss that looks in from the side (`G.cameo`). `crowd(from, share, max)` sets how many come. Turtle bricks (`U` in a map) take damage only from above and from the side.
+*   **Bazaar Seals:** a second currency that only skill pays (three stars, a dare, a boss, three DING ×3 chains in one level). The "Upstairs" tab sells for seals: a relic reroll, a price lock, and relic fusions (`FUSIONS`: two relics become one with a new rule). Seals do not follow the price index.
+*   **Item sets** (`SETS`): a full set of upgrades at their maximum gives a bonus.
+*   **Spotter's Flare, the Ball Boy, the parrot:** items that need a tap, a wage or paddle bounces to do their work.
+*   **Specials:** LANDSLIDE moves bricks down into gaps (`row` stays correct); INSOMNIA MARKET and CUCKOO follow the real clock.
+*   **After level 50:** a new run with a star keeps one relic and starts at a higher Heat (`meta.stars`). **Bazaar of the Day** is a run of 10 levels with rules from the date; it does not touch the normal save.
+
+To add a bonus round, add an entry to `window.BBRounds` in rounds.js; game.js needs no change. A round pays through `api.coin` and `api.pay`, and `ROUND_COINS` limits one round.
 
 Data that outlives a run is in `meta` (`localStorage` key `brickbazaar.meta.v1`): the sticker album (`STICKERS`, `sticker(id)`) and the lifetime totals. Stickers open starting kits (`KITS`). To reset them, remove that key.
 

@@ -92,8 +92,12 @@
   const CATS = [
     { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
     { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Coins' }, { id: 'blimp', name: '🎈 Blimps' },
-    { id: 'wild', name: '🎲 Wild' }, { id: 'arcade', name: '🎪 Arcade' }, { id: 'dark', name: '🌶️ Spicy' },
+    { id: 'wild', name: '🎲 Wild' }, { id: 'arcade', name: '🎪 Arcade' }, { id: 'dark', name: '🌶️ Spicy' }, { id: 'up', name: '⬆️ Upstairs' },
   ];
+  // The late game: from these levels the shop has seals, sets and more gear.
+  const SEAL_FROM = 26, SET_FROM = 26, FLARE_FROM = 26, BOY_FROM = 26;
+  const FLARE_MAX = 3, FLARE_Y = 400; // flares: most charges, and the lowest y where a tap plants one
+  const BOY_S = 0.8, BOY_SAVES = 2, BOY_WAGE = 0.06; // ball boy: the tap window, saves per level, wage share of the clear bonus
   // at = the level from which the shop stocks the item. A new player sees three items; two or three more arrive per level.
   // Normal items are upgrades: level lv(id), cost base * grow^level, up to max.
   // Wild items have their own price() and use(); full() says when they are not for sale.
@@ -130,6 +134,8 @@
       desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => DRONE_IDS.some((d) => lv(d) > 0), reqText: 'Needs a drone' },
     { id: 'd_ufo', at: 34, cat: 'drone', icon: '🛸', name: 'Abductor', max: 2, base: 900, grow: 2.5,
       desc: (l) => `A saucer that beams away half of a brick every few seconds. Owned: ${l}/2.` },
+    { id: 'd_parrot', at: 15, cat: 'drone', icon: '🦜', name: 'Polly', max: 1, base: 600, grow: 1,
+      desc: () => `Rides on your paddle. Every ${PARROT_EVERY}th paddle bounce she pecks the lowest brick. She repeats what bosses say, and it hurts them.` },
 
     { id: 'width', at: 2, cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
       desc: () => 'Paddle +12% wider.' },
@@ -137,10 +143,14 @@
       desc: (l) => (l ? 'Bigger, stronger pull.' : 'Pulls falling coins toward the paddle.') + (l >= 2 ? ' Now pulls capsules too.' : ' Level 3 also pulls capsules.') },
     { id: 'net', at: 4, cat: 'gear', icon: '🥅', name: 'Safety Net', max: 4, base: 70, grow: 1.8,
       desc: (l) => `A barrier that bounces back ${l + 1} missed ball${l ? 's' : ''} each level.` },
-    { id: 'aim', at: 5, cat: 'gear', icon: '🎯', name: 'Aim Sight', max: 1, base: 25, grow: 1,
-      desc: () => 'Shows the launch path before you tap.' },
+    { id: 'aim', at: 5, cat: 'gear', icon: '🔭', name: 'Trick Sight', max: 1, base: 25, grow: 1,
+      desc: () => 'Shows the launch path before you tap, and where the ball goes after its first bounce.' },
     { id: 'shield', at: 10, cat: 'gear', icon: '🛡️', name: 'Deflector', max: 3, base: 70, grow: 1.7,
-      desc: (l) => `Blocks ${l + 1} enemy hit${l ? 's' : ''} each level, so your paddle never gets stunned.` },
+      desc: (l) => `Blocks ${l + 1} enemy hit${l ? 's' : ''} each level, so your paddle never gets stunned. A blocked shot flies back up and hits what it meets.` },
+    { id: 'flare', at: FLARE_FROM, cat: 'gear', icon: '🚨', name: "Spotter's Flare", max: 1, base: 1200, grow: 1,
+      desc: () => `Each sweet-spot ding gives a flare, up to ${FLARE_MAX}. Tap a brick in the top half to mark it: rockets, ducks, Arc Coil and Hunter Bees go for it first.` },
+    { id: 'ballboy', at: BOY_FROM, cat: 'gear', icon: '🧢', name: 'Ball Boy', max: 1, base: 800, grow: 1,
+      desc: () => `When your last ball is lost, tap within ${BOY_S} s and he throws it back, ${BOY_SAVES} times per level. Wage: ${BOY_WAGE * 100}% of each clear bonus. If you cannot pay, he quits.` },
     { id: 'second', at: 15, cat: 'gear', icon: '🌬️', name: 'Second Wind', max: 2, base: 150, grow: 2,
       desc: (l) => `Losing your last ball costs no life, ${l + 1} time${l ? 's' : ''} per level.` },
     { id: 'starter', at: 11, cat: 'gear', icon: '🚦', name: 'Head Start', max: 2, base: 80, grow: 1.9,
@@ -175,8 +185,8 @@
       desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * piggyCap()}).` },
     { id: 'streak', at: 8, cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 70, grow: 2,
       desc: (l) => `Streak payouts are ${(l + 1) * 25}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
-    { id: 'foebounty', at: 9, cat: 'eco', icon: '🎯', name: 'Monster Bounty', max: 3, base: 70, grow: 1.7,
-      desc: (l) => `Enemies drop +${l + 1} coin${l ? 's' : ''}, bosses drop ${(l + 1) * 25}% more.` },
+    { id: 'foebounty', at: 9, cat: 'eco', icon: '🏆', name: 'Trophy Hunter', max: 3, base: 70, grow: 1.7,
+      desc: (l) => `The first ${l ? l + 1 + ' monsters' : 'monster'} of each kind that you pop in a level drop${l ? '' : 's'} a capsule.` },
     { id: 'bounty', at: 4, cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 15}%.` },
     { id: 'bonds', at: 20, cat: 'eco', icon: '📜', name: 'Bazaar Bonds', max: 8, base: 220, grow: 1.45,
@@ -241,13 +251,36 @@
       use: () => { run.lives--; run.pendingRelic = true; } },
     { id: 'edge', at: 30, cat: 'dark', icon: '🗡️', name: 'Double Edge', max: 3, base: 500, grow: 2.2,
       desc: (l) => `All damage +25%, but the clock is ${EDGE_S} seconds shorter.${l ? ` Now +${l * 25}%, −${l * EDGE_S} s.` : ''}` },
+
+    // Upstairs: paid in seals (seals = the price). It opens with the first seal.
+    { id: 'u_reroll', at: SEAL_FROM, cat: 'up', icon: '🔄', name: 'Relic Reroll', seals: 1, full: () => !!run.reroll,
+      desc: () => (run.reroll ? 'Ready: your next relic choice can show three other relics.' : 'Your next relic choice can show three other relics.'),
+      use: () => { run.reroll = true; return '🔄 Your next relic choice has a reroll.'; } },
+    { id: 'u_lock', at: SEAL_FROM, cat: 'up', icon: '🔒', name: 'Price Lock', seals: 1,
+      full: () => (!!run.lock && run.lock.at === run.level) || !ITEMS.some((i) => i.base && itemState(i) !== 'locked' && itemState(i) !== 'max'),
+      desc: () => 'Pick one upgrade: for this visit it costs its base price, with no price index.',
+      use: () => { run.lock = { id: null, at: run.level }; return '🔒 Pick an upgrade to lock its price.'; } },
   ];
+  // Relic fusion (Upstairs): two owned relics become one. keep = the fused relic also does what its two parts did.
+  const FUSE_SEALS = 3;
+  const FUSIONS = [
+    { id: 'tectonic', a: 'aftershock', b: 'seismic', keep: false, icon: '🗻', name: 'Tectonic', desc: 'Every 4th paddle bounce cracks the bricks in a cone above the paddle, with half the ball damage.' },
+    { id: 'brood', a: 'hydra', b: 'twinfever', keep: true, icon: '🪺', name: 'Brood', desc: 'Hydra Ball and Fever Twins. A ball from a split is a fireball for 2 seconds.' },
+    { id: 'motherlode', a: 'chain', b: 'bombardier', keep: true, icon: '⛏️', name: 'Mother Lode', desc: 'Chain Reaction and Bombardier. A gold brick that breaks blasts the gold and bomb bricks next to it.' },
+    { id: 'payday', a: 'coinshot', b: 'overload', keep: true, icon: '💵', name: 'Payday', desc: 'Coin Cannon and Coin Storm. The free shots fly to the nearest gold brick or chest.' },
+    { id: 'mirrorspin', a: 'mirror', b: 'spin', keep: true, icon: '🪩', name: 'Mirror Spin', desc: 'Mirror Paddle and Curveball. The ghost paddle gives spin too, the other way.' },
+    { id: 'rebound', a: 'bank', b: 'popcorn', keep: true, icon: '🏓', name: 'Rebound', desc: 'Bank Shot and Popcorn. A banked hit also hits one brick next to it with ball damage.' },
+  ];
+  for (const f of FUSIONS) {
+    ITEMS.push({ id: 'fuse_' + f.id, at: SEAL_FROM, cat: 'up', icon: '⚗️', name: 'Fuse: ' + f.name, seals: FUSE_SEALS, show: () => !!run.relics[f.a] && !!run.relics[f.b],
+      desc: () => `${relicById(f.a).icon} + ${relicById(f.b).icon} = ${f.icon} ${f.desc}`, use: () => fuseRelics(f) });
+  }
   // The arcade: the mini-games of minigames.js (window.BBMini) as shop items. The price is the stake, the game pays a
   // multiple of it, and each game can be played once per shop visit.
   const ARCADE_FROM = { shell: 12, race: 15, whack: 18 };
   const arcadeDone = (id) => !!(run.arcade && run.arcade.at === run.level && run.arcade[id]);
   for (const g of window.BBMini ? window.BBMini.list : []) {
-    ITEMS.push({ id: 'mg_' + g.id, at: ARCADE_FROM[g.id] || 20, cat: 'arcade', icon: g.icon, name: g.name, verb: 'Play', flat: true, price: () => Math.round(betStake() * priceIndex()), full: () => arcadeDone(g.id),
+    ITEMS.push({ id: 'mg_' + g.id, at: ARCADE_FROM[g.id] || Math.max(20, g.at || 0), cat: 'arcade', icon: g.icon, name: g.name, verb: 'Play', flat: true, price: () => Math.round(betStake() * priceIndex()), full: () => arcadeDone(g.id),
       desc: () => `${g.blurb} The price is your stake. One game per visit.`, use: () => { run.pendingMini = g.id; } });
   }
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
@@ -308,10 +341,19 @@
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
   const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, smash: 16 };
   // The first level on which each capsule can drop.
-  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, storm: 14, gold: 17, nuke: 20 };
-  const unlocked = (it) => run.level >= it.at || lv(it.id) > 0;
+  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, storm: 14, gold: 17, nuke: 20, potato: 28 };
+  const unlocked = (it) => (run.level >= it.at || lv(it.id) > 0) && (!it.seals || run.sealsEver > 0) && (!it.show || it.show());
   // upgrades that can still go up: the pool for sales and the Mystery Box
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
+  // Item sets: from SET_FROM, all items of a set at their maximum add one rule.
+  const SETS = [
+    { id: 'gunsmith', icon: '🔫', name: 'Gunsmith', items: ['belt', 'factory', 'recycler', 'echo'], text: 'The last shot of each clip fires three times.' },
+    { id: 'baron', icon: '🎩', name: 'Blimp Baron', items: ['bait', 'cargo', 'hull', 'goldtix'], text: 'Every fifth blimp that you pop calls a convoy.' },
+    { id: 'juggler', icon: '🤹', name: 'Juggler', items: ['twin', 'dmg', 'crit'], text: 'A sweet-spot hit gives that ball +1 pierce until its next bounce.' },
+  ];
+  const setHave = (s) => s.items.filter((id) => lv(id) >= maxOf(ITEM_BY_ID[id])).length;
+  const setOn = (s) => run.level >= SET_FROM && setHave(s) === s.items.length;
+  const setById = (id) => setOn(SETS.find((s) => s.id === id));
 
   // Prices follow the player's wealth, as Heat follows the player's speed. refCoins(level) is the money that an
   // average run has earned when it reaches that level; earned() is what this run has earned. A richer run pays more
@@ -322,8 +364,11 @@
   const refCoins = (n) => 3.1 * Math.pow(n, 2.75);
   const priceIndex = () => (run.level < PRICE_FROM ? 1 : clamp(Math.pow(earned() / refCoins(run.level), PRICE_K), 0.7, 99));
   function itemCost(it) {
+    if (it.seals) return it.seals;
     if (it.price) return Math.round(it.price() * (it.flat ? 1 : priceIndex()));
-    return Math.round(it.base * Math.pow(it.grow, lv(it.id)) * (onSale(it) ? SALE : 1) * haggleF(it) * priceIndex());
+    const base = it.base * Math.pow(it.grow, lv(it.id)), cost = Math.round(base * (onSale(it) ? SALE : 1) * haggleF(it) * priceIndex());
+    // a lock never makes the price higher
+    return priceLocked(it) ? Math.min(cost, Math.round(base)) : cost;
   }
   // Two random upgrades are discounted on every shop visit.
   const SALE = 0.7;
@@ -331,7 +376,15 @@
   function itemState(it) {
     if (!unlocked(it) || (it.req && !it.req())) return 'locked';
     if (it.use ? it.full && it.full() : lv(it.id) >= maxOf(it)) return 'max';
-    return run.coins >= itemCost(it) ? 'ok' : 'poor';
+    return (it.seals ? run.seals : run.coins) >= itemCost(it) ? 'ok' : 'poor';
+  }
+  const priceLocked = (it) => !!run.lock && run.lock.at === run.level && run.lock.id === it.id;
+  // The Price Lock waits for the player to pick an upgrade.
+  const lockArmed = () => !!run.lock && run.lock.at === run.level && !run.lock.id;
+  function lockPick(it) {
+    if (!it.base || itemState(it) === 'locked' || itemState(it) === 'max') { quip('haggleNo'); sfx.nope(); return; }
+    run.lock.id = it.id; saveRun();
+    shopMsg = `🔒 ${it.icon} ${it.name} costs its base price for this visit.`; sfx.jackpot();
   }
   let shopMsg = '', shopRerolls = 0, shopLevel = 0;
   // Mortimer Mortar keeps the Bazaar. He is a snail. His lines change nothing in the game.
@@ -411,11 +464,14 @@
   }
   function buy(it) {
     if (itemState(it) !== 'ok') { sfx.nope(); quip('poor'); return false; }
-    const sale = onSale(it), cost = itemCost(it);
-    run.coins -= cost; run.spent = (run.spent || 0) + cost; lastPaid = cost;
+    const sale = onSale(it), cost = itemCost(it), setsBefore = SETS.filter(setOn);
+    if (it.seals) run.seals -= cost;
+    else { run.coins -= cost; run.spent = (run.spent || 0) + cost; lastPaid = cost; }
     shopMsg = ''; lastBox = null;
     if (it.use) shopMsg = it.use() || '';
-    else run.up[it.id] = lv(it.id) + 1;
+    else { run.up[it.id] = lv(it.id) + 1; if (priceLocked(it)) run.lock.id = '-'; }
+    const set = SETS.find((s) => setOn(s) && !setsBefore.includes(s));
+    if (set) shopMsg = `🧩 Set complete: ${set.icon} ${set.name}! ${set.text}`;
     quip(QUIPS[it.id] ? it.id : !it.use && lv(it.id) >= maxOf(it) ? 'maxed' : sale ? 'sale' : it.gunItem ? 'gunBuy' : it.cat === 'drone' ? 'droneBuy'
       : it.cat === 'blimp' ? 'blimpBuy' : it.id === 'relicbuy' ? 'relicBuy' : 'buy');
     sfx.buy(); buzz(12); saveRun(); return true;
@@ -427,10 +483,10 @@
     return { level: 1, coins: 0, lives: 3, up: {}, lifeBought: 0, relicsBought: 0, score: 0,
       relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats(),
       heat: 0, bet: 0, offer: null, nextSpecial: null, safariAt: 0, pendingSafari: false,
-      spent: 0, kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0 };
+      spent: 0, kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0, seals: 0, sealsEver: 0 };
   }
   const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0, blimps: 0 });
-  function saveRun() { if (run) store.set(SAVE_KEY, run); }
+  function saveRun() { if (run && !run.daily) store.set(SAVE_KEY, run); }
   function loadRun() {
     const r = store.get(SAVE_KEY, null);
     if (!r || typeof r.level !== 'number') return null;
@@ -444,6 +500,7 @@
       for (const it of ITEMS) for (let i = 0; it.base && i < (r.up[it.id] || 0); i++) r.spent += Math.round(it.base * Math.pow(it.grow, i));
     }
     r.heat = r.heat || 0; r.bet = r.bet || 0; r.tips = r.tips || 0; r.banked = r.banked || {}; r.star3 = r.star3 || 0;
+    r.seals = r.seals || 0; r.sealsEver = r.sealsEver || 0;
     // The Big Ball upgrade is gone. A save that has it gets the coins back.
     for (let i = 0; i < (r.up.bigball || 0); i++) r.coins += Math.round(85 * Math.pow(1.8, i));
     delete r.up.bigball;
@@ -453,7 +510,7 @@
 
   // ---------- album, kits and lifetime totals ----------
   // meta outlives the run: the stickers, and totals over all runs.
-  const meta = Object.assign({ stickers: {}, bricks: 0, blimps: 0, foes: 0, coins: 0, wins: 0, runs: 0 }, store.get(META_KEY, {}));
+  const meta = Object.assign({ stickers: {}, bricks: 0, blimps: 0, foes: 0, coins: 0, wins: 0, runs: 0, stars: 0, dailyBest: 0, dailyDays: 0, dailyDay: '' }, store.get(META_KEY, {}));
   const saveMeta = () => store.set(META_KEY, meta);
   const STICKERS = [
     { id: 'first', icon: '🧱', name: 'First Brick', hint: 'Clear level 1.' },
@@ -477,7 +534,12 @@
     { id: 'windbag', icon: '💨', name: 'Gone With The Windbag', hint: 'Pop the Windbag.' },
     { id: 'mash', icon: '👾', name: 'Monster Mash', hint: 'Pop 200 monsters in one run.' },
     { id: 'landlord', icon: '🏠', name: 'Landlord', hint: 'Clear level 50.' },
-    { id: 'crash', icon: '💾', name: 'Have You Tried Turning It Off', hint: 'Break the game. It gets better.' },
+    { id: 'belly', icon: '🐢', name: 'Belly Rub Denied', hint: 'Bounce off 10 turtle bellies in one level.' },
+    { id: 'lifeguard', icon: '🛟', name: 'Lifeguard on Duty', hint: 'Catch 5 falling walkers in one run.' },
+    { id: 'seal', icon: '🦭', name: 'Arf Arf', hint: 'Earn 5 Bazaar Seals in one run.' },
+    { id: 'fusion', icon: '⚗️', name: 'Frankenrelic', hint: 'Fuse two relics.' },
+    { id: 'loose', icon: '🔩', name: 'Loose Change', hint: 'Hit the loose coin counter 10 times.' },
+    { id: 'crash', icon: '💾', name: 'Error 0xSNAIL', hint: 'Break the game. It gets better.' },
   ];
   const stickerCount = () => STICKERS.filter((k) => meta.stickers[k.id]).length;
   let newStickers = []; // earned since the last results screen
@@ -509,15 +571,18 @@
     { id: 'cat', icon: '🐈', name: 'Nine Lives', need: 15, desc: 'Start with 6 lives.', apply: (r) => { r.lives = 6; } },
   ];
   const blimpFrom = () => (run.kit === 'blimps' ? 2 : FROM.blimp);
-  function beginRun(kitId) {
-    const kit = KITS.find((k) => k.id === kitId) || KITS[0];
+  // keep = a relic that a star run takes along (a star run is one that showKeepRelic starts)
+  function beginRun(kitId, keep) {
+    const kit = KITS.find((k) => k.id === kitId) || KITS[0], star = keep !== undefined;
     run = newRun(); lastSummary = null; store.del(SAVE_KEY); shopLevel = 0;
     run.kit = kit.id; kit.apply(run);
+    if (star) { run.stars = meta.stars; run.heat += STAR_HEAT * meta.stars; if (keep) run.relics[keep] = true; }
     meta.runs++; saveMeta(); saveRun();
     if (run.pendingRelic) showRelics(); else startLevel();
   }
   const brickFact = (n) => (n < 500 ? 'a garden wall' : n < 5000 ? 'a garage' : n < 20000 ? 'a small house' : n < 100000 ? 'a block of flats' : 'a small town');
   function recordBest() {
+    if (run.daily) return;
     const reached = run.level;
     if (reached > best.level || run.score > best.score) {
       best = { level: Math.max(best.level, reached), score: Math.max(best.score, run.score) };
@@ -558,11 +623,12 @@
     if (ch === 'C') return makeBrick(r, c, 'chest', Math.round(6 * m));
     if (ch === '?') return makeBrick(r, c, 'mystery', Math.round(m));
     if (ch === 'J') return makeBrick(r, c, 'pinata', PINATA_HITS);
+    if (ch === 'U') return makeBrick(r, c, 'turtle', Math.round(4 * m));
     return null;
   }
   // Endless mode after the campaign: seeded symmetric maps, more enemies, a boss every 10 levels.
   const PINATA_HITS = 5;
-  const SPECIAL_BRICKS = [[0.08, 'S'], [0.1, 'B'], [0.13, 'G'], [0.145, 'H'], [0.165, 'Z'], [0.185, 'P'], [0.2, '?'], [0.212, 'T'], [0.226, 'C'], [0.24, 'D'], [0.25, 'J']];
+  const SPECIAL_BRICKS = [[0.08, 'S'], [0.1, 'B'], [0.13, 'G'], [0.145, 'H'], [0.165, 'Z'], [0.185, 'P'], [0.2, '?'], [0.212, 'T'], [0.226, 'C'], [0.24, 'D'], [0.25, 'J'], [0.262, 'U']];
   function endlessLevel(n) {
     const rnd = mulberry32(n * 7919 + 13), over = n - LEVELS.length;
     const R = 7 + Math.floor(rnd() * 3);
@@ -577,7 +643,8 @@
         const roll = rnd();
         let ch = roll < 0.78 ? String(Math.max(1, Math.min(9, top - Math.floor(r / 2) - Math.floor(rnd() * 2)))) : '.';
         const sp = SPECIAL_BRICKS.find(([p]) => roll < p);
-        if (sp && !(boss && sp[1] === 'H')) ch = sp[1];
+        // a turtle in the top rows has no room above it
+        if (sp && !(boss && sp[1] === 'H') && !(r < 3 && sp[1] === 'U')) ch = sp[1];
         half.push(ch);
       }
       map.push(half.join('') + half.slice().reverse().join(''));
@@ -633,14 +700,34 @@
     });
   }
   const BELT_W = W + BW; // a conveyor is as long as the field plus one brick
-  function updateField() {
+  function updateField(dt) {
     const wh = G.def.wheel;
     for (const b of G.bricks) {
       if (!b.alive) continue;
       if (b.slide) b.x = -BW + ((((b.x0 + BW + b.slide * G.time) % BELT_W) + BELT_W) % BELT_W);
       else if (b.wheel != null && wh) { const a = b.wheel + G.time * wh.speed; b.x = wh.x + Math.cos(a) * wh.r - BW / 2; b.y = wh.y + Math.sin(a) * wh.r - BH / 2; }
+      if (b.ty != null) slideDown(b, dt);
     }
     G.wind = special('wind') ? Math.sin(G.time * 0.5) * 130 : 0;
+  }
+  // LANDSLIDE: the stack of bricks right above a broken brick slides one row down. Stone and conveyor bricks stay
+  // and hold up what is above them; wheel bricks and runners are not in the grid (row 99).
+  const SLIDE_V = 160;
+  function landslide(b) {
+    if (b.row >= 90 || b.slide) return;
+    for (let r = b.row - 1; r >= 0; r--) {
+      const o = G.bricks.find((k) => k.alive && k.col === b.col && k.row === r);
+      if (!o || o.type === 'stone' || o.slide) break;
+      o.row++; o.ty = TOP + o.row * (BH + GAP);
+    }
+  }
+  // Moves a sliding brick toward its new row. The creatures that sit on it move with it.
+  function slideDown(b, dt) {
+    const dy = Math.min(b.ty - b.y, SLIDE_V * dt);
+    b.y += dy;
+    if (b.y >= b.ty) { b.y = b.ty; b.ty = null; }
+    for (const o of G.birds) if (o.on === b && !o.fly) o.y += dy;
+    for (const o of G.frogs) if (o.on === b && !o.hop) o.y += dy;
   }
   // Today's special: about one level in three has a twist, and always the level that introduces them. Never on boss levels.
   const SPECIALS = [
@@ -655,14 +742,26 @@
     { id: 'wind', name: 'WINDY DAY', text: 'Gusts push the ball and the coins' },
     { id: 'night', name: 'NIGHT MARKET', text: 'Lights out. Coins are worth 50% more' },
     { id: 'bill', name: 'YOU BREAK IT, YOU BUY IT', text: 'Every brick goes on your bill' },
+    { id: 'slide', name: 'LANDSLIDE', text: 'Bricks slide down into every gap', from: 26, fixed: true },
+    { id: 'insomnia', name: 'INSOMNIA MARKET', text: 'The bricks are asleep. Coins are worth 50% more', from: 26, clock: true },
+    { id: 'cuckoo', name: 'CUCKOO', text: 'Fever now, and the fever fills twice as fast', from: 26, clock: true },
   ];
+  // The specials that a level can roll or book. open = not on stone maps (giant balls do not fit through the gaps),
+  // fixed = not on maps with portals or a wheel, clock = only by the wall clock (clockSpecial).
+  function specialPool(def, n) {
+    const stone = def.map.some((row) => row.includes('X')), fixed = !!def.wheel || def.map.some((row) => /[()]/.test(row));
+    return SPECIALS.filter((x) => !x.clock && !(x.open && stone) && !(x.fixed && fixed) && (x.from || 0) <= n);
+  }
+  // INSOMNIA MARKET from midnight to 5 am, CUCKOO in the first two minutes of every hour.
+  function clockSpecial(n) {
+    const now = new Date(), id = now.getHours() < 5 ? 'insomnia' : now.getMinutes() < 2 ? 'cuckoo' : null;
+    return id && n >= specialById(id).from ? specialById(id) : null;
+  }
   function rollSpecial(def, bricks) {
     if (def.boss) return null;
-    const booked = run.nextSpecial;
+    const booked = run.daily ? run.daily.special : run.nextSpecial;
     if (!booked && (run.level < FROM.specials || (run.level > FROM.specials && Math.random() > 0.35))) return null;
-    // giant balls do not fit through the gaps of a stone map
-    const stone = def.map.some((row) => row.includes('X'));
-    const sp = booked ? specialById(booked) : pick(SPECIALS.filter((x) => !(x.open && stone)));
+    const sp = booked ? specialById(booked) : clockSpecial(run.level) || pick(specialPool(def, run.level));
     const swap = (type, share) => { for (const b of bricks) if (b.type === 'normal' && Math.random() < share) { b.type = type; if (type === 'bomb') b.hp = b.maxhp = 1; } };
     if (sp.id === 'gold') swap('gold', 0.14);
     if (sp.id === 'tnt') swap('bomb', 0.1);
@@ -685,11 +784,14 @@
   function puDur(base) { return base * (1 + 0.15 * lv('puluck')); }
 
   const MIMIC_FROM = 12, PANIC_FROM = 10, BIRD_FROM = 6;
+  // The first level of each creature of the critters section, and of the boss cameo.
+  const CAMEO_FROM = 12, PEEK_FROM = 14, WALKER_FROM = 18, FROG_FROM = 22;
+  // Bricks with a free cell above them, where a creature can stand. taken = bricks that already have one.
+  const ledges = (taken) => G.bricks.filter((b) => b.alive && b.row < 90 && !b.slide && !taken.has(b) && !G.bricks.some((o) => o.alive && o.col === b.col && o.row === b.row - 1));
   // ---------- pigeons ----------
   // Birds sit on bricks and watch the ball. A ball that comes close scares a bird away; it drops a coin, three times at most.
   function perch(p) {
-    const taken = new Set(G.birds.map((o) => o.on));
-    const spots = G.bricks.filter((b) => b.alive && b.row < 90 && !b.slide && !taken.has(b) && !G.bricks.some((o) => o.alive && o.col === b.col && o.row === b.row - 1));
+    const spots = ledges(new Set(G.birds.map((o) => o.on)));
     p.on = spots.length ? pick(spots) : null;
     p.tx = p.on ? p.on.x + p.on.w / 2 + rand(-10, 10) : p.x < W / 2 ? -30 : W + 30;
     p.ty = p.on ? p.on.y - 6 : rand(110, 300);
@@ -723,6 +825,221 @@
       ctx.fillStyle = '#ff9a3d'; ctx.fillRect(p.x + look * 1.5 + (look >= 0 ? 3 : -6), p.y - 6, 3, 2);
       ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(p.x + look * 2.2, p.y - 7, 1.2, 0, TAU); ctx.fill();
     }
+  }
+  // ---------- critters ----------
+  // Small creatures that live on the bricks. They never hurt the player. Guns do not see them; only a ball touches
+  // them, and each pays a few coins at most. Not in bonus rounds or boss levels.
+  // n = how many come to a level: none in (1 - share) of the levels, else 1 to max.
+  const crowd = (from, share, max) => (run.level >= from && Math.random() < share ? 1 + ((Math.random() * max) | 0) : 0);
+  // Moves o toward (o.tx, o.ty). Returns true on arrival.
+  function walkTo(o, speed, dt) {
+    const dx = o.tx - o.x, dy = o.ty - o.y, d = Math.hypot(dx, dy) || 1, sp = speed * dt;
+    if (d <= sp) { o.x = o.tx; o.y = o.ty; return true; }
+    o.x += (dx / d) * sp; o.y += (dy / d) * sp;
+    return false;
+  }
+  const exit = (x) => (x < W / 2 ? -30 : W + 30);
+
+  // Ball Frog: sits on a ledge. Its tongue takes a ball that comes down near it, holds it while the frog puffs up, and
+  // spits it straight up as a fireball. Then the frog sleeps. A ball that hits it from below while it is awake stuns
+  // it and shakes out coins, FROG_PAYS times at most.
+  const FROG_REACH = 55, FROG_HOLD = 0.5, FROG_FIRE = 2, FROG_SLEEP = 6, FROG_STUN = 3, FROG_COINS = 3, FROG_PAYS = 3;
+  function seatFrog(f) {
+    const spots = ledges(new Set(G.frogs.map((o) => o.on)));
+    f.on = spots.length ? pick(spots) : null;
+    f.tx = f.on ? f.on.x + f.on.w / 2 : exit(f.x); f.ty = f.on ? f.on.y - 7 : f.y;
+    f.hop = true;
+  }
+  function addFrog() {
+    const f = { x: 0, y: 0, ball: null, holdT: 0, sleepT: 0, stunT: 0, paid: 0 };
+    G.frogs.push(f); seatFrog(f);
+    f.x = f.tx; f.y = f.ty; f.hop = false; f.gone = !f.on;
+  }
+  function letGo(f) {
+    const b = f.ball;
+    if (!b) return;
+    f.ball = null; b.frog = null; b.vx = rand(-40, 40); b.vy = -ballSpeed(); b.x = f.x; b.y = f.y - 14; b.inside = new Set();
+  }
+  function updateFrogs(dt) {
+    for (const f of G.frogs) {
+      if (f.gone) continue;
+      if (f.hop) { if (walkTo(f, 220, dt)) { f.hop = false; f.gone = !f.on; } continue; }
+      if (!f.on.alive) { letGo(f); seatFrog(f); continue; }
+      if (f.stunT > 0) { f.stunT -= dt; continue; }
+      if (f.ball) {
+        const b = f.ball, k = Math.min(1, dt * 20);
+        b.x += (f.x - b.x) * k; b.y += (f.y - 4 - b.y) * k;
+        if ((f.holdT -= dt) > 0 && G.clearT < 0) continue;
+        letGo(f); b.fireT = FROG_FIRE; f.sleepT = FROG_SLEEP;
+        sfx.launch(); burst(f.x, f.y - 10, '#ff8a3d', 10, 160); say(f.x, f.y - 22, 'PTOO!', '#ff8a3d', 0.8);
+        continue;
+      }
+      if (f.sleepT > 0) { f.sleepT -= dt; continue; }
+      for (const b of G.balls) {
+        if (b.stuck || b.frog) continue;
+        const d = Math.hypot(b.x - f.x, b.y - f.y);
+        if (b.vy < 0 && d < 10 + b.r) {
+          f.stunT = FROG_STUN; say(f.x, f.y - 18, 'ribbit?', '#c8ffb0', 1.2); sfx.eek(); burst(f.x, f.y, '#5ec24a', 8, 120);
+          if (f.paid++ < FROG_PAYS) dropCoin(f.x, f.y, FROG_COINS, true);
+          break;
+        }
+        if (b.vy > 0 && d < FROG_REACH && G.clearT < 0) {
+          f.ball = b; b.frog = f; f.holdT = FROG_HOLD; b.trail = [];
+          sfx.steal(); say(f.x, f.y - 22, 'SLURP!', '#ff7ad9', 0.8); heckle('frog', 'That frog has your ball. Rude.');
+          break;
+        }
+      }
+    }
+  }
+  function drawFrogs(t) {
+    for (const f of G.frogs) {
+      if (f.gone) continue;
+      const puff = f.ball ? 1 + 0.5 * clamp(1 - f.holdT / FROG_HOLD, 0, 1) : 1, x = f.x, y = f.y - (f.hop ? Math.abs(Math.sin(t * 10)) * 10 : 0);
+      if (f.ball) { ctx.strokeStyle = '#ff7ad9'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y - 2); ctx.lineTo(f.ball.x, f.ball.y); ctx.stroke(); }
+      ctx.fillStyle = '#5ec24a'; ctx.beginPath(); ctx.ellipse(x, y, 10 * puff, 7 * puff, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#d8f5b0'; ctx.beginPath(); ctx.ellipse(x, y + 2 * puff, 6 * puff, 4 * puff, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#5ec24a'; ctx.beginPath(); ctx.arc(x - 5, y - 6, 3.5, 0, TAU); ctx.arc(x + 5, y - 6, 3.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#1b1f33'; ctx.fillStyle = '#1b1f33'; ctx.lineWidth = 1.2;
+      if (f.sleepT > 0 || f.stunT > 0) {
+        ctx.beginPath(); ctx.moveTo(x - 7, y - 6); ctx.lineTo(x - 3, y - 6); ctx.moveTo(x + 3, y - 6); ctx.lineTo(x + 7, y - 6); ctx.stroke();
+        ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = f.stunT > 0 ? '#ffe066' : '#c9d0ff'; ctx.fillText(f.stunT > 0 ? '★' : 'z', x + 10 + Math.sin(t * 3) * 2, y - 14 - (t * 8) % 6);
+      } else { ctx.beginPath(); ctx.arc(x - 5, y - 6, 1.5, 0, TAU); ctx.arc(x + 5, y - 6, 1.5, 0, TAU); ctx.fill(); }
+    }
+  }
+
+  // Ledge Walker: walks on top of a row of bricks and turns at its end. When the brick under it breaks it runs in
+  // the air for a moment and falls. The paddle can catch it; a miss costs nothing.
+  const WALKER_SPEED = 32, WALKER_OOPS = 0.4, WALKER_PAY = 6;
+  // The brick of the given row under x that has a free cell above it, or undefined.
+  const floorAt = (row, x) => G.bricks.find((b) => b.alive && b.row === row && !b.slide && x >= b.x - GAP && x <= b.x + b.w + GAP && !G.bricks.some((o) => o.alive && o.col === b.col && o.row === row - 1));
+  function addWalker() {
+    const spots = ledges(new Set());
+    if (!spots.length) return;
+    const b = pick(spots);
+    G.walkers.push({ x: b.x + b.w / 2, y: b.y, row: b.row, dir: Math.random() < 0.5 ? -1 : 1, state: 'walk', t: Math.random() * 6, vy: 0, oopsT: 0 });
+  }
+  function updateWalkers(dt) {
+    for (const w of G.walkers) {
+      if (w.gone) continue;
+      w.t += dt;
+      if (w.state === 'walk') {
+        if (!floorAt(w.row, w.x)) { w.state = 'oops'; w.oopsT = WALKER_OOPS; say(w.x, w.y - 26, 'uh-oh', '#ffffff', 1); sfx.eek(); continue; }
+        const nx = w.x + w.dir * WALKER_SPEED * dt;
+        if (floorAt(w.row, nx + w.dir * 5)) w.x = nx; else w.dir = -w.dir;
+      } else if (w.state === 'oops') {
+        if ((w.oopsT -= dt) <= 0) { w.state = 'fall'; heckle('walker', 'Man overboard!'); }
+      } else {
+        w.vy = Math.min(w.vy + 700 * dt, 420); w.y += w.vy * dt;
+        if (onPaddle(w.x, w.y, 8)) {
+          w.gone = true; dropCoin(w.x, PADDLE_Y - 20, WALKER_PAY, true); say(w.x, PADDLE_Y - 34, 'thanks!', '#7cf2a8', 1.2); sfx.pu();
+          run.caught = (run.caught || 0) + 1;
+          if (run.caught >= 5) sticker('lifeguard');
+        } else if (w.y > H + 20) w.gone = true;
+      }
+    }
+  }
+  function drawWalkers() {
+    for (const w of G.walkers) {
+      if (w.gone) continue;
+      const k = Math.sin(w.t * (w.state === 'walk' ? 9 : 40)) * 4, x = w.x, y = w.y;
+      ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(x - 3, y - 7); ctx.lineTo(x - 3 + k, y); ctx.moveTo(x + 3, y - 7); ctx.lineTo(x + 3 - k, y); ctx.stroke();
+      ctx.fillStyle = '#ffd27a'; ctx.beginPath(); ctx.arc(x, y - 13, 7, 0, TAU); ctx.fill();
+      const big = w.state === 'walk' ? 1.8 : 2.8, look = w.state === 'walk' ? w.dir * 1.5 : 0;
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - 2.5 + look, y - 14, big, 0, TAU); ctx.arc(x + 2.5 + look, y - 14, big, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(x - 2.5 + look * 1.3, y - 14, 1, 0, TAU); ctx.arc(x + 2.5 + look * 1.3, y - 14, 1, 0, TAU); ctx.fill();
+    }
+  }
+
+  // Peekaboo: hides behind a brick and leans out to one side while no ball is near. A ball can hit it only while it
+  // leans out: it pays, shouts and hides behind another brick. After PEEK_HITS hits it leaves.
+  const PEEK_NEAR = 90, PEEK_PAY = 5, PEEK_HITS = 3;
+  function hidePeek(p) {
+    const taken = new Set(G.peeks.map((o) => o.on));
+    const open = (b, s) => b.col + s >= 0 && b.col + s < COLS && !G.bricks.some((o) => o.alive && o.row === b.row && o.col === b.col + s);
+    const spots = G.bricks.filter((b) => b.alive && b.row < 90 && !b.slide && !taken.has(b) && (open(b, -1) || open(b, 1)));
+    p.on = spots.length ? pick(spots) : null;
+    if (p.on) p.side = open(p.on, -1) && open(p.on, 1) ? pick([-1, 1]) : open(p.on, -1) ? -1 : 1;
+    p.tx = p.on ? p.on.x + p.on.w / 2 : exit(p.x); p.ty = p.on ? p.on.y + p.on.h / 2 : p.y;
+    p.run = true; p.lean = 0;
+  }
+  function addPeek() {
+    const p = { x: 0, y: 0, hits: 0, lean: 0, side: 1, t: 0 };
+    G.peeks.push(p); hidePeek(p);
+    p.x = p.tx; p.y = p.ty; p.run = false; p.gone = !p.on;
+  }
+  // The head of a peekaboo: behind its brick at lean 0, beside it at lean 1.
+  const peekHead = (p) => [p.on.x + p.on.w / 2 + p.side * (p.on.w / 2 - 8 + 18 * p.lean), p.on.y + p.on.h / 2];
+  function updatePeeks(dt) {
+    for (const p of G.peeks) {
+      if (p.gone) continue;
+      p.t += dt;
+      if (p.run) { if (walkTo(p, 240, dt)) { p.run = false; p.gone = !p.on; } continue; }
+      if (!p.on.alive) { hidePeek(p); continue; }
+      const [hx, hy] = peekHead(p);
+      p.x = hx; p.y = hy;
+      const near = G.balls.some((b) => !b.stuck && Math.hypot(b.x - hx, b.y - hy) < PEEK_NEAR);
+      // it ducks a little slower than a fast ball comes in, so that a direct shot can still catch it
+      p.lean = clamp(p.lean + (near ? -2.2 : 1.5) * dt, 0, 1);
+      if (p.lean < 0.5 || G.clearT >= 0 || !G.balls.some((b) => !b.stuck && !b.frog && ballVsCircle(b, hx, hy, 9))) continue;
+      p.hits++; dropCoin(hx, hy, PEEK_PAY, true); burst(hx, hy, '#c08cff', 10, 160); sfx.eek();
+      say(clamp(hx, 40, W - 40), hy - 20, 'BOO!', '#c08cff', 1, true);
+      if (p.hits < PEEK_HITS) { hidePeek(p); continue; }
+      p.on = null; p.tx = exit(hx); p.ty = hy; p.run = true;
+    }
+  }
+  // Drawn before the bricks, so that a brick hides it.
+  function drawPeeks() {
+    for (const p of G.peeks) {
+      if (p.gone) continue;
+      const big = p.run ? 2 : 2 + 2.5 * p.lean, look = p.run ? Math.sign(p.tx - p.x) : p.side;
+      ctx.fillStyle = '#9d7bff'; ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, TAU); ctx.fill();
+      if (p.run) { ctx.strokeStyle = '#9d7bff'; ctx.lineWidth = 2; const k = Math.sin(p.t * 30) * 4; ctx.beginPath(); ctx.moveTo(p.x - 3, p.y + 7); ctx.lineTo(p.x - 3 + k, p.y + 13); ctx.moveTo(p.x + 3, p.y + 7); ctx.lineTo(p.x + 3 - k, p.y + 13); ctx.stroke(); }
+      eyes(p.x + look * 2, p.y - 1, 3.5, big, look * big * 0.3);
+    }
+  }
+
+  // ---------- boss cameos ----------
+  // A boss that the player has beaten in this run peeks in from a side, says a line, throws three slime shots (they
+  // only stun) and leaves. A ball hit sends it away at once and shakes out a few coins. It is not G.boss: the goal of
+  // the level and the guns ignore it.
+  const CAMEO_CHANCE = 0.12, CAMEO_S = 6, CAMEO_PAY = 5, CAMEO_EDGE = 20;
+  function startCameo() {
+    if (G.clearT >= 0 || G.cameo) return;
+    const beaten = [1, 2, 3, 4, 5].filter((k) => run.level > 10 * k);
+    if (!beaten.length) return;
+    const kind = pick(beaten), d = BOSSES[kind], side = Math.random() < 0.5 ? -1 : 1;
+    G.cameo = { kind, side, w: d.w, h: d.h, x: side < 0 ? -d.w / 2 - 10 : W + d.w / 2 + 10, y: clamp(brickBottom() + 30, 180, PADDLE_Y - 280),
+      t: 0, phase: 1, flash: 0, state: 'idle', talk: null, said: false, shot: false, out: false };
+    sfx.teleport();
+  }
+  function updateCameo(dt) {
+    const C = G.cameo;
+    if (!C) return;
+    C.t += dt;
+    if (C.flash > 0) C.flash -= dt;
+    if (C.talk && (C.talk.t -= dt) <= 0) C.talk = null;
+    const away = C.side < 0 ? -C.w / 2 - 10 : W + C.w / 2 + 10, peek = C.side < 0 ? CAMEO_EDGE : W - CAMEO_EDGE;
+    const leave = C.out || C.t > CAMEO_S - 0.8 || G.clearT >= 0;
+    C.x += ((leave ? away : peek) - C.x) * Math.min(1, dt * (C.out ? 8 : 4));
+    if (leave) { if (Math.abs(C.x - away) < 3) G.cameo = null; return; }
+    if (C.t > 1 && !C.said) { C.said = true; C.talk = { s: pick(BOSSES[C.kind].says), t: 2.2 }; sfx.taunt(); }
+    if (C.t < 2.6 || C.shot) return;
+    C.shot = true; sfx.bossFire();
+    const x = C.side < 0 ? 30 : W - 30, y = C.y + C.h / 2;
+    for (const a of [-0.2, 0, 0.2]) enemyShot(x, y, aimAtPaddle(x, y) + a, 150);
+  }
+  function cameoHit(C) {
+    C.out = true; C.flash = 0.15; C.talk = { s: 'Not the face!', t: 1.6 };
+    sfx.bossHit(); shake(4); dropCoin(clamp(C.x, 30, W - 30), C.y + C.h, CAMEO_PAY, true);
+  }
+
+  function updateCritters(dt) {
+    updateFrogs(dt);
+    updateWalkers(dt);
+    updatePeeks(dt);
+    updateCameo(dt);
   }
   // ---------- the game talks back ----------
   // The shopkeeper comments on how you play. Each line comes at most once per level.
@@ -767,6 +1084,36 @@
     stock: { name: 'Stock Toss', title: '📦 STOCK TOSS 📦', over: 'SHELVES EMPTY!', count: 'Coins caught 📦', tip: 'BONUS ROUND! No ball. Catch what the snail throws. Not the socks' },
   };
   const BONUS_ORDER = ['blimps', 'stock', 'pinata', 'bumper'];
+  // ---------- round plug-ins ----------
+  // rounds.js can add bonus rounds that are other games: window.BBRounds = { id: round }. A round has the texts of a
+  // BONUS entry (name, title, over, count, tip) and: seconds (length), ball (false = no ball is served),
+  // hidePaddle (true = the round draws its own player), start(api), tick(api, dt), draw(api, ctx, t), tap(api, x, y).
+  // The round talks to the game only through the api object below. Coins go through api.coin, so that the coin value,
+  // the catch and the sounds are the same as in the rest of the game. ROUND_COINS limits the coins of one round.
+  const ROUNDS = window.BBRounds || {};
+  for (const id in ROUNDS) { BONUS[id] = ROUNDS[id]; BONUS_ORDER.push(id); }
+  const ROUND_COINS = 160;
+  function roundApi() {
+    let paid = 0;
+    const room = (n) => { const k = Math.max(0, Math.min(n, ROUND_COINS - paid)); paid += k; return k; };
+    return {
+      W, H, HUD_H, PADDLE_Y, PADDLE_H, paddle, level: run.level, state: {},
+      rand, pick, clamp,
+      get time() { return G.clock; }, get left() { return timeLeft(); },
+      // n coins fall from (x, y); the paddle must catch them
+      coin(x, y, n = 1) { const k = room(n); if (k) dropCoin(x, y, k, true); },
+      // n coins go straight to the player
+      pay(n = 1) { for (let i = room(n); i > 0; i--) collectCoin({ x: paddle.x, y: PADDLE_Y - 30, val: coinWorth() }); },
+      // adds to the number that the results screen shows beside the round's 'count' text
+      score(n = 1) { G.popped += n; },
+      say(x, y, text, color = '#ffffff', big = false) { say(clamp(x, 80, W - 80), y, text, color, big ? 1.6 : 1.2, big); },
+      snail: (key) => snailSay(key), drawSnail: (x, y, dir = 1, flash = false) => drawSnail({ x, y, dir, flash: flash ? 1 : 0 }),
+      sfx, burst, ring, shake, flash: flashScreen, beat: () => A.beat(),
+      // makes the paddle small and slow for a moment; a round has no other penalty
+      stun(sec = 1.2) { G.stun = Math.max(G.stun, sec); },
+      end() { G.par = Math.min(G.par, G.clock); },
+    };
+  }
   // Stock Toss: the snail walks on a shelf and throws coins, coin bags and socks. A sock makes the paddle small for a moment.
   const STOCK_LINES = ['Inventory day!', 'That one is fragile!', 'No refunds on socks!', 'Catch! I have no hands.', 'Everything must go. Down.', 'Mind the antiques!'];
   function throwStock(f) {
@@ -785,8 +1132,8 @@
   function startLevel(safari = false) {
     G = {
       safari, fever0: run.fever, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
-      lost: 0, dingBest: 0, smashes: 0,
-      portals: [], wind: 0, birds: [], bribe: false, heckled: {}, heckle: null, idleT: 0, wallT: 0, dry: 0, toasts: [], bill: 0,
+      lost: 0, dingBest: 0, smashes: 0, ding3: 0, flareN: 0, flare: null, boy: null, boyLeft: BOY_SAVES, loose: null, trophies: {}, cuckooT: -9, cuckooFever: false, cone: null,
+      portals: [], wind: 0, lastBounceT: -9, birds: [], frogs: [], walkers: [], peeks: [], cameo: null, bellies: 0, bribe: false, heckled: {}, heckle: null, idleT: 0, wallT: 0, dry: 0, toasts: [], bill: 0,
       sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
       bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
@@ -817,6 +1164,10 @@
         G.birds.push(p); perch(p);
         p.x = p.tx; p.y = p.ty; p.fly = false; p.gone = !p.on;
       }
+      for (let i = crowd(FROG_FROM, 0.33, 2); i > 0; i--) addFrog();
+      for (let i = crowd(WALKER_FROM, 0.33, 3); i > 0; i--) addWalker();
+      for (let i = crowd(PEEK_FROM, 0.25, 2); i > 0; i--) addPeek();
+      if (run.level >= CAMEO_FROM && Math.random() < CAMEO_CHANCE) after(rand(8, 25), startCameo);
     }
     if (!safari) setupField();
     G.brick0 = destructibleLeft();
@@ -840,7 +1191,13 @@
     }
     if (!safari) run.bonusStart = 0;
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
-    if (safari !== 'stock') serve();
+    const plug = ROUNDS[safari];
+    if (safari !== 'stock' && !(plug && plug.ball === false)) serve();
+    if (plug) {
+      G.api = roundApi(); G.par = plug.seconds || SAFARI_S;
+      if (plug.ball === false) G.started = true;
+      plug.start(G.api);
+    }
     // drones
     for (let i = 0; i < lv('d_orbit'); i++) G.drones.push({ type: 'orbit', a: (i / Math.max(1, lv('d_orbit'))) * Math.PI * 2, cd: 0.5 + i * 0.3, x: W / 2, y: PADDLE_Y - 40 });
     for (let i = 0; i < lv('d_hunter'); i++) G.drones.push({ type: 'hunter', x: rand(80, 400), y: 420, vx: 0, vy: 0, cd: 0, target: null });
@@ -896,6 +1253,7 @@
       }
     }
     if (any) { G.started = true; sfx.launch(); ach('launch', 'Launched a ball'); }
+    if (any && special('cuckoo') && !G.cuckooFever) { G.cuckooFever = true; startFever(); }
   }
   function ballSpeed() {
     // A slow ball on the first levels. The speed stops rising at level 30, and it rises less during a level than before.
@@ -913,14 +1271,25 @@
     life: { c: '#ff5c8a', l: '♥', w: 0.45 }, cash: { c: '#ffd700', l: '$', w: 1.8 }, net: { c: '#6ee7ff', l: 'N', w: 1 },
     mega: { c: '#ff7ad9', l: 'B', w: 1.6 }, storm: { c: '#fff27a', l: '⚡', w: 1.4 }, x2: { c: '#ffb02e', l: '×2', w: 1.4 },
     freeze: { c: '#a8e6ff', l: '❄', w: 1.3 }, gold: { c: '#ffd23f', l: '★', w: 1.1 }, nuke: { c: '#ff5c5c', l: '☢', w: 0.5 },
-    blimp: { c: '#ffb0e6', l: '🎈', w: 1 },
+    blimp: { c: '#ffb0e6', l: '🎈', w: 1 }, potato: { c: '#d9a066', l: '🥔', w: 1 },
   };
   const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
-    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!' };
+    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!', potato: 'HOT POTATO!' };
+  // Hot Potato: the lowest ball becomes a fuse ball. Each paddle bounce adds a charge; the next brick that it touches
+  // explodes, bigger with each charge, and the charge is gone.
+  const POTATO_MAX = 6, POTATO_S = 15;
+  const potatoRad = (n) => 30 + 20 * n;
+  function fuse(b, dmg) {
+    if (!b.potato || !b.potato.n) return;
+    const n = b.potato.n;
+    b.potato.n = 0;
+    explode(b.x, b.y, potatoRad(n), dmg, '#ff9a3d');
+    say(b.x, b.y - 18, n >= POTATO_MAX ? 'MASHED!' : 'HOT!', '#ff9a3d', 0.8, n >= POTATO_MAX);
+  }
   function rollPU() {
     const foes = G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
-      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm'));
+      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
@@ -930,12 +1299,10 @@
   const COIN_MULT = 1.5;
   function dropCoin(x, y, n = 1, exact = false) {
     if (!exact) { const raw = n * COIN_MULT; n = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
-    const raw = coinVal() * coinMult();
-    for (let i = 0; i < n; i++) {
-      const val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0);
-      G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val });
-    }
+    for (let i = 0; i < n; i++) G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val: coinWorth() });
   }
+  // The value of one coin; the fraction rounds up at random.
+  function coinWorth() { const raw = coinVal() * coinMult(); return Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
   function collectCoin(c) {
     if (G.safari === 'stock') G.popped++;
     run.coins += c.val; G.levelCoins += c.val; run.stats.coins += c.val;
@@ -952,7 +1319,10 @@
       G.coinText = G.texts[G.texts.length - 1]; G.coinText.n = c.val;
     }
     burst(c.x, c.y, '#ffd84a', 3, 90);
-    if (relic('coinshot') && G.clearT < 0 && Math.random() < 0.3) G.shots.push({ x: clamp(c.x, 8, W - 8), y: PADDLE_Y - 6, vx: 0, vy: -700, dmg: gunDmg(1), k: 'orbit' });
+    if (relic('coinshot') && G.clearT < 0 && Math.random() < 0.3) {
+      const pay = relic('payday'), x = clamp(c.x, 8, W - 8);
+      G.shots.push({ x, y: PADDLE_Y - 6, vx: 0, vy: pay ? -520 : -700, dmg: gunDmg(1), k: 'orbit', homing: pay, target: pay ? paydayTarget(x) : null });
+    }
   }
   function collectPU(p) {
     sfx.pu(); buzz(15); ach('pu', 'Caught a capsule. Yum');
@@ -974,6 +1344,7 @@
     else if (k === 'gold') setFx('gold', puDur(8));
     else if (k === 'nuke') nuke();
     else if (k === 'blimp') spawnBlimp();
+    else if (k === 'potato') { const b = G.balls.reduce((a, o) => (!a || o.y > a.y ? o : a), null); if (b) b.potato = { n: 0, t: puDur(POTATO_S) }; }
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
       const src = G.balls.slice();
@@ -989,13 +1360,14 @@
   }
 
   // ---------- bricks ----------
-  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff', pinata: '#ff7ad9', runner: '#9cff57' };
+  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff', pinata: '#ff7ad9', runner: '#9cff57', turtle: '#3a8f3c' };
   function brickColor(b) {
     return TYPE_COLOR[b.type] || BRICK_COLORS[(b.maxhp - 1 + b.row) % BRICK_COLORS.length];
   }
   function hitBrick(b, dmg, fromBall) {
     if (!b.alive) return false;
     if (b.type === 'stone') { b.flash = 0.12; sfx.stone(); return false; }
+    if (b.type === 'turtle' && !fromBall) { b.flash = 0.06; return false; }
     b.byBall = fromBall;
     if (b.mimic) { runAway(b); return false; }
     // sometimes the last brick tries to buy its life
@@ -1040,7 +1412,9 @@
     if (G.combo === 30) heckle('streak'); G.comboBest = Math.max(G.comboBest, G.combo);
     run.stats.bricks++; run.stats.streak = Math.max(run.stats.streak, G.combo);
     sfx.pop(G.combo);
-    addFever(special('party') ? 0.08 : 0.04);
+    addFever(special('party') || special('cuckoo') ? 0.08 : 0.04);
+    if (special('slide')) landslide(b);
+    if (special('cuckoo')) cuckoo(cx, cy);
     if (G.noLoot) return;
     if (G.fx.panic > 0) dropCoin(cx, cy, 1, true);
     if (special('bill')) {
@@ -1052,7 +1426,11 @@
       if (won) { G.wantedWon = true; sfx.jackpot(); flashScreen('#ffd23f', 0.25); }
       say(clamp(cx, 90, W - 90), cy + 26, won ? 'BOUNTY CLAIMED! A relic waits' : 'The bandit got away', won ? '#ffd23f' : '#ff9aa8', 1.8, won);
     }
-    if (b.type === 'gold') { dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5)); if (relic('bombardier')) explode(cx, cy, 44, Math.round(2 * power()), '#ffd23f', true); }
+    if (b.type === 'gold') {
+      dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5));
+      if (relic('bombardier')) explode(cx, cy, 44, Math.round(2 * power()), '#ffd23f', true);
+      if (relic('motherlode')) motherLode(b);
+    }
     else if (b.type === 'chest') dropCoin(cx, cy, 6);
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
     if (G.combo % STREAK_STEP === 0) streakPayout(cx, cy);
@@ -1139,7 +1517,18 @@
     if (bossAt(x, y, rad)) damageBoss(dmg);
   }
   // A brick that guns, drones and lightning can damage.
-  const hurtable = (k) => k.alive && k.type !== 'stone' && k.type !== 'pinata' && k.type !== 'runner';
+  const hurtable = (k) => k.alive && k.type !== 'stone' && k.type !== 'pinata' && k.type !== 'runner' && k.type !== 'turtle';
+  // A turtle brick: only a ball hurts it. A ball on its belly bounces off and does no damage; a ball on its shell
+  // deals SHELL_K times the damage.
+  const SHELL_K = 3;
+  function shellHit(b, k, dmg) {
+    const kx = k.x + k.w / 2, ky = k.y + k.h / 2;
+    const belly = k.w / 2 + b.r - Math.abs(b.x - kx) >= k.h / 2 + b.r - Math.abs(b.y - ky) && b.y > ky;
+    ballVsRect(b, k.x, k.y, k.w, k.h);
+    if (!belly) { hitBrick(k, ballHit(b, dmg, k) * SHELL_K, true); return; }
+    k.flash = 0.06; sfx.stone(); burst(b.x, k.y + k.h, '#fff6c0', 4, 90); say(b.x, k.y + k.h + 10, 'tink', '#e8ffd0', 0.5);
+    if (++G.bellies === 10) sticker('belly');
+  }
   function destructibleLeft() { let n = 0; for (const b of G.bricks) if (b.alive && b.type !== 'stone' && b.type !== 'runner') n++; return n; }
 
   // ---------- input ----------
@@ -1152,6 +1541,9 @@
     if (mode !== 'play' || e.button === 2) return;
     const p = toGame(e); paddle.tx = p.x;
     G.tapT = G.time;
+    if (G.api && ROUNDS[G.safari].tap) ROUNDS[G.safari].tap(G.api, p.x, p.y);
+    if (G.boy) boyThrow();
+    if (p.y < FLARE_Y) plantFlare(p.x, p.y);
     launch();
     e.preventDefault();
   });
@@ -1215,6 +1607,8 @@
     paddle.vx = (paddle.x - (paddle.px == null ? paddle.x : paddle.px)) / dt; paddle.px = paddle.x;
 
     updateBalls(dt);
+    updateBoy(dt);
+    updateLoose(dt);
     updateFoes(dt);
     updateGuns(dt);
     updateDrones(dt);
@@ -1223,10 +1617,13 @@
     updateParticles(dt);
     for (const b of G.bricks) { if (b.flash > 0) b.flash -= dt; if (b.punch > 0) b.punch = Math.max(0, b.punch - dt * 7); }
     updateRunners(dt);
-    updateField();
+    updateField(dt);
     updateBirds(dt);
+    updateCritters(dt);
     updateHeckle(dt);
+    if (G.api && G.clearT < 0) ROUNDS[G.safari].tick(G.api, dt);
     if (G.eventAt > 0 && G.clock >= G.eventAt && G.clearT < 0) { G.eventAt = -1; startPanic(); }
+    if (special('insomnia') && Math.random() < dt * 4) snore();
 
     updateOvertime(dt);
     if (G.clearT < 0 && levelDone()) {
@@ -1244,6 +1641,9 @@
     const dmg = ballDmg();
     for (const b of G.balls) {
       b.r += (b.r0 * (mega() ? 1.7 : 1) - b.r) * Math.min(1, dt * 10);
+      if (b.frog) continue;
+      if (b.fireT > 0) b.fireT -= dt;
+      if (b.potato && (b.potato.t -= dt) <= 0) b.potato = null;
       if (b.stuck) {
         b.x = clamp(paddle.x + b.off, b.r, W - b.r); b.y = PADDLE_Y - b.r - 1;
         b.stuckT += dt;
@@ -1264,6 +1664,8 @@
         if (d < 80 && d > 1) { b.vx += ((p.x - b.x) / d) * 1100 * dt; b.vy += ((p.y - b.y) / d) * 1100 * dt; }
       }
       if (b.spin) { b.spin *= Math.max(0, 1 - dt * 1.2); if (Math.abs(b.spin) < 0.05) b.spin = 0; }
+      // a ball that a frog spat is a fireball by itself; ballDmg() already holds the triple damage of a global one
+      const hot = fire || b.fireT > 0, dmgB = hot && !fire ? dmg * 3 : dmg;
       const steps = Math.max(1, Math.ceil((sp * dt) / (b.r * 0.7)));
       const sdt = dt / steps;
       for (let s = 0; s < steps && !b.dead; s++) {
@@ -1284,7 +1686,7 @@
           const sweet = P === paddle && G.level >= FROM.sweet && Math.abs(b.x - sweetX()) <= 10;
           if (!sweet) { G.combo = 0; G.sweetN = 0; A.streak(0); }
           sfx.paddle(); burst(b.x, PADDLE_Y, '#bff8ff', 4, 110);
-          if (P === paddle) { paddle.squish = 1; paddleSkill(b, sweet); }
+          if (P === paddle) { paddle.squish = 1; paddleSkill(b, sweet); } else if (relic('mirrorspin')) b.spin = clamp(-paddle.vx / 300, -2, 2);
           paddleBounce(b);
           if (G.fx.glue > 0 && P === paddle) { b.stuck = true; b.off = b.x - paddle.x; b.stuckT = 0; break; }
           continue;
@@ -1309,9 +1711,12 @@
           if (f.dead || !ballVsCircle(b, f.x, f.y, f.r)) continue;
           if (f.hitCd <= 0) { damageFoe(f, dmgE, true); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
         }
+        const C = G.cameo;
+        if (C && !C.out && ballVsRect(b, C.x - C.w / 2, C.y, C.w, C.h)) cameoHit(C);
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
-          if (ballVsRect(b, B.x - B.w / 2, B.y, B.w, B.h) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
+          if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
+          if (B.hat && ballVsRect(b, B.hat.x - HAT_W / 2, B.hat.y - 24, HAT_W, 26)) hatHit(B);
           // a ball in the Auditor's tractor beam turns the beam around
           if (B.state === 'tractor' && Math.abs(b.x - B.x) < 40 && b.y > B.y + B.h && b.y < PADDLE_Y - 60) {
             B.state = 'idle'; B.atkT = 2; bossSay('That is MY money!');
@@ -1336,11 +1741,13 @@
           const dx = b.x - cx, dy = b.y - cy;
           if (dx * dx + dy * dy > b.r * b.r) continue;
           if (b.inside.has(k)) { nowInside.add(k); continue; }
-          const passes = k.type !== 'stone' && (fire || b.pierce > 0);
+          if (k.type === 'turtle') { shellHit(b, k, dmgB); fuse(b, dmg); break; }
+          const passes = k.type !== 'stone' && (hot || b.pierce > 0);
           if (passes) {
             nowInside.add(k);
-            if (!fire) b.pierce--;
-            hitBrick(k, ballHit(b, dmg), true);
+            if (!hot) b.pierce--;
+            hitBrick(k, ballHit(b, dmgB, k), true);
+            fuse(b, dmg);
             continue;
           }
           // bounce
@@ -1348,16 +1755,32 @@
           const ox = k.w / 2 + b.r - Math.abs(b.x - kx), oy = k.h / 2 + b.r - Math.abs(b.y - ky);
           if (ox < oy) { const sg = Math.sign(b.x - kx) || 1; b.vx = sg * Math.abs(b.vx); b.x += sg * ox; }
           else { const sg = Math.sign(b.y - ky) || 1; b.vy = sg * Math.abs(b.vy); b.y += sg * oy; }
-          hitBrick(k, ballHit(b, dmg), true);
+          hitBrick(k, ballHit(b, dmgB, k), true);
+          fuse(b, dmg);
           break;
         }
         b.inside = nowInside;
       }
       b.trail.push(b.x, b.y); if (b.trail.length > 22) b.trail.splice(0, 2);
     }
-    const before = G.balls.length;
+    const before = G.balls.length, gone = G.balls.find((b) => b.dead);
     G.balls = G.balls.filter((b) => !b.dead);
-    if (before && G.balls.length === 0 && G.clearT < 0) loseLife();
+    if (!before || G.balls.length || G.clearT >= 0) return;
+    if (lv('ballboy') && G.boyLeft > 0 && !G.safari) { G.boy = { t: BOY_S, x: clamp(gone ? gone.x : paddle.x, 30, W - 30) }; sfx.warn(); }
+    else loseLife();
+  }
+  // The ball boy: after the last ball is lost the player has BOY_S seconds to tap, and he throws a ball back.
+  function updateBoy(dt) {
+    if (!G.boy) return;
+    if (G.clearT >= 0 || G.balls.length) { G.boy = null; return; }
+    if ((G.boy.t -= dt) <= 0) { G.boy = null; loseLife(); }
+  }
+  function boyThrow() {
+    const x = G.boy.x, a = clamp((W / 2 - x) / W, -0.4, 0.4), s = ballSpeed();
+    G.boy = null; G.boyLeft--;
+    const b = makeBall(x, PADDLE_Y + 40, Math.sin(a) * s, -Math.cos(a) * s);
+    b.pierce = lv('pierce'); G.balls.push(b);
+    sfx.launch(); say(clamp(x, 60, W - 60), H - 80, pick(['Got it!', 'Heads up!', 'Here you go!']), '#7cf2a8', 1);
   }
   const mega = () => G.fx.mega > 0 || special('big');
   const momentum = () => 1 + Math.min(G.combo * 0.04, 1) * lv('momentum');
@@ -1373,6 +1796,9 @@
     if (sweet) {
       const n = ++G.sweetN;
       G.dingBest = Math.max(G.dingBest, n);
+      if (n === 3) G.ding3++;
+      if (lv('flare') && G.flareN < FLARE_MAX) G.flareN++;
+      if (setById('juggler')) b.pierce++;
       sfx.ding(n); ring(b.x, PADDLE_Y, 30 + n * 8, '#fff27a', 0.35); dropCoin(b.x, PADDLE_Y - 24, n, true);
       say(b.x, PADDLE_Y - 30, n >= 5 ? 'PERFECT!' : 'DING ×' + n, '#fff27a', 0.9, n >= 5);
       if (n >= 5) { G.sweetN = 0; sticker('perfect'); setFx('fire', 3); flashScreen('#fff27a', 0.2); sfx.cheer(3); }
@@ -1384,9 +1810,10 @@
     }
     if (relic('spin')) b.spin = clamp(paddle.vx / 300, -2, 2);
   }
-  // The damage of one ball hit on a brick. The smash and the Bank Shot relic multiply it.
-  function ballHit(b, dmg) {
+  // The damage of one ball hit on brick k. The smash and the Bank Shot relic multiply it.
+  function ballHit(b, dmg, k) {
     const m = (b.smash ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0));
+    if (k && b.banks > 0 && relic('rebound')) popNeighbour(k, dmg);
     b.banks = 0;
     if (b.chicken) { sfx.squawk((G.combo / 5) | 0); burst(b.x, b.y, '#ffffff', 2, 90); }
     return dmg * m;
@@ -1394,15 +1821,28 @@
   const HYDRA_MAX = 5;
   // relics that trigger on a paddle bounce
   function paddleBounce(b) {
-    G.paddleHits++; G.dry++;
+    G.paddleHits++; G.dry++; G.lastBounceT = G.time;
+    if (b.potato) b.potato.n = Math.min(POTATO_MAX, b.potato.n + 1);
+    if (lv('d_parrot') && G.paddleHits % PARROT_EVERY === 0) parrotPeck();
     for (const g in GUNS) if (G.reload[g] > 0) G.reload[g] = Math.max(0.01, G.reload[g] - RELOAD_HIT);
     if (relic('hydra') && G.balls.length < HYDRA_MAX && Math.random() < 0.15) splitBall(b.x, b.y, b.vx, b.vy);
+    if (relic('tectonic') && G.paddleHits % 4 === 0) tectonic(b.x);
     if (relic('aftershock') && G.paddleHits % 4 === 0 && anyTarget()) {
       G.shots.push({ x: b.x, y: PADDLE_Y - 4, vx: 0, vy: -380, dmg: gunDmg(3), k: 'rocket', rad: 52 }); sfx.rocket();
     }
     if (relic('seismic') && G.paddleHits % 6 === 0) {
       shake(6); ring(paddle.x, PADDLE_Y, 300, '#ffd6a0', 0.5, 4); sfx.boom(true);
       for (const k of G.bricks) if (k.alive && k.type !== 'stone') hitBrick(k, Math.round(power()), false);
+    }
+  }
+  // Tectonic: the bricks in a cone above x crack with half the ball damage.
+  const CONE_W = 22, CONE_K = 0.2;
+  function tectonic(x) {
+    const dmg = Math.max(1, Math.round(ballDmg() / 2));
+    shake(6); sfx.boom(true); G.cone = { x, t: 0.35 };
+    for (const k of G.bricks) {
+      const dy = PADDLE_Y - (k.y + k.h / 2);
+      if (hurtable(k) && dy > 0 && Math.abs(k.x + k.w / 2 - x) <= CONE_W + dy * CONE_K) hitBrick(k, dmg, false);
     }
   }
   function launchOne(b) {
@@ -1459,10 +1899,15 @@
   const seekFrom = () => (G.level <= 3 ? 8 : Math.max(5, Math.ceil(G.brick0 * 0.2)));
   function steerBall(b, dt) {
     if (G.seekT < (G.level <= 3 ? 0.5 : 1.5) || b.y > PADDLE_Y - 120) return;
+    // a turtle takes no damage from below: the balls go for other bricks first, and for the air above a turtle last
+    const all = G.bricks.filter((k) => k.alive && k.type !== 'stone'), plain = all.filter((k) => k.type !== 'turtle');
     let best = null, bd = Infinity;
-    for (const k of G.bricks) if (k.alive && k.type !== 'stone') { const d = Math.hypot(k.x + k.w / 2 - b.x, k.y + k.h / 2 - b.y); if (d < bd) { bd = d; best = k; } }
+    for (const k of plain.length ? plain : all) { const d = Math.hypot(k.x + k.w / 2 - b.x, k.y + k.h / 2 - b.y); if (d < bd) { bd = d; best = k; } }
     if (!best) return;
-    const want = Math.atan2(best.y + best.h / 2 - b.y, best.x + best.w / 2 - b.x), cur = Math.atan2(b.vy, b.vx);
+    let tx = best.x + best.w / 2, ty = best.y + best.h / 2;
+    // to a turtle: past its side while below it, then down onto its shell
+    if (best.type === 'turtle') { ty = best.y - BH; if (b.y > best.y + best.h) tx = b.x < tx ? best.x - BW / 2 : best.x + best.w + BW / 2; }
+    const want = Math.atan2(ty - b.y, tx - b.x), cur = Math.atan2(b.vy, b.vx);
     let diff = want - cur; while (diff > Math.PI) diff -= 2 * Math.PI; while (diff < -Math.PI) diff += 2 * Math.PI;
     const a = cur + clamp(diff, -1.4 * dt, 1.4 * dt), sp = Math.hypot(b.vx, b.vy);
     b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp;
@@ -1473,10 +1918,10 @@
   function brickAbove(x, slack = 0) {
     for (const k of G.bricks) if (hurtable(k) && x >= k.x - slack && x <= k.x + k.w + slack) return true;
     for (const f of G.foes) if (!passive(f) && Math.abs(f.x - x) <= f.r + slack) return true;
-    if (G.boss && !G.boss.dead && Math.abs(G.boss.x - x) <= G.boss.w / 2 + slack) return true;
+    if (G.boss && !G.boss.dead && bossXs(G.boss).some((bx) => Math.abs(bx - x) <= G.boss.w / 2 + slack)) return true;
     return false;
   }
-  function anyTarget() { return destructibleLeft() > 0 || G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead); }
+  function anyTarget() { return G.bricks.some(hurtable) || G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead); }
   // Targets are bricks (x, y = top left), foes (x, y = centre, r) or the boss (x = centre, y = top, kind).
   const centerOf = (o) => (o.r ? [o.x, o.y] : o.kind ? [o.x, o.y + o.h / 2] : [o.x + o.w / 2, o.y + o.h / 2]);
   const targetLive = (o) => (o.r || o.kind ? !o.dead : o.alive);
@@ -1511,7 +1956,10 @@
       }
       G.gunCd[g] -= dt;
       if (!active || G.gunCd[g] > 0 || !fireGun(g, l, px, py)) continue;
-      if (!overdrive() && Math.random() >= lv('recycler') * 0.12 && --G.clip[g] <= 0) G.reload[g] = reloadTime(g);
+      if (!overdrive() && Math.random() >= lv('recycler') * 0.12 && --G.clip[g] <= 0) {
+        G.reload[g] = reloadTime(g);
+        if (setById('gunsmith')) for (const t of [0.1, 0.2]) after(t, () => { if (G.clearT < 0) fireGun(g, l, paddle.x, PADDLE_Y - 4); });
+      }
       G.gunCd[g] = GUNS[g].rate * Math.pow(0.9, l - 1) * (overdrive() ? 0.5 : 1);
       if (Math.random() < 0.12 * lv('echo')) after(0.14, () => { if (G.clearT < 0) fireGun(g, l, paddle.x, PADDLE_Y - 4); });
       burst(px, py, GUNS[g].color, 2, 70);
@@ -1556,7 +2004,7 @@
       const targets = allTargets();
       if (!targets.length) return false;
       // a high lob: the duck flies over everything on the way up and lands on the target
-      const [tx, ty] = centerOf(pick(targets)), apex = HUD_H + 16, v0 = Math.sqrt(2 * DUCK_G * (py - apex));
+      const [tx, ty] = centerOf(flared() || pick(targets)), apex = HUD_H + 16, v0 = Math.sqrt(2 * DUCK_G * (py - apex));
       const flight = v0 / DUCK_G + Math.sqrt((2 * Math.max(10, ty - apex)) / DUCK_G);
       G.shots.push({ x: px, y: py, vx: (tx - px) / flight, vy: -v0, dmg, k: g, rad: l >= 5 ? 60 : 44, bounces: 1 + (l >= 3 ? 1 : 0) + (l >= 5 ? 1 : 0), first: true, spin: 0 });
       sfx.launch();
@@ -1567,8 +2015,9 @@
   function arcZap(x, y, jumps, dmg, used) {
     const pts = [[x, y]]; let cx = x, cy = y;
     for (let j = 0; j < jumps; j++) {
-      let best = null, bd = Infinity;
-      for (const o of allTargets()) {
+      // the first jump goes to the flare
+      let best = j === 0 && flared() && !used.has(flared()) ? flared() : null, bd = best ? 0 : Infinity;
+      for (const o of best ? [] : allTargets()) {
         if (used.has(o)) continue;
         const [ox, oy] = centerOf(o), d = Math.hypot(ox - cx, oy - cy);
         if (j > 0 && d > 140) continue;
@@ -1586,6 +2035,7 @@
     for (let i = 0; i < 3; i++) after(0.1 + i * 0.06, () => explode(x + rand(-55, 55), y + rand(-40, 40), 30, Math.ceil(s.dmg / 2), '#ffb14a', true));
   }
   function steer(s, dt) {
+    if (s.k === 'rocket' && flared()) s.target = flared();
     if (!s.target || !targetLive(s.target)) s.target = nearestTarget(s.x, s.y);
     if (!s.target) return;
     const [tx, ty] = centerOf(s.target), sp = Math.hypot(s.vx, s.vy), cur = Math.atan2(s.vy, s.vx);
@@ -1688,7 +2138,8 @@
         }
       } else if (d.type === 'hunter') {
         d.cd -= dt;
-        if (!d.target || !d.target.alive) {
+        if (flared()) d.target = flared();
+        else if (!d.target || !d.target.alive) {
           const opts = G.bricks.filter(hurtable);
           d.target = opts.length ? pick(opts) : null;
         }
@@ -1729,8 +2180,8 @@
         if (!active || d.cd > 0) continue;
         let best = null, bd = 95;
         for (const k of G.bricks) {
-          if (!k.alive || k.type === 'stone') continue;
-          const dd = Math.abs(k.x + k.w / 2 - d.x) + Math.abs(k.y + k.h / 2 - d.y) * 0.3;
+          if (!k.alive || k.type === 'stone' || k.type === 'turtle') continue;
+          const dd =Math.abs(k.x + k.w / 2 - d.x) + Math.abs(k.y + k.h / 2 - d.y) * 0.3;
           if (dd < bd) { bd = dd; best = k; }
         }
         if (!best) continue;
@@ -1741,7 +2192,7 @@
       } else if (d.type === 'ufo') {
         if (d.target && !d.target.alive) { d.target = null; d.beam = 0; }
         if (!d.target && active && (d.cd -= dt) <= 0) {
-          const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && k.type !== 'pinata' && k.type !== 'runner' && !k.taken);
+          const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && k.type !== 'pinata' && k.type !== 'runner' && k.type !== 'turtle' && !k.taken);
           d.target = opts.length ? pick(opts) : null;
           if (d.target) d.target.taken = true;
         }
@@ -1753,7 +2204,7 @@
         d.beam += dt * oc;
         if (d.beam < 1) continue;
         const k = d.target;
-        d.target = null; d.beam = 0; d.cd = 4 / oc;
+        d.target = null; d.beam = 0; d.cd = 4 / oc; k.taken = false;
         say(k.x + k.w / 2, k.y, 'ZOOP!', '#7ee0ff', 0.7); sfx.teleport(); ring(k.x + k.w / 2, k.y + k.h / 2, 40, '#7ee0ff', 0.4);
         hitBrick(k, Math.ceil(k.maxhp * 0.5), false);
       } else if (d.type === 'goalie') {
@@ -1816,6 +2267,7 @@
       p.t -= dt;
       if (p.ring) continue;
       p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.k === 'z') continue;
       if (p.k === 'shard') { p.vy += 520 * dt; p.rot += p.vr * dt; } else { p.vy += 260 * dt; p.vx *= 1 - dt * 1.5; }
     }
     G.parts = G.parts.filter((p) => p.t > 0);
@@ -1823,6 +2275,7 @@
     G.texts = G.texts.filter((t) => t.t > 0);
     for (const b of G.beams) b.t -= dt;
     G.beams = G.beams.filter((b) => b.t > 0);
+    if (G.cone && (G.cone.t -= dt) <= 0) G.cone = null;
   }
 
   // ---------- enemies ----------
@@ -1885,7 +2338,7 @@
   const CONVOY_FROM = 18;
   function rollBlimp() {
     if (G.level === FROM.blimp && !G.safari) return 'loot';
-    const opts = Object.entries(BLIMPS).filter(([k, d]) => (G.safari ? k === 'loot' || k === 'gift' || k === 'gold' || G.level >= d.from : G.level >= d.from) && !(G.safari && k === 'bomb'));
+    const opts = Object.entries(BLIMPS).filter(([k, d]) => (G.safari ? k === 'loot' || k === 'gift' || k === 'gold' || G.level >= d.from : G.level >= blimpLevel(k, d)) && !(G.safari && k === 'bomb'));
     const wt = (k, d) => d.w * (k === 'gold' ? 1 + lv('goldtix') : 1);
     let r = Math.random() * opts.reduce((a, [k, d]) => a + wt(k, d), 0);
     for (const [k, d] of opts) { r -= wt(k, d); if (r <= 0) return k; }
@@ -1944,10 +2397,13 @@
     if (f.kind === 'bomb') airStrike(4, 54, 4);
     if (f.kind === 'mother') [-26, 0, 26].forEach((dy, i) => spawnBlimp('loot', f.x, f.y + dy, i % 2 ? -1 : 1));
     if (relic('pirate')) airStrike(6, 40, 3);
+    // Blimp Baron: the pops of convoy blimps do not count, so that convoys do not call each other
+    if (setById('baron') && !f.convoy && !G.safari && (run.baronN = (run.baronN || 0) + 1) % 5 === 0) after(0.6, () => { if (G.clearT < 0) spawnConvoy(); });
+    if (!run.hudLoose && !G.safari && !G.loose && run.level >= LOOSE_FROM && Math.random() < LOOSE_CHANCE) knockHud();
   }
   // Bombs on random bricks.
   function airStrike(n, rad, dmg) {
-    const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone');
+    const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && k.type !== 'turtle');
     for (let i = 0; i < n && opts.length; i++) {
       const k = opts.splice((Math.random() * opts.length) | 0, 1)[0];
       after(0.15 + i * 0.12, () => explode(k.x + k.w / 2, k.y + k.h / 2, rad, gunDmg(dmg), '#ff5c5c', i > 0));
@@ -1983,9 +2439,10 @@
     f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
     run.score += 50; run.stats.foes++; addFever(0.06);
     if (f.type === 'blimp') dropCoin(f.x, f.y, f.small ? 3 : BLIMPS[f.kind].coins, true);
-    else dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
+    else dropCoin(f.x, f.y, FOE[f.type].coins + f.loot * 2);
     if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
     if (G.clearT >= 0) return;
+    trophy(f);
     if (f.type === 'blimp') popBlimp(f);
     if (f.type === 'splitter') for (const sd of [-1, 1]) spawnFoe('drifter', f.x + sd * 14, f.y).vx = sd * 55;
   }
@@ -2126,10 +2583,13 @@
       if (s.x < -10 || s.x > W + 10 || s.y > H + 10) { s.dead = true; continue; }
       if (s.vy > 0 && s.y + s.r >= PADDLE_Y && s.y - s.r <= PADDLE_Y + PADDLE_H && Math.abs(s.x - paddle.x) <= paddle.w / 2 + s.r) {
         s.dead = true;
-        if (hurtPaddle(s.x, s.k === 'curse' ? '#ff5c5c' : '#9cff57') && s.k === 'curse') {
+        const hurt = hurtPaddle(s.x, s.k === 'curse' ? '#ff5c5c' : '#9cff57');
+        if (hurt && s.k === 'curse') {
           const tax = Math.min(run.coins, 3 + Math.floor(run.level / 5));
           run.coins -= tax; sfx.curse(); say(s.x, PADDLE_Y - 24, `TAXED −${tax}`, '#ff5c5c', 1.1);
         }
+        // the Deflector sends a blocked shot back up
+        if (!hurt && s.k !== 'sock') G.shots.push({ x: s.x, y: PADDLE_Y - 8, vx: 0, vy: -650, dmg: gunDmg(3), k: 'back' });
       }
     }
     G.eshots = G.eshots.filter((s) => !s.dead);
@@ -2178,7 +2638,39 @@
     return { kind, x: W / 2, y: BOSS_Y, w: d.w, h: d.h, hp, maxhp: hp, t: 0, phase: 1, atkT: 3, moveT: 4, talkT: 5, flash: 0, dead: false,
       coinAcc: 0, talk: null, state: 'idle', stateT: 0, vx: 95, vy: 40 };
   }
-  function bossSay(s) { G.boss.talk = { s, t: 2.2 }; sfx.taunt(); }
+  function bossSay(s) {
+    G.boss.talk = { s, t: 2.2 }; sfx.taunt();
+    if (lv('d_parrot') && G.clearT < 0 && G.time - G.lastBounceT < 2) after(0.9, () => parrotEcho(s));
+  }
+  // Polly the parrot rides on the paddle. Every PARROT_EVERY paddle bounces she pecks the lowest brick that she can
+  // hurt. She repeats the lines of a boss, and that hurts the boss.
+  const PARROT_EVERY = 5, PARROT_LINES = ['Polly wants a brick!', 'SQUAWK!', 'Pieces of eight!', 'Peck peck!', 'Who is a pretty bird?'];
+  const parrotX = () => paddle.x + paddle.w / 2 - 10;
+  function parrotPeck() {
+    let k = null;
+    for (const o of G.bricks) if (hurtable(o) && (!k || o.y > k.y)) k = o;
+    if (!k) return;
+    G.bolts.push({ pts: [[parrotX(), PADDLE_Y - 12], [k.x + k.w / 2, k.y + k.h / 2]], t: 0.2, T: 0.2, c: '#7cf2a8' });
+    hitBrick(k, gunDmg(2), false); sfx.squawk(1);
+    say(clamp(parrotX(), 90, W - 90), PADDLE_Y - 30, pick(PARROT_LINES), '#7cf2a8', 0.9);
+  }
+  function parrotEcho(s) {
+    const B = G.boss;
+    if (!B || B.dead || G.clearT >= 0) return;
+    G.bolts.push({ pts: [[parrotX(), PADDLE_Y - 12], [B.x, B.y + B.h]], t: 0.2, T: 0.2, c: '#7cf2a8' });
+    say(clamp(parrotX(), 120, W - 120), PADDLE_Y - 40, `SQUAWK! ${s.toUpperCase()}`, '#7cf2a8', 1.4);
+    sfx.squawk(2); damageBoss(gunDmg(4));
+  }
+  // The Slime Queen splits in two at phase 3: a twin mirrors her x position. Both are QUEEN_SPLIT of her size and
+  // share her health.
+  const QUEEN_SPLIT = 0.7;
+  const bossXs = (B) => (B.twin ? [B.x, W - B.x] : [B.x]);
+  // The Bazaar Baron can leave his hat behind when he teleports. A ball that hits it pays.
+  const HAT_CHANCE = 0.25, HAT_S = 4, HAT_W = 124, HAT_PAY = 6;
+  function hatHit(B) {
+    poof(B.hat.x, B.hat.y - 12, '#ffd23f'); dropCoin(B.hat.x, B.hat.y, HAT_PAY, true); sfx.jackpot();
+    B.hat = null; bossSay('My hat!');
+  }
   function damageBoss(dmg) {
     const B = G.boss; if (!B || B.dead) return;
     // the Crate King lands on his head after a stomp
@@ -2200,7 +2692,7 @@
     G.slowmo = 1.2; flashScreen('#ffffff', 0.6); G.lasers = []; G.eshots = [];
     G.cam = { x: B.x, y: B.y + B.h / 2, t: 1.2, T: 1.2 }; sfx.roar();
     for (let i = 0; i < 7; i++) after(i * 0.07, () => { const x = B.x + rand(-60, 60), y = B.y + rand(-5, B.h); burst(x, y, pick(RAINBOW), 20, 260); ring(x, y, 50, '#ffd23f'); });
-    dropCoin(B.x, B.y + 20, Math.round((15 + 10 * B.kind) * (1 + 0.25 * lv('foebounty'))));
+    dropCoin(B.x, B.y + 20, 15 + 10 * B.kind);
     run.score += 2000 * B.kind;
     say(W / 2, H / 2, BOSSES[B.kind].name + ' defeated!', '#ffd23f', 2, true);
     say(W / 2, H / 2 + 34, `"${BOSSES[B.kind].dies}"`, '#ffffff', 2);
@@ -2226,7 +2718,12 @@
     () => dropBricks(4, 'normal', 2),
     (B) => { for (const x of [80, 240, 400]) laserAt(x + rand(-30, 30), 1.3); },
     (B) => { for (let i = 0; i < 2 + B.phase; i++) enemyShot(B.x + rand(-30, 30), B.y + B.h, rand(-0.5, 0.5), 60, 'curse'); },
-    (B) => { for (const s of [-1, 1]) spawnFoe(B.phase === 2 ? 'splitter' : 'drifter', clamp(B.x + s * 80, 30, W - 30), 230); },
+    (B) => {
+      for (const s of [-1, 1]) spawnFoe(B.phase === 2 ? 'splitter' : 'drifter', clamp(B.x + s * 80, 30, W - 30), 230);
+      if (B.phase < 3) return;
+      B.twin = true; B.w = Math.round(BOSSES[4].w * QUEEN_SPLIT); B.h = Math.round(BOSSES[4].h * QUEEN_SPLIT);
+      poof(W - B.x, B.y + B.h / 2, '#7ee05a');
+    },
     (B) => { dropBricks(4, 'steel', 3); for (let i = 0; i < B.phase - 1; i++) spawnFoe('bomber'); },
   ];
   // Movement and attacks. live = the ball is in play, so attacks are allowed.
@@ -2279,6 +2776,7 @@
       if (!live) return;
       if ((B.moveT -= dt) <= 0) {
         B.moveT = 5.5 - B.phase; poof(B.x, B.y + B.h / 2, '#d4a5ff');
+        if (!B.hat && Math.random() < HAT_CHANCE) B.hat = { x: B.x, y: B.y, t: HAT_S };
         B.x = pick([90, W / 2, W - 90].filter((x) => Math.abs(x - B.x) > 40));
         // from phase 2 the Baron also appears lower in the field
         B.by = B.phase >= 2 && Math.random() < 0.5 ? 292 : BOSS_Y;
@@ -2326,6 +2824,7 @@
     if (!B) return;
     if (B.flash > 0) B.flash -= dt;
     if (B.talk && (B.talk.t -= dt) <= 0) B.talk = null;
+    if (B.hat && (B.hat.t -= dt) <= 0) { poof(B.hat.x, B.hat.y - 12, '#d4a5ff'); B.hat = null; }
     if (B.dead || G.fx.freeze > 0) return;
     const fast = 1 + 0.25 * (B.phase - 1), live = G.started && G.clearT < 0;
     B.t += dt * fast;
@@ -2340,7 +2839,7 @@
   }
   function bossAt(x, y, pad = 0) {
     const B = G.boss; if (!B || B.dead) return false;
-    return x >= B.x - B.w / 2 - pad && x <= B.x + B.w / 2 + pad && y >= B.y - pad && y <= B.y + B.h + pad;
+    return y >= B.y - pad && y <= B.y + B.h + pad && bossXs(B).some((bx) => x >= bx - B.w / 2 - pad && x <= bx + B.w / 2 + pad);
   }
   function levelDone() { return G.safari ? G.clock >= G.par : G.boss ? G.boss.dead : destructibleLeft() === 0; }
 
@@ -2444,6 +2943,7 @@
     }
     drawLasers(t);
     drawBoss(t);
+    drawBoss(t, G.cameo);
     for (const s of G.eshots) {
       if (s.k === 'curse') {
         ctx.fillStyle = '#7a0f1e'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
@@ -2477,8 +2977,8 @@
       }
     }
   }
-  function drawBoss(t) {
-    const B = G.boss;
+  // B = the boss, or a cameo, which has the same fields.
+  function drawBoss(t, B = G.boss) {
     if (!B || B.dead) return;
     const x = B.x - B.w / 2, y = B.y, hot = B.phase === 3, look = clamp((paddle.x - B.x) / 60, -3, 3);
     const frozen = G.fx.freeze > 0, body = (c) => (B.flash > 0 ? '#ffffff' : frozen ? '#a8e6ff' : c);
@@ -2501,20 +3001,24 @@
       ctx.fillStyle = '#26303f'; for (const ox of [-66, 66]) { ctx.beginPath(); ctx.arc(B.x + ox, y + 12, 3, 0, 7); ctx.fill(); }
       eyes(B.x, y + 24, 20, 8, look, hot ? '#ff2a4d' : '#1b1f33');
     } else if (B.kind === 3) {
-      ctx.fillStyle = '#2b1a40'; ctx.fillRect(x + 8, y - 4, B.w - 16, 6);
-      ctx.fillStyle = '#ffd23f'; rr(x + 24, y - 24, B.w - 48, 22, 4); ctx.fill();
-      ctx.fillStyle = '#7a5300'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', B.x, y - 12);
+      if (B.hat) drawHat(B.hat.x, B.hat.y, Math.sin(t * 12) * 0.08);
+      else drawHat(B.x, y, 0);
       ctx.fillStyle = body('#d4a5ff'); rr(x, y, B.w, B.h, 14); ctx.fill();
       eyes(B.x, y + 20, 20, 8, look, hot ? '#ff2a4d' : '#1b1f33');
       // a moustache
       ctx.fillStyle = '#2b1a40'; ctx.beginPath(); ctx.ellipse(B.x - 11, y + 36, 12, 4, -0.25, 0, 7); ctx.ellipse(B.x + 11, y + 36, 12, 4, 0.25, 0, 7); ctx.fill();
     } else if (B.kind === 4) {
-      const wob = Math.sin(t * 6) * 5;
-      ctx.fillStyle = body('#7ee05a'); ctx.beginPath(); ctx.ellipse(B.x, y + B.h / 2 + 4, B.w / 2 + wob, B.h / 2 - wob * 0.6, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(B.x - 22, y + 16, 22, 7, -0.3, 0, 7); ctx.fill();
-      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(B.x - 22, y + 6); ctx.lineTo(B.x - 16, y - 12); ctx.lineTo(B.x - 6, y); ctx.lineTo(B.x, y - 16); ctx.lineTo(B.x + 6, y); ctx.lineTo(B.x + 16, y - 12); ctx.lineTo(B.x + 22, y + 6); ctx.fill();
-      eyes(B.x, y + 30, 20, 9, look, hot ? '#ff2a4d' : '#1b1f33');
-      ctx.strokeStyle = '#1e5a12'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(B.x, y + 44, 10, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+      // drawn at full size around (0, 0), then scaled: after the split there are two smaller queens
+      const wob = Math.sin(t * 6) * 5, d = BOSSES[4], s = B.twin ? QUEEN_SPLIT : 1;
+      for (const qx of bossXs(B)) {
+        ctx.save(); ctx.translate(qx, y); ctx.scale(s, s);
+        ctx.fillStyle = body('#7ee05a'); ctx.beginPath(); ctx.ellipse(0, d.h / 2 + 4, d.w / 2 + wob, d.h / 2 - wob * 0.6, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(-22, 16, 22, 7, -0.3, 0, 7); ctx.fill();
+        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(-22, 6); ctx.lineTo(-16, -12); ctx.lineTo(-6, 0); ctx.lineTo(0, -16); ctx.lineTo(6, 0); ctx.lineTo(16, -12); ctx.lineTo(22, 6); ctx.fill();
+        eyes(0, 30, 20, 9, look, hot ? '#ff2a4d' : '#1b1f33');
+        ctx.strokeStyle = '#1e5a12'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 44, 10, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+        ctx.restore();
+      }
     } else {
       if (B.state === 'tractor') {
         ctx.fillStyle = `rgba(126,224,255,${0.18 + 0.08 * Math.sin(t * 20)})`;
@@ -2536,6 +3040,14 @@
     ctx.beginPath(); ctx.moveTo(B.x - 6, by - 11); ctx.lineTo(B.x, by - 20); ctx.lineTo(B.x + 6, by - 11); ctx.fill();
     ctx.fillStyle = '#1b1f33'; ctx.fillText(B.talk.s, bx, by + 1);
     ctx.globalAlpha = 1;
+  }
+  // The top hat of the Bazaar Baron. (x, y) = the middle of its brim.
+  function drawHat(x, y, tilt) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+    ctx.fillStyle = '#2b1a40'; ctx.fillRect(-HAT_W / 2, -4, HAT_W, 6);
+    ctx.fillStyle = '#ffd23f'; rr(-HAT_W / 2 + 16, -24, HAT_W - 32, 22, 4); ctx.fill();
+    ctx.fillStyle = '#7a5300'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', 0, -12);
+    ctx.restore();
   }
 
   // ---------- level end ----------
@@ -2569,6 +3081,10 @@
     const alley = run.alley && !late ? pay.bonus + pay.speed + pay.starBonus + pay.heatBonus : 0;
     run.alley = false; run.coins += alley;
     run.coins += interest + bonds + betWon + darePay + insurance;
+    // the ball boy takes his wage last; a player who cannot pay loses him
+    const wage = lv('ballboy') ? Math.round(pay.bonus * BOY_WAGE) : 0, boyQuit = wage > run.coins;
+    if (boyQuit) run.up.ballboy = 0; else run.coins -= wage;
+    const seals = earnSeals(stars, darePay > 0, !!G.def.boss);
     run.stats.stars += stars;
     run.star3 = stars === 3 ? run.star3 + 1 : 0;
     sticker('first');
@@ -2590,11 +3106,12 @@
       heat = run.heat - was;
     }
     lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance, alley,
+      wage: boyQuit ? 0 : wage, boyQuit, seals,
       combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.clock), par: G.par, flawless: G.flawless, late, timed, boss: !!G.def.boss };
     run.bet = 0; run.nextSpecial = null; run.wanted = false; run.dare = null; run.odd = null; if (!G.def.boss) run.favourite = false;
     if (run.heat >= 8) sticker('hot');
     run.score += 100 * lvl * stars;
-    run.level++;
+    run.level = run.daily ? dailyNext() || run.level + 1 : run.level + 1;
     if (G.wantedWon) run.wantedWon = (run.wantedWon || 0) + 1;
     run.pendingRelic = (lvl % 5 === 0 || G.wantedWon) && relicChoices().length > 0;
     rollDeals();
@@ -2602,10 +3119,18 @@
     saveRun();
     showTally();
   }
+  // Bazaar Seals: only skill pays them, and the price index never touches them. Returns the number earned.
+  function earnSeals(stars, dare, boss) {
+    if (run.level < SEAL_FROM || G.timeUp) return 0;
+    const n = (stars === 3 ? 1 : 0) + (dare ? 1 : 0) + (boss ? 2 : 0) + (G.ding3 >= 3 ? 1 : 0);
+    run.seals += n; run.sealsEver += n;
+    if (run.sealsEver >= 5) sticker('seal');
+    return n;
+  }
   function gameOver() {
     mode = 'over'; pauseBtn.style.display = 'none'; A.music(0); A.fever(false); sfx.over();
     bankStats();
-    const record = run.level > best.level || run.score > best.score;
+    const record = run.daily ? dailyRecord() : run.level > best.level || run.score > best.score;
     recordBest();
     const keep = Math.floor(run.coins / 2), st = run.stats;
     showOverlay(`<div class="center">
@@ -2618,10 +3143,10 @@
       <div class="stat">Best: level <b>${best.level}</b> · score <b>${best.score}</b></div>
       ${stickerNote()}
       <div style="height:1.2em"></div>
-      <button class="big gold" data-act="continue">Try again (keep upgrades, ${keep} 🪙)</button>
-      <button class="big alt" data-act="newrun">New run</button>
+      ${run.daily ? '' : `<button class="big gold" data-act="continue">Try again (keep upgrades, ${keep} 🪙)</button>
+      <button class="big alt" data-act="newrun">New run</button>`}
       <button class="big alt" data-act="menu">Menu</button>
-      <div class="hint">Trying again keeps everything you bought but costs half your coins.</div>
+      ${run.daily ? '' : '<div class="hint">Trying again keeps everything you bought but costs half your coins.</div>'}
     </div>`);
   }
 
@@ -2642,7 +3167,9 @@
       ${snailBubble('menu')}
       ${saved ? `<button class="big gold" data-act="resume">Continue · level ${saved.level} · ${saved.coins} 🪙</button>` : ''}
       <button class="big" data-act="newrun">${saved ? 'New run' : 'Play'}</button>
+      ${stickerCount() >= DAILY_STICKERS ? `<button class="big alt" data-act="daily">🗓️ Bazaar of the Day${meta.dailyBest ? ` · best ${meta.dailyBest}` : ''}${meta.dailyDays ? ` · ${meta.dailyDays} day${meta.dailyDays > 1 ? 's' : ''}` : ''}</button>` : ''}
       ${stickerCount() ? `<button class="big alt" data-act="album">📒 Sticker album ${stickerCount()}/${STICKERS.length}</button>` : ''}
+      ${meta.stars ? `<div class="stat">${'⭐'.repeat(Math.min(meta.stars, 10))} ${meta.stars} star${meta.stars > 1 ? 's' : ''}</div>` : ''}
       ${soundBtns()}
       ${meta.bricks ? `<div class="stat life">You have smashed <b>${meta.bricks.toLocaleString('en')}</b> bricks. That is ${brickFact(meta.bricks)}.</div>` : ''}
       ${best.level ? `<div class="stat" style="margin-top:1em">Best: level <b>${best.level}</b> · score <b>${best.score}</b></div>` : ''}
@@ -2702,7 +3229,7 @@
     const fresh = (it) => run.level > 2 && it.at === run.level;
     const stock = ITEMS.filter(unlocked), useTabs = stock.length >= SHOP_TABS_FROM;
     const cats = CATS.filter((c) => stock.some((it) => it.cat === c.id));
-    if (!cats.some((c) => c.id === shopCat)) shopCat = cats[0].id;
+    if (!cats.some((c) => c.id === shopCat)) shopCat = cats.length ? cats[0].id : 'weap';
     const cards = stock.filter((it) => !useTabs || it.cat === shopCat).map((it) => {
       const state = itemState(it);
       const l = it.use ? 0 : lv(it.id);
@@ -2715,26 +3242,30 @@
       else if (state === 'max') btn = `<button class="buy max" disabled>${it.id === 'life' ? 'Full' : it.use ? 'Sold out' : 'Maxed'}</button>`;
       else {
         const verb = l ? 'Upgrade' : 'Buy';
-        btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${it.verb && !itemCost(it) ? it.verb : `${it.verb || verb} · ${itemCost(it)} 🪙`}</button>`;
+        btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${it.verb && !itemCost(it) ? it.verb : `${it.verb || verb} · ${itemCost(it)} ${it.seals ? '🦭' : '🪙'}`}</button>`;
       }
+      const set = run.level >= SET_FROM && SETS.find((s) => s.items.includes(it.id));
+      const setLine = set ? `<div class="setline ${setOn(set) ? 'on' : ''}">🧩 ${set.icon} ${set.name} ${setHave(set)}/${set.items.length}: ${set.text}</div>` : '';
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
-        ${sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
+        ${priceLocked(it) ? '<span class="sale lock">🔒</span>' : sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
         <div class="top"><span class="ic">${it.icon}</span><span class="nm">${it.name}</span></div>
-        ${pips}<div class="ds">${desc}</div>${btn}</div>`;
+        ${pips}<div class="ds">${desc}</div>${setLine}${btn}</div>`;
     }).join('');
     const tabs = cats.map((c) => {
       const items = stock.filter((it) => it.cat === c.id);
       const can = items.some((it) => itemState(it) === 'ok'), sale = items.some((it) => onSale(it) && open(it));
       return `<button class="tab ${c.id === shopCat ? 'on' : ''} ${can ? 'can' : ''}" data-cat="${c.id}">${c.name}${sale ? '<i>%</i>' : items.some(fresh) ? '<i>NEW</i>' : ''}</button>`;
     }).join('');
-    const later = ITEMS.filter((it) => !unlocked(it)).map((it) => it.at);
+    const later = ITEMS.filter((it) => !unlocked(it) && it.at > run.level).map((it) => it.at);
     const teaser = later.length ? `<div class="teaser">🔒 More stock arrives after level ${Math.min(...later) - 1}</div>` : '';
-    const relics = relicIcons();
+    const relics = relicIcons(), sets = SETS.filter(setOn).map((s) => `<span title="${s.name}: ${s.text}">${s.icon}</span>`).join('');
+    const msg = shopMsg || (lockArmed() ? '🔒 Pick an upgrade to lock its price.' : '');
     showOverlay(`<div class="shop">
-      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}${priceTag()}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
-      ${relics ? `<div class="relicbar">Relics ${relics}</div>` : ''}
+      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}${priceTag()}</div></div>
+        <div class="purse"><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div>${run.sealsEver ? `<div class="coins seals">${run.seals} 🦭</div>` : ''}</div></div>
+      ${relics || sets ? `<div class="relicbar">${relics ? `Relics ${relics}` : ''}${sets ? ` · Sets ${sets}` : ''}</div>` : ''}
       <div class="keeper"><span class="snail">🐌</span><span class="bubble">${keeper}</span></div>
-      ${shopMsg ? `<div class="shopmsg">${shopMsg}${lastBox ? ' <button class="mini" data-act="don">🎲 Double or nothing?</button>' : ''}</div>` : ''}
+      ${msg ? `<div class="shopmsg">${msg}${lastBox ? ' <button class="mini" data-act="don">🎲 Double or nothing?</button>' : ''}</div>` : ''}
       ${useTabs ? `<div class="tabs">${tabs}</div>` : '<div class="notabs">Spend your coins on upgrades. They last for the whole run.</div>'}
       <div class="items">${cards}${teaser}</div>
       <div class="shopfoot"><div class="minis">
@@ -2774,17 +3305,22 @@
     if (t.dataset.cat) { shopCat = t.dataset.cat; sfx.tab(); renderShop(false); return; }
     if (t.dataset.buy) {
       const it = ITEM_BY_ID[t.dataset.buy];
+      if (lockArmed() && !it.seals) { lockPick(it); renderShop(true, it.id); return; }
       if (haggleArm) { haggle(it); renderShop(true, it.id); return; }
       const ok = buy(it);
       if (ok && run.pendingMini) startMini(); else if (ok && run.pendingSafari) startSafari(); else if (ok && run.pendingRelic) showRelics(); else renderShop(true, ok ? it.id : null);
       return;
     }
     if (t.dataset.relic) { takeRelic(t.dataset.relic); return; }
+    if (t.dataset.keep) { beginStarRun(t.dataset.keep); return; }
     if (t.dataset.kit) { beginRun(t.dataset.kit); return; }
     if (t.dataset.fork) { takeFork(t.dataset.fork); return; }
     const act = t.dataset.act;
     if (act === 'newrun') { if (KITS.some((k) => k.need > 0 && stickerCount() >= k.need)) showKits(); else beginRun('none'); }
     else if (act === 'album') showAlbum();
+    else if (act === 'reroll') { run.reroll = false; saveRun(); showRelics(relicShown); }
+    else if (act === 'ngplus') showKeepRelic();
+    else if (act === 'daily') beginDaily();
     else if (act === 'tip') { tip(); if (run.pendingRelic) showRelics(); else renderShop(true); }
     else if (act === 'haggle') { haggleArm = !haggleArm; if (haggleArm) quip('haggleArm'); renderShop(true); }
     else if (act === 'don') { doubleOrNothing(); renderShop(true); }
@@ -2855,7 +3391,7 @@
   // ---------- fever ----------
   // Breaking bricks fills the gauge. A full gauge starts a fever: double coins and double ball damage.
   const feverOn = () => G.feverT > 0;
-  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') ? 0.5 : 0);
+  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') || special('insomnia') ? 0.5 : 0);
   function addFever(v) {
     if (feverOn() || G.clearT >= 0 || G.level < FROM.fever) return;
     G.feverIdle = 0;
@@ -2898,12 +3434,14 @@
     for (const o of G.bricks) if (o.alive && o !== b && o.row === b.row) hitBrick(o, dmg, false);
     for (const f of G.foes) if (!f.dead && Math.abs(f.y - cy) < f.r + 10) damageFoe(f, dmg);
   }
+  const BROOD_FIRE = 2;
   function splitBall(x, y, vx, vy) {
     const s = ballSpeed(), base = vx == null ? 0 : Math.atan2(vx, -vy);
     for (const d of vx == null ? [-0.6, 0.6] : [0.45]) {
       if (G.balls.length >= MAX_BALLS) break;
       const a = base + d, nb = makeBall(x, y, Math.sin(a) * s, -Math.cos(a) * s);
       nb.pierce = lv('pierce'); G.balls.push(nb);
+      if (relic('brood')) nb.fireT = BROOD_FIRE;
     }
     ring(x, y, 46, '#ffffff', 0.35); sfx.split();
   }
@@ -2960,18 +3498,32 @@
     { id: 'bank', icon: '🎱', name: 'Bank Shot', desc: 'Each wall bounce since the paddle adds +100% damage to the next brick hit, up to +300%.' },
     { id: 'spin', icon: '🌀', name: 'Curveball', desc: 'A moving paddle puts spin on the ball, and the ball curves.' },
   ];
-  const relic = (id) => !!(run && run.relics[id]);
-  function relicChoices() {
-    const pool = RELICS.filter((r) => !run.relics[r.id] && (r.at || 0) <= run.level);
+  for (const f of FUSIONS) RELICS.push({ id: f.id, icon: f.icon, name: f.name, desc: f.desc, fused: true });
+  const relicById = (id) => RELICS.find((r) => r.id === id);
+  // A fused relic with keep also counts as its two parts.
+  const relic = (id) => !!(run && (run.relics[id] || FUSIONS.some((f) => f.keep && run.relics[f.id] && (f.a === id || f.b === id))));
+  // A part of a fused relic is not offered again.
+  const fusedAway = (id) => FUSIONS.some((f) => run.relics[f.id] && (f.a === id || f.b === id));
+  function relicChoices(not = []) {
+    const pool = RELICS.filter((r) => !run.relics[r.id] && !r.fused && !fusedAway(r.id) && !not.includes(r.id) && (r.at || 0) <= run.level);
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     return pool.slice(0, 3);
   }
-  function showRelics() {
+  function fuseRelics(f) {
+    delete run.relics[f.a]; delete run.relics[f.b]; run.relics[f.id] = true;
+    sticker('fusion'); sfx.relic();
+    return `⚗️ ${relicById(f.a).icon} + ${relicById(f.b).icon} = ${f.icon} ${f.name}!`;
+  }
+  let relicShown = [];
+  // not = relics that a reroll leaves out
+  function showRelics(not = []) {
     mode = 'relic'; pauseBtn.style.display = 'none';
-    const cards = relicChoices().map((r, i) => `<button class="relic" data-relic="${r.id}" style="animation-delay:${i * 0.12}s">
+    relicShown = relicChoices(not).map((r) => r.id);
+    const cards = relicShown.map(relicById).map((r, i) => `<button class="relic" data-relic="${r.id}" style="animation-delay:${i * 0.12}s">
       <span class="ric">${r.icon}</span><span class="rnm">${r.name}</span><span class="rds">${r.desc}</span></button>`).join('');
+    const reroll = run.reroll && relicChoices(relicShown).length ? '<button class="big alt" data-act="reroll">🔄 Three other relics</button>' : '';
     showOverlay(`<div class="center"><div class="tally-sub">A GIFT FROM THE BAZAAR</div><h2>Pick a relic</h2>${snailBubble('relicPick')}<div class="relics">${cards}</div>
-      <div class="hint">Relics last for the whole run.</div></div>`, 'see');
+      ${reroll}<div class="hint">Relics last for the whole run.</div></div>`, 'see');
     sfx.relic();
   }
   function relicBricks(b, cx, cy) {
@@ -2989,14 +3541,121 @@
     }
   }
 
+  // Rebound: one brick next to k takes dmg.
+  function popNeighbour(k, dmg) {
+    const near = G.bricks.filter((o) => o.alive && o.type !== 'stone' && k.row < 90 && o.row < 90 && Math.abs(o.col - k.col) + Math.abs(o.row - k.row) === 1);
+    if (!near.length) return;
+    const o = pick(near);
+    after(0.07, () => { burst(o.x + o.w / 2, o.y + o.h / 2, '#7cf2ff', 5, 120); hitBrick(o, dmg, false); });
+  }
+  // Mother Lode: a broken gold brick blasts the gold and bomb bricks around it. A blast that breaks one goes on.
+  function motherLode(b) {
+    if (b.row >= 90) return;
+    for (const o of G.bricks) {
+      if (!o.alive || (o.type !== 'gold' && o.type !== 'bomb') || o.row >= 90 || Math.abs(o.col - b.col) > 1 || Math.abs(o.row - b.row) > 1) continue;
+      after(0.12, () => { if (o.alive) explode(o.x + o.w / 2, o.y + o.h / 2, 24, gunDmg(3), '#ffd23f', true); });
+    }
+  }
+  // Payday: the nearest gold brick or chest to x, or null.
+  function paydayTarget(x) {
+    let best = null;
+    for (const k of G.bricks) if (hurtable(k) && (k.type === 'gold' || k.type === 'chest') && (!best || Math.abs(k.x - x) < Math.abs(best.x - x))) best = k;
+    return best;
+  }
+  // CUCKOO: every broken brick calls, at most every CUCKOO_GAP seconds.
+  const CUCKOO_GAP = 0.3;
+  function cuckoo(x, y) {
+    if (G.time - G.cuckooT < CUCKOO_GAP) return;
+    G.cuckooT = G.time; sfx.ding(4); after(0.14, () => sfx.ding(2));
+    if (Math.random() < 0.3) say(clamp(x, 60, W - 60), y - 14, 'cuckoo!', '#ffe680', 0.8);
+  }
+  // INSOMNIA MARKET: a "z" rises from a sleeping brick.
+  function snore() {
+    const k = pick(G.bricks.filter((o) => o.alive && o.type !== 'stone'));
+    if (k) addPart({ k: 'z', x: k.x + k.w / 2 + rand(-6, 10), y: k.y, vx: rand(-8, 8), vy: -24, t: 1.6, T: 1.6, c: '#c9d0ff', s: rand(9, 13) });
+  }
+  // Trophy Hunter: the first monsters of each kind in a level drop a capsule.
+  function trophy(f) {
+    const n = lv('foebounty');
+    if (!n || passive(f) || (G.trophies[f.type] = (G.trophies[f.type] || 0) + 1) > n) return;
+    G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() }); say(f.x, f.y - 26, '🏆 TROPHY!', '#ffd23f', 1);
+  }
+
+  // ---------- Spotter's Flare ----------
+  // Sweet-spot dings give flares. A tap on a brick in the top half marks it; the aiming weapons go for it first.
+  function plantFlare(x, y) {
+    if (!lv('flare') || G.flareN <= 0 || G.safari) return;
+    const k = G.bricks.find((o) => hurtable(o) && x >= o.x - 4 && x <= o.x + o.w + 4 && y >= o.y - 4 && y <= o.y + o.h + 4);
+    if (!k) return;
+    G.flareN--; G.flare = k;
+    sfx.ping(3); ring(k.x + k.w / 2, k.y + k.h / 2, 34, '#ff2a4d', 0.4);
+  }
+  const flared = () => (G.flare && G.flare.alive ? G.flare : null);
+  function drawFlare(t) {
+    const k = flared();
+    if (k) {
+      const x = k.x + k.w / 2, y = k.y + k.h / 2, p = (t * 1.5) % 1;
+      ctx.strokeStyle = `rgba(255,42,77,${1 - p})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8 + 18 * p, 0, TAU); ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter'; glow(x, y, 16, '#ff2a4d', 0.7 + 0.3 * Math.sin(t * 12)); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ff2a4d'; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, TAU); ctx.fill();
+    }
+    for (let i = 0; i < G.flareN; i++) {
+      const fx = paddle.x - (G.flareN - 1) * 5 + i * 10;
+      ctx.fillStyle = '#ff2a4d'; ctx.beginPath(); ctx.arc(fx, PADDLE_Y + PADDLE_H + 8, 3, 0, TAU); ctx.fill();
+    }
+  }
+
+  // ---------- the loose HUD ----------
+  // Once per run, from LOOSE_FROM, a blimp pop can knock the coin counter off the HUD. It hangs on a chain as a target:
+  // each ball hit knocks LOOSE_PAY coins out, LOOSE_HITS times at most. After LOOSE_S seconds a winch pulls it back up.
+  const LOOSE_FROM = 16, LOOSE_CHANCE = 0.35, LOOSE_S = 12, LOOSE_HITS = 10, LOOSE_PAY = 3;
+  const LOOSE_W = 116, LOOSE_H = 44, LOOSE_X = 120, LOOSE_LEN = 230;
+  function knockHud() {
+    run.hudLoose = true;
+    G.loose = { t: LOOSE_S, len: 0, a: 0.6, va: 0, hits: 0, spinT: 0, hitCd: 0, up: false };
+    sfx.stone(); sfx.boom(true); shake(8); say(LOOSE_X, HUD_H + 30, 'CLANG!', '#ffd84a', 1.2, true);
+    heckle('hudLoose', 'Who glued the HUD on? Me. Badly.');
+  }
+  // The centre of the hanging counter.
+  const loosePos = (L) => [LOOSE_X + Math.sin(L.a) * L.len, HUD_H + Math.cos(L.a) * L.len];
+  function updateLoose(dt) {
+    const L = G.loose;
+    if (!L) return;
+    L.t -= dt; L.hitCd -= dt; L.spinT = Math.max(0, L.spinT - dt);
+    if (L.t <= 0 || L.hits >= LOOSE_HITS || G.clearT >= 0) L.up = true;
+    L.len = L.up ? L.len - 200 * dt : Math.min(LOOSE_LEN, L.len + 520 * dt);
+    if (L.up && L.len <= 0) { G.loose = null; sfx.reload(); return; }
+    L.va = (L.va - 9 * Math.sin(L.a) * dt) * (1 - 0.35 * dt); L.a += L.va * dt;
+    if (L.up || L.hitCd > 0) return;
+    const [x, y] = loosePos(L);
+    const b = G.balls.find((o) => !o.stuck && !o.frog && ballVsRect(o, x - LOOSE_W / 2, y - LOOSE_H / 2, LOOSE_W, LOOSE_H));
+    if (!b) return;
+    L.hits++; L.hitCd = 0.15; L.spinT = 0.6; L.va += Math.sign(b.vx || 1) * 0.5;
+    dropCoin(x, y + LOOSE_H / 2, LOOSE_PAY, true); sfx.whack(); burst(x, y, '#ffd84a', 8, 160);
+    if (L.hits >= LOOSE_HITS) sticker('loose');
+  }
+  function drawLoose(t) {
+    const L = G.loose;
+    if (!L) return;
+    const [x, y] = loosePos(L), top = y - LOOSE_H / 2;
+    ctx.strokeStyle = '#9aa3d6'; ctx.lineWidth = 3; ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(LOOSE_X, HUD_H - 2); ctx.lineTo(x, top); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(8,10,26,0.94)'; rr(x - LOOSE_W / 2, top, LOOSE_W, LOOSE_H, 10); ctx.fill();
+    ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2.5; rr(x - LOOSE_W / 2, top, LOOSE_W, LOOSE_H, 10); ctx.stroke();
+    drawCoin({ x: x - LOOSE_W / 2 + 18, y, spin: L.spinT * 20, val: 0 });
+    const n = L.spinT > 0 ? String(Math.floor(Math.random() * 10 ** String(run.coins).length)) : String(run.coins);
+    ctx.fillStyle = '#ffd84a'; ctx.font = 'bold 22px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(n, x + 10, y + 1);
+    ctx.fillStyle = '#9aa3d6'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.fillText(`${LOOSE_HITS - L.hits} hits left`, x, top + LOOSE_H + 9);
+  }
+
   // ---------- shop deals ----------
   function rollDeals() {
     run.deals = [];
     run.dareOffer = pick(Object.keys(DARES).filter((k) => DARES[k].ok()));
     const next = levelDef(run.level), fixed = next.boss || next.wheel || next.map.some((row) => /[X()]/.test(row));
     run.oddOffer = pick(Object.keys(ODDS).filter((k) => k !== 'flip' || !fixed));
-    const stone = levelDef(run.level).map.some((row) => row.includes('X'));
-    run.offer = pick(SPECIALS.filter((x) => !(x.open && stone))).id;
+    run.offer = pick(specialPool(next, run.level)).id;
     if (run.level < FROM.sales) return;
     const pool = upgradePool();
     for (let i = 0; i < 2 && pool.length; i++) run.deals.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
@@ -3021,11 +3680,11 @@
       return;
     }
     const parts = [['clear', s.bonus], ['speed', s.speed], ['stars', s.starBonus], ['heat', s.heatBonus], ['piggy', s.interest], ['bonds', s.bonds],
-      ['bet', s.betWon], ['dare', s.darePay], ['insurance', s.insurance], ['alley', s.alley]].filter(([, v]) => v);
+      ['bet', s.betWon], ['dare', s.darePay], ['insurance', s.insurance], ['alley', s.alley], ['ball boy', -s.wage]].filter(([, v]) => v);
     const fresh = run.level > 2 ? ITEMS.filter((it) => it.at === run.level) : [];
     const verdict = s.late ? 'tallyLate' : s.boss ? 'tallyBoss' : !s.flawless ? 'tallyClumsy' : s.time < s.par * 0.25 ? 'tallyFast'
       : s.stars === 3 ? 'tallyThree' : s.time > s.par * 0.8 ? 'tallySlow' : 'tallyOk';
-    page(`<div class="tally-sub">LEVEL ${s.level} · ${s.name.toUpperCase()}</div>
+    page(`<div class="tally-sub">${run.daily ? `🗓️ ${run.daily.i}/${DAILY_LEVELS.length} · ` : ''}LEVEL ${s.level} · ${s.name.toUpperCase()}</div>
       <div class="tally-title ${s.late ? 'late' : ''}">${s.late ? "TIME'S UP!" : 'CLEARED!'}</div>
       <div class="stars">${[0, 1, 2].map((i) => `<span class="star ${i < s.stars ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.3}s">★</span>`).join('')}</div>
       <div class="trows">
@@ -3038,6 +3697,8 @@
       ${s.heat > 0 ? chip(`🌶️ Heat ${run.heat}: tougher bricks, bonuses +${Math.round((heatPay() - 1) * 100)}%`, 'hot') : s.heat < 0 ? chip(`🧊 Heat cools to ${run.heat}: softer bricks`) : ''}
       ${s.bet && !s.betWon ? chip(`🎟️ Speed bet lost: −${s.bet} coins`, 'bad') : ''}
       ${s.dare && !s.darePay ? chip(`🤞 Dare failed: ${s.dare.toLowerCase()}`) : ''}
+      ${s.seals ? chip(`🦭 +${s.seals} Bazaar Seal${s.seals > 1 ? 's' : ''}. You have ${run.seals}. Spend them Upstairs.`, 'new') : ''}
+      ${s.boyQuit ? chip('🧢 The ball boy quit: you could not pay his wage.', 'bad') : ''}
       ${fresh.length ? chip(`🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}`, 'new') : ''}
       ${stickerNote()}`);
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
@@ -3058,14 +3719,15 @@
     }
     requestAnimationFrame(tick);
   }
-  const tallyLabel = (s) => (s.boss && !s.safariDone ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶` : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶');
+  const tallyLabel = (s) => (run.daily && run.daily.i >= DAILY_LEVELS.length ? 'Closing time ▶' : s.boss && !s.safariDone ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶` : forkNext(s) ? 'Which way? ▶' : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶');
   function afterTally() {
     const s = lastSummary;
+    if (run.daily && run.daily.i >= DAILY_LEVELS.length) { showDailyEnd(); return; }
     if (s && s.level === LEVELS.length && !run.champion) { run.champion = true; meta.wins++; saveMeta(); saveRun(); showVictory(); return; }
     // every boss pays with a bonus round
     if (s && s.boss && !s.safariDone) { s.safariDone = true; startSafari(bossBonus(s.level)); return; }
     if (run.pendingSafari) { startSafari(); return; }
-    if (s && !s.safari && !s.forked && !s.boss && s.level >= FORK_FROM && s.level % 3 === 0) { s.forked = true; showFork(); return; }
+    if (forkNext(s)) { s.forked = true; showFork(); return; }
     if (run.pendingRelic) { showRelics(); return; }
     openShop();
   }
@@ -3077,11 +3739,16 @@
     alley: { icon: '🕳️', name: 'The Back Alley', text: () => 'The next level has a special of the day and pays its bonus twice.', line: 'I would not. So you should.' },
   };
   const forkPay = () => Math.round((15 + run.level * 4) * COIN_MULT * levelVal());
+  // The doors that are open. A level that gives a relic cannot be skipped; before a boss only the Scenic Route is open.
+  function forkDoors() {
+    const boss = !!levelDef(run.level).boss;
+    return Object.keys(FORKS).filter((k) => k === 'scenic' || (!boss && (k !== 'skip' || run.level % 5 !== 0)));
+  }
+  // True when the results screen of s leads to a fork. One open door is no fork.
+  const forkNext = (s) => !!s && !s.safari && !s.forked && !s.boss && !run.daily && s.level >= FORK_FROM && s.level % 3 === 0 && forkDoors().length > 1;
   function showFork() {
     mode = 'fork';
-    // a boss level or a level that gives a relic cannot be skipped
-    const open = Object.keys(FORKS).filter((k) => k !== 'skip' || (run.level % 5 !== 0 && !levelDef(run.level).boss));
-    const doors = open.map((k) => `<button class="relic kit" data-fork="${k}"><span class="ric">${FORKS[k].icon}</span><span class="rnm">${FORKS[k].name}</span>
+    const doors = forkDoors().map((k) => `<button class="relic kit" data-fork="${k}"><span class="ric">${FORKS[k].icon}</span><span class="rnm">${FORKS[k].name}</span>
       <span class="rds">${FORKS[k].text()}<br><i>🐌 "${FORKS[k].line}"</i></span></button>`).join('');
     showOverlay(`<div class="center"><div class="tally-sub">A FORK IN THE ROAD</div><h2>Which way?</h2><div class="relics">${doors}</div></div>`, 'see');
     sfx.relic();
@@ -3092,8 +3759,7 @@
       run.coins += forkPay(); run.level++;
       rollDeals(); recordBest();
     } else {
-      const stone = levelDef(run.level).map.some((row) => row.includes('X'));
-      run.alley = true; run.nextSpecial = pick(SPECIALS.filter((x) => !(x.open && stone))).id;
+      run.alley = true; run.nextSpecial = pick(specialPool(levelDef(run.level), run.level)).id;
     }
     saveRun(); sfx.buy(); afterTally();
   }
@@ -3109,8 +3775,64 @@
       <div class="stat">Coins earned <b>${st.coins}</b> · Best streak <b>${st.streak}</b></div>
       <div style="height:1em"></div>
       <button class="big gold" data-act="tallynext">Keep going: Endless ▶</button>
-      <div class="hint">Endless levels get tougher forever. A boss returns every 10 levels.</div>
+      <button class="big" data-act="ngplus">Start again with a star ⭐</button>
+      <div class="hint">Endless levels get tougher forever. A boss returns every 10 levels.<br>A star run keeps one relic and starts at Heat ${STAR_HEAT * ((meta.stars || 0) + 1)}. Each star brings one more kind of blimp from level ${FROM.blimp}.</div>
     </div>`, 'see');
+  }
+
+  // ---------- new game plus ----------
+  // After the campaign the player can start again with a star: one relic of the run stays, and each star of meta adds
+  // STAR_HEAT heat at the start and opens one more blimp kind from FROM.blimp (blimpLevel).
+  const STAR_HEAT = 2;
+  function showKeepRelic() {
+    const owned = RELICS.filter((r) => run.relics[r.id]);
+    if (!owned.length) { beginStarRun(null); return; }
+    mode = 'relic';
+    const cards = owned.map((r, i) => `<button class="relic" data-keep="${r.id}" style="animation-delay:${i * 0.08}s">
+      <span class="ric">${r.icon}</span><span class="rnm">${r.name}</span><span class="rds">${r.desc}</span></button>`).join('');
+    showOverlay(`<div class="center"><div class="tally-sub">A STAR RUN</div><h2>Keep one relic</h2><div class="relics">${cards}</div></div>`, 'see');
+  }
+  function beginStarRun(keep) {
+    meta.stars = (meta.stars || 0) + 1; saveMeta();
+    beginRun(run.kit, keep);
+  }
+  const blimpLevel = (k, d) => { const i = Object.keys(BLIMPS).indexOf(k); return i >= 1 && i <= (run.stars || 0) ? Math.min(d.from, FROM.blimp) : d.from; };
+
+  // ---------- Bazaar of the Day ----------
+  // A short run on DAILY_LEVELS with a fixed loadout. A hash of the date picks one special for every level and one
+  // relic. It has its own best score and a count of the days played in meta. It never writes the normal save.
+  const DAILY_STICKERS = 5, DAILY_COINS = 600;
+  const DAILY_LEVELS = [12, 16, 19, 23, 27, 31, 35, 38, 43, 47];
+  const DAILY_KIT = { gun_blaster: 3, gun_laser: 2, gun_rocket: 2, belt: 2, factory: 2, rounds: 1, d_orbit: 2, d_collect: 1, width: 3, magnet: 3, net: 2,
+    shield: 1, dmg: 4, crit: 3, twin: 1, splash: 2, pierce: 1, luck: 3, value: 2, bait: 1 };
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  function dayHash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
+  function beginDaily() {
+    const day = today(), rnd = mulberry32(dayHash(day));
+    // the special must fit every map of the list
+    const specials = SPECIALS.filter((x) => !x.clock && !x.open && !x.fixed), relics = RELICS.filter((r) => !r.fused && !r.at);
+    run = newRun(); lastSummary = null; shopLevel = 0;
+    run.daily = { day, i: 0, special: specials[(rnd() * specials.length) | 0].id };
+    run.relics[relics[(rnd() * relics.length) | 0].id] = true;
+    run.level = DAILY_LEVELS[0]; run.coins = DAILY_COINS; run.up = { ...DAILY_KIT };
+    if (meta.dailyDay !== day) { meta.dailyDay = day; meta.dailyDays = (meta.dailyDays || 0) + 1; }
+    saveMeta(); rollDeals(); openShop();
+  }
+  // The level after a daily level, or 0 when the day is done.
+  const dailyNext = () => DAILY_LEVELS[++run.daily.i] || 0;
+  function dailyRecord() {
+    const rec = run.score > (meta.dailyBest || 0);
+    if (rec) { meta.dailyBest = run.score; saveMeta(); }
+    return rec;
+  }
+  function showDailyEnd() {
+    mode = 'over'; pauseBtn.style.display = 'none';
+    const rec = dailyRecord();
+    showOverlay(`<div class="center"><div class="tally-sub">BAZAAR OF THE DAY · ${run.daily.day}</div><div class="tally-title">CLOSING TIME!</div>
+      ${snailBubble('victory')}${rec ? '<div class="newbest">★ NEW DAILY BEST ★</div>' : ''}
+      <div class="stat">Score <b>${run.score}</b> · Best <b>${meta.dailyBest}</b></div>
+      <div class="stat">Days at the bazaar <b>${meta.dailyDays}</b> · ${RELICS.filter((r) => run.relics[r.id]).map((r) => r.icon).join(' ')}</div>
+      ${stickerNote()}<div style="height:1em"></div><button class="big gold" data-act="menu">Menu</button></div>`, 'see');
   }
   // Fireworks behind the results screen.
   function celebrate(dt) {
@@ -3235,6 +3957,12 @@
       } else if (type === 'dice') {
         c.fillStyle = '#1b1f33';
         for (const [dx, dy] of [[-9, -4], [9, -4], [0, 0], [-9, 4], [9, 4]]) { c.beginPath(); c.arc(mx + dx, my + dy + 0.5, 2, 0, TAU); c.fill(); }
+      } else if (type === 'turtle') {
+        // shell plates, and the pale belly along the bottom edge: the side where the ball does nothing
+        c.strokeStyle = 'rgba(20,70,25,0.6)'; c.lineWidth = 1.2; c.beginPath();
+        c.moveTo(14, 2); c.lineTo(12, BH - 5); c.moveTo(BW - 14, 2); c.lineTo(BW - 12, BH - 5); c.moveTo(3, 9); c.lineTo(BW - 3, 9); c.stroke();
+        c.fillStyle = '#f2e6b8'; rr(1.5, BH - 5.5, BW - 3, 4.5, 2, c); c.fill();
+        c.fillStyle = 'rgba(160,120,60,0.6)'; for (let i = 0; i < 5; i++) c.fillRect(6 + i * 8, BH - 4.5, 3, 2.5);
       }
     });
   }
@@ -3244,6 +3972,7 @@
   const INTRO = 0.35; // seconds a brick takes to drop into place
   function drawBricks(t) {
     const wh = G.def.wheel, dance = feverOn() ? A.beat() * 0.06 : 0; // in a fever the bricks pulse with the music
+    const sleepy = special('insomnia') && G.fx.panic <= 0;
     if (wh) {
       ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2; ctx.beginPath();
       for (const b of G.bricks) if (b.alive && b.wheel != null) { ctx.moveTo(wh.x, wh.y); ctx.lineTo(b.x + b.w / 2, b.y + b.h / 2); }
@@ -3267,8 +3996,13 @@
         const ball = G.balls[0];
         eyes(cx, cy - 1, 8, 4.5, ball ? clamp((ball.x - cx) / 60, -2.5, 2.5) : 0);
         ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      } else if ((b.type === 'normal' && b.maxhp > 1) || b.type === 'steel' || b.type === 'pinata') {
+      } else if ((b.type === 'normal' && b.maxhp > 1) || b.type === 'steel' || b.type === 'pinata' || b.type === 'turtle') {
         ctx.fillStyle = b.type === 'steel' ? '#26303f' : 'rgba(0,0,0,0.45)'; ctx.fillText(short(b.hp), cx, cy + 1);
+      }
+      if (sleepy && b.type !== 'stone' && b.type !== 'runner') {
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.5; ctx.beginPath();
+        for (const ex of [cx - 14, cx + 14]) { ctx.moveTo(ex - 3.5, cy - 1); ctx.quadraticCurveTo(ex, cy + 2.5, ex + 3.5, cy - 1); }
+        ctx.stroke();
       }
       if (b.type !== 'stone' && b.hp < b.maxhp) {
         const n = Math.min(3, 1 + Math.floor((1 - b.hp / b.maxhp) * 3));
@@ -3330,17 +4064,32 @@
       ctx.fillStyle = '#fff27a'; rr(sx - 5, y - 3, 10, PADDLE_H + 3, 3); ctx.fill();
       ctx.fillStyle = '#ffffff'; rr(sx - 2, y - 2, 4, PADDLE_H + 1, 2); ctx.fill();
     }
+    if (lv('d_parrot')) { ctx.font = '18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('🦜', x + w - 10, y + 3); }
     const ml = lv('magnet');
     if (ml) {
       ctx.strokeStyle = 'rgba(255,216,74,0.12)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(paddle.x, PADDLE_Y, 100 + 45 * ml, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
     }
   }
+  // The ball boy at the bottom of the field, with a ring that shrinks while the player can tap.
+  function drawBoy(t) {
+    if (!G.boy) return;
+    const x = G.boy.x, y = H - 40, k = clamp(G.boy.t / BOY_S, 0, 1);
+    ctx.strokeStyle = k > 0.35 ? '#7cf2a8' : '#ff6b3d'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(x, y, 18 + 46 * k, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = '#e8ecff'; ctx.lineWidth = 2.5; ctx.beginPath();
+    ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 8); ctx.moveTo(x, y + 8); ctx.lineTo(x - 5, y + 18); ctx.moveTo(x, y + 8); ctx.lineTo(x + 5, y + 18);
+    ctx.moveTo(x - 9, y - 6 - Math.abs(Math.sin(t * 18)) * 6); ctx.lineTo(x, y); ctx.lineTo(x + 9, y - 6 - Math.abs(Math.cos(t * 18)) * 6); ctx.stroke();
+    ctx.fillStyle = '#ffd27a'; ctx.beginPath(); ctx.arc(x, y - 10, 6, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.arc(x, y - 12, 6, Math.PI, 0); ctx.fill(); ctx.fillRect(x, y - 13, 9, 2.5);
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('TAP!', x, y - 34 - 12 * k);
+  }
   function ballGlowColor(b, t) {
-    return G.fx.fire > 0 ? '#ff8a3d' : G.fx.gold > 0 ? '#ffd23f' : feverOn() ? rainbow(t, b.r0) : b.pierce > 0 ? '#ffb36b' : '#7fe9ff';
+    return b.potato ? '#ff9a3d' : G.fx.fire > 0 || b.fireT > 0 ? '#ff8a3d' : G.fx.gold > 0 ? '#ffd23f' : feverOn() ? rainbow(t, b.r0) : b.pierce > 0 ? '#ffb36b' : '#7fe9ff';
   }
   function drawBall(b) {
-    const fire = G.fx.fire > 0;
+    const fire = G.fx.fire > 0 || b.fireT > 0;
     if (b.chicken) {
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx) + Math.sin(tAcc * 20) * 0.3);
       const r = b.r * 1.25;
@@ -3352,22 +4101,33 @@
       ctx.restore();
       return;
     }
-    ctx.fillStyle = fire ? '#ffe2c0' : '#ffffff'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = b.potato ? '#e0b070' : fire ? '#ffe2c0' : '#ffffff'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(120,200,255,0.35)'; ctx.beginPath(); ctx.arc(b.x + b.r * 0.25, b.y + b.r * 0.3, b.r * 0.6, 0, TAU); ctx.fill();
     if (b.pierce > 0 && !fire) { ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 1, 0, TAU); ctx.stroke(); }
+    if (b.potato && b.potato.n) {
+      ctx.fillStyle = '#5a3200'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(b.potato.n, b.x, b.y + 0.5);
+    }
   }
   function drawAim() {
     if (!lv('aim')) return;
     for (const b of G.balls) {
       if (!b.stuck) continue;
       const a = launchAngle(b);
-      let x = b.x, y = b.y, vx = Math.sin(a), vy = -Math.cos(a);
+      let x = b.x, y = b.y, vx = Math.sin(a), vy = -Math.cos(a), bounced = false;
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      for (let i = 0; i < 46; i++) {
+      // after the first brick or ceiling bounce the path goes on, fainter, to the next one
+      for (let i = 0, n = 46; i < n; i++) {
         x += vx * 9; y += vy * 9;
         if (x < 7) { x = 7; vx = -vx; } if (x > W - 7) { x = W - 7; vx = -vx; }
-        if (y < HUD_H + 7) break;
-        if (G.bricks.some((k) => k.alive && x > k.x && x < k.x + k.w && y > k.y && y < k.y + k.h)) break;
+        const k = y < HUD_H + 7 ? null : G.bricks.find((o) => o.alive && x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h);
+        if (y < HUD_H + 7 || k) {
+          if (bounced) break;
+          bounced = true; n = i + 30; ctx.fillStyle = 'rgba(255,240,150,0.4)';
+          if (k && Math.min(x - k.x, k.x + k.w - x) * BH < Math.min(y - k.y, k.y + k.h - y) * BW) vx = -vx; else vy = -vy;
+          x += vx * 9; y += vy * 9;
+          continue;
+        }
+        if (bounced && y > PADDLE_Y) break;
         if (i % 2 === 0) { ctx.beginPath(); ctx.arc(x, y, 2, 0, TAU); ctx.fill(); }
       }
     }
@@ -3451,7 +4211,14 @@
         ctx.fillStyle = '#ffb14a'; rr(s.x - 3.5, s.y - 10, 7, 16, 3); ctx.fill();
         ctx.fillStyle = '#ff5a2a'; ctx.beginPath(); ctx.moveTo(s.x - 3, s.y + 6); ctx.lineTo(s.x, s.y + 12 + Math.random() * 6); ctx.lineTo(s.x + 3, s.y + 6); ctx.fill();
       } else if (s.k === 'scatter') { ctx.fillStyle = '#b9ff6b'; ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, TAU); ctx.fill(); }
+      else if (s.k === 'back') { ctx.fillStyle = '#9cff57'; ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, TAU); ctx.fill(); }
       else { ctx.fillStyle = s.k === 'orbit' ? '#9ab8ff' : '#7cf2ff'; ctx.fillRect(s.x - 1.5, s.y - 7, 3, 10); }
+    }
+    if (G.cone && G.cone.t > 0) {
+      const c = G.cone, top = HUD_H, dy = PADDLE_Y - top, hw = CONE_W + dy * CONE_K;
+      ctx.globalAlpha = (c.t / 0.35) * 0.35; ctx.fillStyle = '#ffd6a0';
+      ctx.beginPath(); ctx.moveTo(c.x - CONE_W, PADDLE_Y); ctx.lineTo(c.x - hw, top); ctx.lineTo(c.x + hw, top); ctx.lineTo(c.x + CONE_W, PADDLE_Y); ctx.fill();
+      ctx.globalAlpha = 1;
     }
     for (const b of G.bolts) {
       ctx.strokeStyle = b.c || '#cfe0ff'; ctx.lineWidth = 2.5; ctx.globalAlpha = clamp(b.t / (b.T || 0.18), 0, 1); ctx.beginPath();
@@ -3475,12 +4242,12 @@
     for (const b of G.balls) {
       const c = ballGlowColor(b, t), n = b.trail.length;
       for (let i = 0; i < n; i += 2) glow(b.trail[i], b.trail[i + 1], b.r * (0.8 + (i / n) * 1.4), c, (i / n) * 0.3);
-      glow(b.x, b.y, b.r * 3.2, c, 0.55);
+      glow(b.x, b.y, b.r * 3.2 * (b.potato ? 1 + 0.3 * b.potato.n : 1), c, 0.55);
     }
     const plain = Math.ceil(coinVal());
     for (const c of G.coins) if (c.val > plain) glow(c.x, c.y, 16, '#ffd84a', 0.5);
     for (const p of G.pus) glow(p.x, p.y, 26, PU[p.k].c, 0.35 + 0.15 * Math.sin(t * 8 + p.x));
-    for (const s of G.shots) glow(s.x, s.y, s.k === 'rocket' ? 16 : 9, s.k === 'orbit' ? '#9ab8ff' : GUNS[s.k].color, 0.6);
+    for (const s of G.shots) glow(s.x, s.y, s.k === 'rocket' ? 16 : s.k === 'back' ? 14 : 9, GUNS[s.k] ? GUNS[s.k].color : s.k === 'back' ? '#9cff57' : '#9ab8ff', 0.6);
     for (const e of G.eshots) glow(e.x, e.y, 16, '#9cff57', 0.5);
     for (const p of G.parts) if (p.k === 'spark') glow(p.x, p.y, p.s * 2.6, p.c, Math.min(1, (p.t / p.T) * 1.6));
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -3493,6 +4260,9 @@
       } else if (p.k === 'shard') {
         ctx.globalAlpha = Math.min(1, p.t * 3); ctx.fillStyle = p.c;
         ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.s / 2, -p.s / 3, p.s, p.s / 1.5); ctx.restore();
+      } else if (p.k === 'z') {
+        ctx.globalAlpha = Math.min(1, (p.t / p.T) * 2); ctx.fillStyle = p.c; ctx.font = `bold ${Math.round(p.s)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('z', p.x, p.y);
       }
     }
     ctx.globalAlpha = 1;
@@ -3544,8 +4314,11 @@
     ctx.fillStyle = '#ffffff'; ctx.font = `bold ${G.level > 99 ? 11 : 15}px system-ui, sans-serif`; ctx.fillText(G.level, lx, ly + 1);
     // coins and lives
     ctx.textAlign = 'left';
-    drawCoin({ x: 70, y: 19, spin: 0, val: 0 });
-    ctx.fillStyle = '#ffd84a'; ctx.font = `bold ${Math.round(20 * (1 + hud.coinPop * 0.25))}px system-ui, sans-serif`; ctx.fillText(Math.round(hud.coins), 82, 20);
+    if (G.loose) { ctx.strokeStyle = 'rgba(255,216,74,0.45)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); rr(60, 6, 92, 26, 8); ctx.stroke(); ctx.setLineDash([]); }
+    else {
+      drawCoin({ x: 70, y: 19, spin: 0, val: 0 });
+      ctx.fillStyle = '#ffd84a'; ctx.font = `bold ${Math.round(20 * (1 + hud.coinPop * 0.25))}px system-ui, sans-serif`; ctx.fillText(Math.round(hud.coins), 82, 20);
+    }
     ctx.font = '15px system-ui, sans-serif'; ctx.fillStyle = '#ff5c8a'; ctx.fillText('♥'.repeat(Math.max(0, run.lives)), 62, 41);
     if (run.heat) { ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillStyle = run.heat > 0 ? '#ff9a3d' : '#a8e6ff'; ctx.fillText((run.heat > 0 ? '🌶' : '🧊') + run.heat, 158, 41); }
     // guns: the bar is the clip, or the reload progress in grey
@@ -3739,18 +4512,25 @@
     }
     drawCombo(t);
     if (G.wind) drawWind(t);
+    drawPeeks();
     drawBricks(t);
     if (G.portals.length) drawPortals(t);
     drawBirds(t);
+    drawFrogs(t);
+    drawWalkers();
     drawNet(t);
     drawAim();
     for (const p of G.pus) drawPU(p, t);
     for (const c of G.coins) drawCoin(c);
     drawShots();
     drawFoes(t);
+    drawLoose(t);
+    if (G.api) ROUNDS[G.safari].draw(G.api, ctx, t);
     if (special('night') && G.clearT < 0) drawNight();
+    drawFlare(t);
     drawDrones(t);
-    drawPaddle(t);
+    if (!(G.api && ROUNDS[G.safari].hidePaddle)) drawPaddle(t);
+    drawBoy(t);
     drawGlowPass(t);
     for (const b of G.balls) drawBall(b);
     drawParts();
@@ -3792,10 +4572,18 @@
     skip() { if (mode === 'tally' || mode === 'victory') afterTally(); if (mode === 'relic') takeRelic(relicChoices()[0].id); },
     relic(id) { run.relics[id] = true; }, fever() { startFever(); }, capsule(k) { collectPU({ k, x: paddle.x, y: PADDLE_Y }); },
     blimp(kind) { return spawnBlimp(kind); }, panic() { startPanic(); }, safari(kind) { startSafari(kind); },
+    critter(kind) { ({ frog: addFrog, walker: addWalker, peek: addPeek, cameo: startCameo })[kind](); },
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
     get summary() { return lastSummary; },
     price() { return priceIndex(); },
+    seals(n) { run.seals += n; run.sealsEver += n; },
+    special(id) { run.nextSpecial = id; },
+    set(id) { for (const i of SETS.find((s) => s.id === id).items) run.up[i] = maxOf(ITEM_BY_ID[i]); },
+    flare(n = FLARE_MAX) { G.flareN = n; }, plantFlare(x, y) { plantFlare(x, y); },
+    loose() { if (G) knockHud(); }, slide(b) { landslide(b); },
+    starRun(keep) { beginStarRun(keep); }, daily() { beginDaily(); }, victory() { showVictory(); },
+    open() { openShop(); }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: canvas.getBoundingClientRect().left + x * scale, clientY: canvas.getBoundingClientRect().top + y * scale })); },
   };
 
   showMenu();

@@ -102,6 +102,69 @@
     }));
   }
 
+  // Normal distribution, mean 0, deviation 1.
+  const gauss = rand => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
+
+  // Ping-pong from 0 to 1 and back. Speed in units per ms.
+  const pingPong = (ms, speed) => {
+    const u = (ms * speed) % 2;
+    return u < 1 ? u : 2 - u;
+  };
+
+  // Claw machine: the claw sweeps over one prize per column. The grip is lower for big prizes and
+  // at the edge of a column.
+  const CLAW_COLS = 6;
+  const CLAW_EDGE = 0.6;
+  const CLAW_PRIZES = [
+    { icon: '👢', name: 'an old boot', mult: 0, grip: 0.95 },
+    { icon: '🦆', name: 'a rubber duck', mult: 0.5, grip: 0.95 },
+    { icon: '🧸', name: 'a teddy', mult: 1.2, grip: 0.95 },
+    { icon: '🤖', name: 'a robot', mult: 1.6, grip: 0.75 },
+    { icon: '🐌', name: 'a Mortimer plush', mult: 2.5, grip: 0.48 },
+    { icon: '💎', name: 'the diamond', mult: 5, grip: 0.25 },
+  ];
+
+  function clawPlan(level, rand) {
+    return {
+      order: shuffle(CLAW_PRIZES.map((_, i) => i), rand),
+      speed: Math.min(4, 2.2 + level * 0.03) / 1000,
+      wait: 9000,
+    };
+  }
+
+  // Claw centre in columns (0 is the centre of the first column) after ms.
+  const clawPos = (ms, speed) => pingPong(ms, speed / (CLAW_COLS - 1)) * (CLAW_COLS - 1);
+  const clawColumn = pos => Math.min(CLAW_COLS - 1, Math.max(0, Math.round(pos)));
+  const clawChance = (prize, pos) => prize.grip * (1 - CLAW_EDGE * Math.min(1, Math.abs(pos - clawColumn(pos)) * 2));
+
+  // Higher or Lower: cards 2..14 with replacement. A tie loses. HILO_PAY[k] pays after k + 1 right guesses.
+  const HILO_PAY = [1.3, 2, 3.2];
+  const hiloDraw = rand => 2 + Math.floor(rand() * 13);
+  const hiloWin = (card, next, up) => (up ? next > card : next < card);
+  const hiloChance = (card, up) => (up ? 14 - card : card - 2) / 13;
+
+  // Snail curling: two shells. Hold to fill a ping-pong power meter; the shell slides power + ice noise.
+  // CURL_RINGS: [distance from the centre, pay]. Past 1 the shell falls off the end.
+  const CURL_RINGS = [[0.04, 2], [0.09, 1.2], [0.15, 0.5]];
+  const CURL_SHOTS = 2;
+  const CURL_ICE = 0.055;
+
+  function curlPlan(level, rand) {
+    return {
+      targets: Array.from({ length: CURL_SHOTS }, () => 0.6 + rand() * 0.22),
+      speed: 1 / Math.max(700, 820 - level * 4),
+    };
+  }
+
+  const curlSlide = (power, rand) => Math.max(0.05, power + gauss(rand) * CURL_ICE);
+
+  function curlScore(target, at) {
+    if (at > 1) return 0;
+    const off = Math.abs(at - target);
+    for (const [r, mult] of CURL_RINGS) if (off < r) return mult;
+    return 0;
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   // Session: owns every timer and listener of one game, calls done once.
 
@@ -223,6 +286,21 @@
       info.run(api);
     });
     return api;
+  }
+
+  // Mortimer on the game area. The returned function shows a line and makes him hop.
+  function keeper(api) {
+    const box = el('div', 'mg-keeper mg-live', null, null);
+    api.area.prepend(box);
+    const snail = el('span', 'mg-snail', '🐌', box);
+    const bubble = el('div', 'mg-bubble', '…', box);
+    return text => {
+      bubble.textContent = text;
+      snail.classList.remove('mg-hop');
+      // Read the layout so that the animation starts again.
+      void snail.offsetWidth;
+      snail.classList.add('mg-hop');
+    };
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -473,6 +551,325 @@
   }
 
   ////////////////////////////////////////////////////////////////////////////
+  // Claw Machine
+
+  const CLAW_AIM = {
+    0: 'A boot? Bold choice.',
+    4: 'Careful! That is my face!',
+    5: 'The diamond? Greedy. I like it.',
+  };
+
+  function prepClaw(api) {
+    api.plan = clawPlan(api.level, api.rand);
+    const cab = el('div', 'mg-cab', null, api.area);
+    const claw = el('div', 'mg-claw', null, cab);
+    el('div', 'mg-cable', null, claw);
+    el('div', 'mg-hand', null, claw);
+    api.plan.order.forEach((p, col) => {
+      const prize = CLAW_PRIZES[p];
+      const slot = el('div', 'mg-prize', null, cab);
+      slot.style.left = (col * 100 / CLAW_COLS) + '%';
+      const toy = el('span', 'mg-toy', prize.icon, slot);
+      toy.style.transform = 'rotate(' + Math.round((api.rand() - 0.5) * 30) + 'deg)';
+      el('span', 'mg-tag', '×' + prize.mult, slot);
+    });
+    const drop = el('button', 'mg-big mg-drop', '⬇ Drop', api.area);
+    drop.disabled = true;
+  }
+
+  function runClaw(api) {
+    const { s, rand, rules, area, plan } = api;
+    const talk = keeper(api);
+    const claw = area.querySelector('.mg-claw');
+    const slots = Array.from(area.querySelectorAll('.mg-prize'));
+    const drop = area.querySelector('.mg-drop');
+    const t0 = Date.now();
+    let pos = 0;
+    let moving = true;
+    let teased = false;
+    rules.textContent = 'Tap Drop when the claw is over a prize.';
+    talk('The diamond is slippery. Just saying.');
+    drop.disabled = false;
+    area.classList.add('mg-pick');
+
+    s.every(() => {
+      if (!moving) return;
+      const ms = Date.now() - t0;
+      pos = clawPos(ms, plan.speed);
+      claw.style.left = ((pos + 0.5) * 100 / CLAW_COLS).toFixed(2) + '%';
+      if (!teased && plan.order[clawColumn(pos)] === 4) {
+        teased = true;
+        talk('Hey! That plush is me! Hands off!');
+      }
+      if (ms < plan.wait) return;
+      talk('Too slow. I pressed it for you.');
+      release();
+    }, 30);
+    s.on(drop, 'pointerdown', e => {
+      e.preventDefault();
+      release();
+    });
+
+    function release() {
+      if (!moving) return;
+      moving = false;
+      drop.disabled = true;
+      area.classList.remove('mg-pick');
+      const col = clawColumn(pos);
+      const p = plan.order[col];
+      const prize = CLAW_PRIZES[p];
+      const got = rand() < clawChance(prize, pos);
+      if (CLAW_AIM[p]) talk(CLAW_AIM[p]);
+      claw.classList.add('mg-down');
+      s.sfx('riser');
+
+      // The cable and the lifted prize use the same transition, so the prize moves with the claw.
+      s.later(() => {
+        claw.classList.add('mg-shut');
+        slots[col].style.left = (pos * 100 / CLAW_COLS).toFixed(2) + '%';
+        s.sfx('whack');
+      }, 850);
+      s.later(() => {
+        claw.classList.remove('mg-down');
+        slots[col].classList.add('mg-lift');
+        talk('Grab it… grab it…');
+      }, 1250);
+      if (!got) {
+        s.later(() => {
+          slots[col].classList.remove('mg-lift');
+          claw.classList.remove('mg-shut');
+          talk('Oops. Slippery claws. Not my fault.');
+          s.sfx('nope');
+        }, 1550 + rand() * 350);
+      }
+      s.later(() => {
+        if (got) {
+          slots[col].classList.add('mg-won');
+          talk(p === 4 ? 'You won me. Weird, but fine.' : 'It is yours. Do not lick it.');
+        }
+        api.finish(got ? prize.mult : 0, got ? 'You got ' + prize.name + '!' : 'It slipped!');
+      }, 2600);
+    }
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
+  // Higher or Lower
+
+  const HILO_FACES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  const HILO_SUITS = ['♠', '♥', '♦', '♣'];
+  const HILO_DEAL = [
+    'Dealing… slowly.', 'Where did I put that card?', 'Licking my thumb. Sorry.',
+    'Snail speed is house speed.', 'Careful, careful…', 'One moment. I have no hands.',
+  ];
+  const HILO_RIGHT = ['Hmph. Lucky.', 'Right again? Suspicious.', 'Fine. You are good at this.'];
+
+  function prepHilo(api) {
+    const pips = el('div', 'mg-pips', null, api.area);
+    HILO_PAY.forEach(m => el('span', 'mg-pip', '×' + m, pips));
+    const cards = el('div', 'mg-cards', null, api.area);
+    el('div', 'mg-card mg-back', null, cards);
+    el('div', 'mg-card mg-back', null, cards);
+    const btns = el('div', 'mg-hilo', null, api.area);
+    el('button', 'mg-big mg-higher', '⬆ Higher', btns).disabled = true;
+    el('button', 'mg-big mg-lower', '⬇ Lower', btns).disabled = true;
+    el('button', 'mg-big mg-gold mg-cash', null, btns).hidden = true;
+  }
+
+  function runHilo(api) {
+    const { s, rand, rules, area } = api;
+    const talk = keeper(api);
+    const [cur, next] = area.querySelectorAll('.mg-card');
+    const pips = area.querySelectorAll('.mg-pip');
+    const up = area.querySelector('.mg-higher');
+    const down = area.querySelector('.mg-lower');
+    const cash = area.querySelector('.mg-cash');
+    let card = hiloDraw(rand);
+    let wins = 0;
+    let busy = true;
+
+    const show = (box, value) => {
+      const suit = pick(HILO_SUITS, rand);
+      box.className = 'mg-card' + (suit === '♥' || suit === '♦' ? ' mg-red' : '');
+      box.textContent = HILO_FACES[value - 2] + suit;
+    };
+    const ready = () => {
+      busy = false;
+      up.disabled = false;
+      down.disabled = false;
+      rules.textContent = 'Higher or lower than ' + HILO_FACES[card - 2] + '?';
+    };
+
+    show(cur, card);
+    talk(card === 8 ? 'An 8. Right in the middle. Hee hee.' : 'First card. Do not rush me.');
+    s.sfx('tick');
+    s.later(ready, 500);
+
+    const guess = isUp => {
+      if (busy) return;
+      busy = true;
+      up.disabled = true;
+      down.disabled = true;
+      cash.hidden = true;
+      next.classList.add('mg-deal');
+      talk(pick(HILO_DEAL, rand));
+      s.sfx('tick');
+      s.later(() => reveal(isUp), 1000 + rand() * 700);
+    };
+
+    function reveal(isUp) {
+      const value = hiloDraw(rand);
+      show(next, value);
+      if (!hiloWin(card, value, isUp)) {
+        talk(value === card ? 'A tie! Ties go to the house.' : 'Ooh. Wrong way.');
+        s.sfx('nope');
+        s.later(() => api.finish(0, 'The card was ' + HILO_FACES[value - 2] + '.'), 1100);
+        return;
+      }
+      pips[wins].classList.add('mg-on');
+      wins++;
+      s.sfx('ding');
+      if (wins === HILO_PAY.length) {
+        talk('Three in a row?! My dealing foot hurts.');
+        s.later(() => api.finish(HILO_PAY[wins - 1], 'Three in a row!'), 900);
+        return;
+      }
+      talk(pick(HILO_RIGHT, rand));
+      s.later(() => {
+        card = value;
+        show(cur, card);
+        next.className = 'mg-card mg-back';
+        next.textContent = '';
+        cash.textContent = 'Cash out ' + api.coins(HILO_PAY[wins - 1]);
+        cash.hidden = false;
+        ready();
+      }, 900);
+    }
+
+    s.on(up, 'click', () => guess(true));
+    s.on(down, 'click', () => guess(false));
+    s.on(cash, 'click', () => {
+      if (busy || !wins) return;
+      busy = true;
+      talk('Take the coins. Leave slowly. I always do.');
+      api.finish(HILO_PAY[wins - 1], 'Cashed out after ' + wins + '.');
+    });
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
+  // Snail Curling
+
+  // Length of the ice run in em. Ring sizes follow it.
+  const CURL_EM = 14;
+
+  function prepCurl(api) {
+    const rink = el('div', 'mg-rink', null, api.area);
+    const ice = el('div', 'mg-ice', null, rink);
+    ice.style.height = CURL_EM + 'em';
+    const house = el('div', 'mg-house', null, ice);
+    CURL_RINGS.slice().reverse().forEach(([r]) => {
+      const ring = el('span', 'mg-ring', null, house);
+      ring.style.width = ring.style.height = (2 * r * CURL_EM).toFixed(2) + 'em';
+    });
+    el('span', 'mg-leaf', '🥬', house);
+    el('span', 'mg-stone', '🐚', ice);
+    const meter = el('div', 'mg-meter', null, rink);
+    meter.style.height = CURL_EM + 'em';
+    el('span', 'mg-fill', null, meter);
+    el('span', 'mg-mark', null, meter);
+    el('div', 'mg-shots', null, api.area);
+    const hold = el('button', 'mg-big mg-hold', 'Hold to push', api.area);
+    hold.disabled = true;
+  }
+
+  function runCurl(api) {
+    const { s, rand, rules, area } = api;
+    const talk = keeper(api);
+    const plan = curlPlan(api.level, rand);
+    const house = area.querySelector('.mg-house');
+    const stone = area.querySelector('.mg-stone');
+    const fill = area.querySelector('.mg-fill');
+    const mark = area.querySelector('.mg-mark');
+    const shots = area.querySelector('.mg-shots');
+    const hold = area.querySelector('.mg-hold');
+    const pays = [];
+    let shot = 0;
+    let t0 = 0;
+    let holding = false;
+    let ready = false;
+
+    const place = (node, at) => { node.style.bottom = (at * 100).toFixed(2) + '%'; };
+    const showShots = () => {
+      shots.textContent = pays.map(m => '×' + m).concat(Array(CURL_SHOTS - pays.length).fill('🐚')).join('  ');
+    };
+
+    function setup() {
+      const target = plan.targets[shot];
+      stone.classList.remove('mg-slide', 'mg-gone');
+      place(stone, 0);
+      place(house, target);
+      place(mark, target);
+      fill.style.height = '0';
+      showShots();
+      ready = true;
+      hold.disabled = false;
+      area.classList.add('mg-pick');
+      rules.textContent = 'Hold. Let go at the line.';
+    }
+
+    s.every(() => {
+      if (holding) fill.style.height = (pingPong(Date.now() - t0, plan.speed) * 100).toFixed(1) + '%';
+    }, 30);
+
+    s.on(hold, 'pointerdown', e => {
+      e.preventDefault();
+      if (!ready || holding) return;
+      holding = true;
+      t0 = Date.now();
+      try { hold.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+      talk(shot ? 'Again. Gentle this time.' : 'Push my good shell. Gently!');
+      s.sfx('tick');
+    });
+    s.on(hold, 'pointerup', letGo);
+    s.on(hold, 'pointercancel', letGo);
+    s.on(hold, 'contextmenu', e => e.preventDefault());
+
+    function letGo() {
+      if (!holding) return;
+      holding = false;
+      ready = false;
+      hold.disabled = true;
+      area.classList.remove('mg-pick');
+      const power = pingPong(Date.now() - t0, plan.speed);
+      const target = plan.targets[shot];
+      const at = curlSlide(power, rand);
+      fill.style.height = (power * 100).toFixed(1) + '%';
+      stone.classList.add('mg-slide');
+      place(stone, Math.min(at, 1.1));
+      s.sfx('riser');
+      talk(at > target + 0.15 ? 'Too fast! I have no brakes!' : at < target - 0.15 ? 'Come on, little shell…' : 'Ooh… ooh… OOH…');
+
+      s.later(() => {
+        const mult = curlScore(target, at);
+        pays.push(mult);
+        showShots();
+        if (at > 1) stone.classList.add('mg-gone');
+        talk(at > 1 ? 'Off the edge. I will need a new shell.' : mult >= 2 ? 'Bullseye! On the lettuce!' : mult > 0 ? 'In the rings. Not bad.' : at < target ? 'Short. Very short.' : 'Long. The lettuce is over there.');
+        s.sfx(mult >= 2 ? 'jackpot' : mult > 0 ? 'coin' : 'nope');
+        shot++;
+        if (shot < CURL_SHOTS) {
+          s.later(setup, 1300);
+          return;
+        }
+        const total = pays.reduce((a, b) => a + b, 0) / CURL_SHOTS;
+        s.later(() => api.finish(total, 'Shells: ' + pays.map(m => '×' + m).join(' + ') + '.'), 1100);
+      }, 1700);
+    }
+
+    setup();
+    talk('This is my spare shell. Be nice to it.');
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
   // Registry
 
   const GAMES = {
@@ -488,6 +885,18 @@
       icon: '🦝', name: 'Whack-a-Thief', rules: 'Tap thieves in 12 seconds. Not the snail!',
       win: coins => 'win up to ' + coins(WHACK_TIERS[0][1]), prep: prepWhack, run: runWhack,
     },
+    claw: {
+      icon: '🕹️', name: 'Claw Machine', rules: 'Drop the claw on a prize. Big prizes slip.',
+      win: coins => 'win up to ' + coins(CLAW_PRIZES[CLAW_PRIZES.length - 1].mult), prep: prepClaw, run: runClaw,
+    },
+    hilo: {
+      icon: '🃏', name: 'Higher or Lower', rules: 'Guess the next card. Three right pays most. Ties lose.',
+      win: coins => 'win up to ' + coins(HILO_PAY[HILO_PAY.length - 1]), prep: prepHilo, run: runHilo,
+    },
+    curl: {
+      icon: '🥌', name: 'Snail Curling', rules: 'Slide two shells onto the lettuce.',
+      win: coins => 'win up to ' + coins(CURL_RINGS[0][1]), prep: prepCurl, run: runCurl,
+    },
   };
 
   window.BBMini = {
@@ -495,6 +904,9 @@
       { id: 'shell', icon: '🐚', name: 'Shell Game', blurb: 'Follow the pearl. Pays 2.5×.', at: 1 },
       { id: 'race', icon: '🏁', name: 'Snail Race', blurb: 'Bet on a snail. Up to 9×.', at: 1 },
       { id: 'whack', icon: '🦝', name: 'Whack-a-Thief', blurb: 'Bonk thieves for 12 s. Up to 3×.', at: 1 },
+      { id: 'hilo', icon: '🃏', name: 'Higher or Lower', blurb: 'Mortimer deals. Three right: 3.2×.', at: 22 },
+      { id: 'claw', icon: '🕹️', name: 'Claw Machine', blurb: 'Grab a prize. The diamond pays 5×.', at: 26 },
+      { id: 'curl', icon: '🥌', name: 'Snail Curling', blurb: 'Slide shells to the lettuce. Up to 2×.', at: 30 },
     ],
 
     play(id, host, ctx) {
@@ -510,6 +922,9 @@
     model: {
       shellPlan, SHELL_WIN, RACERS, raceChances, raceWinner, raceCurves,
       whackPlan, whackPayout, WHACK_THIEVES, WHACK_SNAILS,
+      gauss, CLAW_COLS, CLAW_PRIZES, clawPlan, clawPos, clawColumn, clawChance,
+      HILO_PAY, hiloDraw, hiloWin, hiloChance,
+      CURL_RINGS, CURL_SHOTS, curlPlan, pingPong, curlSlide, curlScore,
     },
   };
 })();
