@@ -26,9 +26,9 @@ After a change to a game, increase the `?v=` number of its scripts and styleshee
 | `rounds.js` | Bonus rounds that are other games (pachinko, a salad tower, a kart lap, karaoke). Each is a plug-in: it talks to the game only through the `api` object of `roundApi` in game.js. |
 | `style.css` | Menus, shop, results screens |
 
-`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`, `critter(kind)`, `seals(n)`, `special(id)`, `set(id)`, `flare(n)`, `loose()`, `starRun(relicId)`, `daily()`, `victory()`, `tap(x, y)`. To go to a level: `__bb.run.level = 40; __bb.next()`.
+`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`, `critter(kind)`, `seals(n)`, `special(id)`, `set(id)`, `loose()`, `starRun(relicId)`, `daily()`, `victory()`, `tap(x, y)` (a real pointer tap), `mark(x, y)` (set or remove a mark, and serve), `grip(x)` and `release()` (take the paddle by hand and give it back). To go to a level: `__bb.run.level = 40; __bb.next()`.
 
-A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, fever, sales, streaks, blimps, the clock, the sweet spot, heat, specials, the smash) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
+A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, fever, sales, streaks, blimps, the clock, bullseye chains, heat, specials, the smash) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
 
 Balance values that belong together: `HP_CURVE` (brick toughness by level), `BOSS_K` (boss health as a multiple of the brick toughness), `GUNS` (rate, clip, reload, damage), the `base`/`grow` prices in `ITEMS`, and the coin value (`levelVal`, `coinVal`). Change one, then play some levels at both ends of the campaign.
 
@@ -36,7 +36,7 @@ Three systems keep a long run in balance:
 
 *   **Heat.** After each level from `FROM.heat`, the clear time changes `run.heat` (`heatStep`): a level that takes `HEAT_TARGET` of its clock changes nothing, a faster level adds up to 3 points, a slower level removes up to 3. One point of heat makes bricks 25% tougher (`HEAT_HP`) and the level bonuses 6% bigger (`HEAT_PAY`, up to `HEAT_PAY_MAX`). `HP_CURVE` is the toughness for average play; heat corrects it for each player.
 *   **Prices.** From level `PRICE_FROM`, shop prices follow the wealth of the run (`priceIndex`): what the run has earned against `refCoins(level)`, the money of an average run at that level. A rich run pays more and a poor run pays less. This keeps the shop from being bought empty, whatever new coin source the game gets.
-*   **Guns.** A reload runs slowly by itself and each paddle bounce takes time off it (`RELOAD_IDLE`, `RELOAD_HIT`). Brick toughness then pushes against play, not against guns that fire without the player. Do not add a weapon that works at full power with no paddle play, and do not add anything that removes a brick whatever its health.
+*   **Guns.** A reload runs slowly by itself and each paddle bounce that the player aimed takes time off it (`RELOAD_IDLE`, `RELOAD_HIT`, `paddleBounce`). Brick toughness then pushes against play, not against guns that fire without the player. Do not add a weapon that works at full power with no input from the player, and do not add anything that removes a brick whatever its health.
 *   **The clock.** From `FROM.clock`, each level has a time limit (`parTime`). A level that is not clear in time pays no clear, speed, star or heat bonus and no lucky spin. The remaining bricks crumble without loot.
 *   **Coin value.** The value of a coin rises with the level (`levelVal`), so the income follows the prices. The coin upgrades add small percentages. Do not add an upgrade that multiplies the income without a steep price.
 
@@ -44,7 +44,12 @@ Blimps are in the `BLIMPS` table (hits, coins, first level). Only a ball can hur
 
 Bonus rounds are in the `BONUS` table: Blimp Safari, Piñata Party and Bumper Bazaar. A bonus round has no bricks and no ball can be lost (`startSafari(kind)`, `G.safari` holds the kind). One starts after each boss, and the shop sells a ticket for a random one.
 
-Skill shots are in `paddleSkill`: the sweet spot (a mark on the paddle that moves after each bounce) and the smash (a tap just before the bounce). They are the answer to levels that play themselves; keep new damage sources tied to paddle play.
+The control: an autopilot (Pip, a woodlouse in a cap) moves the paddle, and the player picks the targets. The code is at "the autopilot and the marks" in `game.js`.
+
+*   **Marks.** A tap on the field sets a mark (`tapMark`). A mark on a brick, a monster or a boss holds on to it. A second tap removes it, and it lasts `MARK_S` seconds. A stone brick is not a target, and a mark in open space is only a point to aim at. The autopilot puts the paddle where the bounce sends the ball to the mark (`autopilot`, `aimAngle`). With no mark it only returns the ball.
+*   **Bullseye.** A ball that left the paddle after the tap and hits the marked thing (`markTouch`, `bullseye`) deals `BULL_K` times the damage and keeps the streak. If it hits another brick first, the shot is blocked and the chain ends. From `FROM.bull` a chain pays coins and five in a row give a fireball. `BULL_STAR` bullseyes in a level give the third star.
+*   **By hand.** A touch from `GRIP_Y` down takes the paddle (`G.grip`); the autopilot has it back on release. The autopilot does not go for coins or capsules. A coin lies on the floor for `COIN_REST` seconds, then it is lost (`G.spilled`). The magnet reach is `magnetR`. In Stock Toss and the plug-in rounds the player has the paddle all the time (`handsOn`).
+*   **What only the player earns.** A bounce counts as aimed when the player has the paddle, when a mark is set, or with a smash (a tap just before the bounce, with no other input in the `SMASH_GAP` seconds before it). Only an aimed bounce reloads guns, fills Ember Core, and counts for the relics and the parrot (`paddleBounce`). The share of aimed bounces scales the speed bonus, and Heat does not go down for a level that the autopilot played alone (`PLAYED_FULL`). With no input for `SLEEP_S` seconds the autopilot sleeps: it holds each ball that comes down until the next tap, while the clock runs. These rules are the answer to levels that play themselves; keep new damage and coin sources tied to input from the player.
 
 A map in `levels.js` can move: `slide` makes a row a conveyor, `wheel` adds bricks that turn around a hub, `O` is a bumper and `(` `)` are a pair of portals (`genLevel`, `setupField`, `updateField`). The specials WINDY DAY and NIGHT MARKET change the whole field.
 
@@ -64,9 +69,9 @@ The shop has an arcade tab: each mini-game of `BBMini.list` is a shop item whose
 Things that a late run earns or meets (each has a `*_FROM` constant for its first level):
 
 *   **Creatures:** frogs that take the ball and spit it back as a fireball, ledge walkers that fall when their brick breaks (the paddle can catch them), peekaboos behind bricks, pigeons, the snail on his lunch break, and a boss that looks in from the side (`G.cameo`). `crowd(from, share, max)` sets how many come. Turtle bricks (`U` in a map) take damage only from above and from the side.
-*   **Bazaar Seals:** a second currency that only skill pays (three stars, a dare, a boss, three DING ×3 chains in one level). The "Upstairs" tab sells for seals: a relic reroll, a price lock, and relic fusions (`FUSIONS`: two relics become one with a new rule). Seals do not follow the price index.
+*   **Bazaar Seals:** a second currency that only skill pays (three stars, a dare, a boss, three chains of three bullseyes in one level). The "Upstairs" tab sells for seals: a relic reroll, a price lock, and relic fusions (`FUSIONS`: two relics become one with a new rule). Seals do not follow the price index.
 *   **Item sets** (`SETS`): a full set of upgrades at their maximum gives a bonus.
-*   **Spotter's Flare, the Ball Boy, the parrot:** items that need a tap, a wage or paddle bounces to do their work.
+*   **Spotter's Flare, the Ball Boy, the parrot:** items that need a mark, a tap and a wage, or aimed paddle bounces to do their work.
 *   **Specials:** LANDSLIDE moves bricks down into gaps (`row` stays correct); INSOMNIA MARKET and CUCKOO follow the real clock.
 *   **After level 50:** a new run with a star keeps one relic and starts at a higher Heat (`meta.stars`). **Bazaar of the Day** is a run of 10 levels with rules from the date; it does not touch the normal save.
 
