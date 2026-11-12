@@ -13,7 +13,7 @@ window.BB_LEVELS = [
   { name: 'Open Field', map: ['3333333333', '2.2.2.2.2.', '.1.1.1.1.1', '2.2.2.2.2.', '.1.1.1.1.1'], foes: { drifter: 2 }, tip: 'NEW: monsters. Blobs drift around and knock your ball off course' },
   { name: 'Fortress', map: ['S11111111S', 'S12222221S', 'S12BGGB21S', 'S12222221S', 'S11111111S'], tip: 'NEW: streaks. Break bricks without touching the paddle for bonus coins' },
   { name: 'Stone Garden', map: ['2222222222', 'X.X.XX.X.X', '3333333333', '.2.2..2.2.', '1111111111'], foes: { drifter: 2 }, tip: 'Grey stone never breaks. Aim through the gaps' },
-  { name: 'Twin Towers', map: ['33......33', '33..GG..33', '22.2222.22', '22.2..2.22', '11.1..1.11', '11.1111.11'], foes: { shooter: 1, drifter: 1 }, tip: 'Spitters shoot slime that shrinks and slows your paddle' },
+  { name: 'Twin Towers', map: ['33......33', '33..GG..33', '22.2222.22', '22.2..2.22', '11.1..1.11', '11.1111.11'], foes: { shooter: 1, drifter: 1 }, tip: 'NEW: the clock. Clear the level before it runs out, or you get no bonus' },
   { name: 'Crate King', map: ['..........', '..........', '..........', '..........', '1111111111', '.2.?..?.2.'], boss: 1, tip: 'BOSS! The Crate King throws crates. Later he stomps' },
   { name: 'Zigzag', map: ['33........', '2Z33......', '112233....', '..11Z233..', '....112233', '......1Z22', '........11'], foes: { drifter: 2, shooter: 1 }, tip: 'Volt bricks zap their whole row' },
   { name: 'Greenhouse', map: ['4444444444', '3.3.33.3.3', '3.3.33.3.3', '22?2222?22', '1G111111G1'], foes: { mender: 1, drifter: 1 }, tip: 'Menders patch damaged bricks. Take them out first' },
