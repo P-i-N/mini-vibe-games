@@ -181,3 +181,40 @@
 .mg-field { display: block; width: 100%; max-width: 17em; aspect-ratio: 300 / 340; margin: 0 auto 0.3em; border-radius: 0.9em;
   background: linear-gradient(180deg, #1d2350, #161a36); touch-action: none; -webkit-touch-callout: none; cursor: grab; }
 .mg-pick .mg-field { animation: mg-pulse 0.7s ease-in-out infinite alternate; }
+
+/* Coin Stack. The coin width (3em) and thickness (0.69em) match STACK_EM and STACK_THICK. */
+.mg-tally { min-height: 1.4em; font-weight: 900; color: #ffe680; white-space: nowrap; }
+.mg-tower { position: relative; flex-shrink: 0; width: 100%; max-width: 18em; margin: 0 auto; border-radius: 0.9em;
+  background: linear-gradient(180deg, #1d2350, #161a36); overflow: hidden; touch-action: none; -webkit-touch-callout: none;
+  cursor: pointer; }
+.mg-rail { position: absolute; left: 0.6em; right: 0.6em; top: 0.9em; border-top: 0.15em dashed #b8c0f055; }
+.mg-plate { position: absolute; left: 50%; bottom: 0.7em; width: 6em; height: 1em; margin-left: -3em; border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 35%, #f4f6ff, #9aa3d6 70%); box-shadow: 0 0.25em 0 #0006; }
+.mg-pile { position: absolute; left: 50%; width: 0; height: 0; transform-origin: 0 0; }
+.mg-pile.mg-tip { transition: transform 0.5s cubic-bezier(0.5, 0, 0.9, 0.6); }
+.mg-coin { position: absolute; width: 3em; height: 0.69em; border-radius: 50%; box-sizing: border-box;
+  background: linear-gradient(180deg, #fff2a8, #ffc23a 45%, #c98a12); border: 0.08em solid #8a5a00;
+  box-shadow: inset 0 0.12em 0 #ffffffaa; }
+.mg-coin.mg-bank { background: linear-gradient(180deg, #e8fff4, #7cf2a8 45%, #2a9c62); border-color: #14603a; }
+.mg-coin.mg-land { animation: mg-squash 0.25s ease-out; }
+.mg-coin.mg-tumble { transform: translate(var(--mg-fx), var(--mg-fy)) rotate(var(--mg-fr)); opacity: 0;
+  transition: transform 0.9s cubic-bezier(0.4, 0, 0.9, 0.5), opacity 0.4s ease-in 0.6s; }
+.mg-lock { position: absolute; left: 100%; top: 50%; margin: -0.6em 0 0 0.3em; font-size: 0.75em; font-weight: 900;
+  color: #7cf2a8; white-space: nowrap; line-height: 1.2; }
+.mg-tumble .mg-lock { opacity: 0; }
+.mg-swing { margin-left: -1.5em; z-index: 2; }
+.mg-swing.mg-fall { transition: bottom 0.35s cubic-bezier(0.5, 0, 1, 0.6); }
+.mg-swing.mg-lost { transition: bottom 0.6s ease-in, transform 0.6s ease-in; transform: rotate(70deg); }
+.mg-swing.mg-hide { visibility: hidden; }
+.mg-pick .mg-swing { filter: drop-shadow(0 0 0.35em #ffe680aa); }
+.mg-tower.mg-shake { animation: mg-shake 0.4s ease-in-out 0.3s; }
+.mg-level { position: relative; flex-shrink: 0; width: 100%; max-width: 12em; height: 0.8em; margin: 0.5em auto 0;
+  border-radius: 0.4em; background: linear-gradient(90deg, #ff4f8b, #ffe680 20%, #7cf2a8 40%, #7cf2a8 60%, #ffe680 80%, #ff4f8b); }
+.mg-bubble-mark { position: absolute; left: 50%; top: -0.2em; width: 0.5em; height: 1.2em; margin-left: -0.25em;
+  border-radius: 0.25em; background: #f4f6ff; box-shadow: 0 0 0 0.12em #1b1f33; transition: left 0.25s ease-out; }
+.mg-bubble-mark.mg-hot { animation: mg-wobble 0.15s ease-in-out infinite alternate; }
+.mg-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6em; width: 100%; max-width: 22em; margin: 0 auto; }
+.mg-btns .mg-big { padding: 0.8em 0.4em; touch-action: none; }
+.mg-btns:has(.mg-cash[hidden]) .mg-drop { grid-column: 1 / -1; }
+@keyframes mg-squash { 40% { transform: scale(1.12, 0.7); } }
+@keyframes mg-shake { 25% { transform: translateX(-0.3em); } 50% { transform: translateX(0.3em); } 75% { transform: translateX(-0.15em); } }

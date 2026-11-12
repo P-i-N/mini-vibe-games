@@ -770,5 +770,191 @@
     tap(api, x) { if (Math.abs(x - api.state.crane.x) < SORT.tapR) release(api); },
   };
 
-  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort };
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Coin Pusher: a shelf slides back and forth on the bed of coins. Move the dropper, tap it to drop a coin. Coins that
+  // go over the front edge pay; coins that slide off a side are lost. Prizes among the coins pay more.
+  const PUSH = { drops: 14, r: 13, prizeR: 17, left: 40, right: 400, railY: 150, back: 196, front: 400, amp: 40, period: 2.6, gutter: 560, edge: 640, tray: 700,
+    pile: 456, warm: 3, coin: 2, bias: 0.4, fall: 0.35, friction: 7, steps: 4, tapR: 70, cd: 0.3, calm: 4, snailX: 442, snailY: 560 };
+  const PRIZES = [
+    { f: '💎', pay: 12, text: 'GEM', x: 130, y: 600, line: 'My gem! Take it. I have a spare.' },
+    { f: '🥬', pay: 8, text: 'LETTUCE', x: 220, y: 580, line: 'My lunch! Fine. Enjoy it.' },
+    { f: '🐚', pay: 15, text: 'OLD SHELL', x: 310, y: 605, line: 'My first shell! It has a good home now.' },
+  ];
+  const PUSH_LINES = {
+    start: ['Coin pusher! You drop, the shelf pushes.', 'Drop near the shelf. Trust the shelf.'],
+    lost: ['The side eats it.', 'Gutter coin. The machine says thanks.', 'Aim for the middle. Just a tip.'],
+    pile: ['Avalanche!', 'Look at them go!', 'Pour, coins, pour!'],
+    end: ['The shelf needs a rest.', 'Machine closed. Pockets full.'],
+  };
+  // the front of the shelf and its speed
+  const shelfY = (t) => PUSH.front + PUSH.amp * Math.sin((TAU * t) / PUSH.period);
+  const shelfV = (t) => ((PUSH.amp * TAU) / PUSH.period) * Math.cos((TAU * t) / PUSH.period);
+  // a full bed: the machine runs for a few seconds before the round, and what falls then is not paid. So the pile
+  // starts at the edge, and each new coin pushes about one coin off.
+  function pushFill(api) {
+    let coins = [];
+    for (let y = PUSH.pile, row = 0; y <= PUSH.edge - 14; y += 22, row++) {
+      for (let x = PUSH.left + 18 + (row & 1) * 13; x <= PUSH.right - 18; x += 27) coins.push({ x: x + api.rand(-3, 3), y: y + api.rand(-3, 3), vx: 0, vy: 0, r: PUSH.r, pay: PUSH.coin });
+    }
+    for (const p of PRIZES) {
+      const c = coins.reduce((a, b) => (Math.hypot(b.x - p.x, b.y - p.y) < Math.hypot(a.x - p.x, a.y - p.y) ? b : a));
+      Object.assign(c, { r: PUSH.prizeR, pay: p.pay, prize: p });
+    }
+    const h = 1 / 120;
+    for (let t = -PUSH.warm; t < 0; t += h) {
+      pushStep(api, coins, h, shelfY(t), shelfV(t));
+      coins = coins.filter((c) => c.y <= PUSH.edge && c.x >= PUSH.left && c.x <= PUSH.right);
+    }
+    for (const c of coins) c.vx = c.vy = 0;
+    return coins;
+  }
+  // circle against circle: the overlap is split, and the push goes from one coin to the next. The coin nearer to the
+  // front edge takes the larger part, so that the pile does not spring back into the shelf when the shelf goes back.
+  function separate(coins, k = PUSH.bias) {
+    for (let i = 0; i < coins.length; i++) {
+      const a = coins[i];
+      for (let j = i + 1; j < coins.length; j++) {
+        const b = coins[j], R = a.r + b.r, dx = b.x - a.x, dy = b.y - a.y;
+        if (Math.abs(dx) >= R || Math.abs(dy) >= R) continue;
+        const d = Math.hypot(dx, dy);
+        if (d >= R) continue;
+        const nx = d ? dx / d : 1, ny = d ? dy / d : 0, oa = (R - d) * (0.5 - k * ny), ob = R - d - oa;
+        a.x -= nx * oa; a.y -= ny * oa; b.x += nx * ob; b.y += ny * ob;
+        const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+        if (rel >= 0) continue;
+        a.vx += (rel * nx) / 2; a.vy += (rel * ny) / 2; b.vx -= (rel * nx) / 2; b.vy -= (rel * ny) / 2;
+      }
+    }
+  }
+  function pushDrop(api, at = api.state.dx) {
+    const st = api.state;
+    if (st.drops <= 0 || st.cd > 0) return;
+    st.drops--; st.cd = PUSH.cd; st.calmT = 0;
+    const x = api.clamp(at + api.rand(-4, 4), PUSH.left + PUSH.r, PUSH.right - PUSH.r);
+    st.air.push({ x0: st.dx, x, y: api.rand(PUSH.front - PUSH.amp + PUSH.r, PUSH.front + PUSH.amp + 24), t: 0 });
+    api.sfx.spit();
+  }
+  function pushLand(api, a) {
+    const st = api.state;
+    st.coins.push({ x: a.x, y: Math.max(a.y, shelfY(api.time) + PUSH.r), vx: api.rand(-20, 20), vy: 40, r: PUSH.r, pay: PUSH.coin });
+    api.sfx.tick(); api.burst(a.x, a.y, '#ffd23f', 4, 60);
+  }
+  function pushStep(api, coins, h, front, v) {
+    const k = Math.max(0, 1 - PUSH.friction * h);
+    for (const c of coins) { c.x += c.vx * h; c.y += c.vy * h; c.vx *= k; c.vy *= k; }
+    separate(coins);
+    // the side walls end at the gutters; the shelf wins against every coin, it pushes forward and does not pull back
+    for (const c of coins) {
+      if (c.y < PUSH.gutter) c.x = api.clamp(c.x, PUSH.left + c.r, PUSH.right - c.r);
+      if (c.y - c.r >= front) continue;
+      c.y = front + c.r; c.vy = Math.max(c.vy, v, 0);
+    }
+  }
+  function pushFall(api, c) {
+    const st = api.state;
+    c.out = 'pay'; c.t = 0; st.chain++; st.chainT = 0.6;
+    bank(api, c.pay); api.score(1);
+    if (c.prize) {
+      api.sfx.jackpot(); api.shake(6); api.flash('#ffd23f', 0.2); api.burst(c.x, PUSH.edge, '#ffd23f', 18, 220);
+      api.say(c.x, PUSH.edge - 50, c.prize.text + ' +' + c.pay, '#ffd23f', true); talk(api, c.prize.line, 2.6); st.wow = 0.8;
+      return;
+    }
+    api.sfx.coin(st.chain); api.burst(c.x, PUSH.edge, '#ffd23f', 5, 100);
+    if (st.chain === 6) { api.say(api.W / 2, PUSH.edge - 60, 'AVALANCHE!', '#7cf2a8', true); talk(api, api.pick(PUSH_LINES.pile), 1.4); }
+  }
+  function pushLost(api, c) {
+    c.out = 'lost'; c.t = 0;
+    if (c.prize) { api.sfx.nope(); api.say(c.x, c.y - 30, c.prize.text + ' FELL OFF', '#c9d0ff'); talk(api, api.pick(PUSH_LINES.lost)); return; }
+    api.sfx.tick();
+    if (Math.random() < 0.2) talk(api, api.pick(PUSH_LINES.lost), 1.4);
+  }
+  function drawCoin(ctx, c, x, y, s) {
+    if (c.prize) {
+      ctx.fillStyle = '#f4f6ff'; ctx.beginPath(); ctx.arc(x, y, c.r * s, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ff7ad9'; ctx.lineWidth = 3; ctx.stroke();
+      emoji(ctx, c.prize.f, x, y + 1, 22 * s);
+      return;
+    }
+    ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(x, y, c.r * s, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#b38600'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, c.r * s * 0.6, 0, TAU); ctx.stroke();
+  }
+  const pusher = {
+    name: 'Coin Pusher', title: '🪙 COIN PUSHER 🪙', over: 'SHELF STOPS!', count: 'Coins pushed 🪙',
+    tip: 'BONUS ROUND! Move the dropper, tap it to drop a coin. Push coins and prizes over the edge', seconds: 24, ball: false, hidePaddle: true,
+    start(api) {
+      Object.assign(api.state, { coins: pushFill(api), out: [], air: [], dx: api.W / 2 - 20, drops: PUSH.drops, cd: 0, chain: 0, chainT: 0, calmT: 0, wow: 0, done: false });
+      talk(api, api.pick(PUSH_LINES.start), 3);
+    },
+    tick(api, dt) {
+      const st = api.state;
+      settle(api, dt);
+      st.cd -= dt; st.wow = Math.max(0, st.wow - dt);
+      if ((st.chainT -= dt) <= 0) st.chain = 0;
+      st.dx += (api.clamp(api.paddle.x, PUSH.left + PUSH.r, PUSH.right - PUSH.r) - st.dx) * Math.min(1, dt * 7);
+      for (const a of st.air) if ((a.t += dt / PUSH.fall) >= 1) { a.dead = true; pushLand(api, a); }
+      st.air = st.air.filter((a) => !a.dead);
+      for (const c of st.out) c.t += dt * 2.5;
+      st.out = st.out.filter((c) => c.t < 1);
+      const h = dt / PUSH.steps;
+      for (let i = 0; i < PUSH.steps; i++) {
+        const t = api.time - dt + h * (i + 1);
+        pushStep(api, st.coins, h, shelfY(t), shelfV(t));
+        for (const c of st.coins) {
+          if (c.y > PUSH.edge) pushFall(api, c);
+          else if (c.x < PUSH.left || c.x > PUSH.right) pushLost(api, c);
+        }
+        if (st.coins.some((c) => c.out)) { st.out.push(...st.coins.filter((c) => c.out)); st.coins = st.coins.filter((c) => !c.out); }
+      }
+      if (!st.drops && !st.air.length) st.calmT += dt;
+      if (!st.done && st.calmT > PUSH.calm) { st.done = true; talk(api, api.pick(PUSH_LINES.end)); cashOut(api); api.end(); }
+    },
+    draw(api, ctx, t) {
+      const st = api.state, W = api.W, L = PUSH.left, R = PUSH.right, front = shelfY(api.time);
+      // the bed, the side gutters and the pay tray
+      const g = ctx.createLinearGradient(0, PUSH.back, 0, PUSH.edge);
+      g.addColorStop(0, 'rgba(60,40,110,0.85)'); g.addColorStop(1, 'rgba(110,60,150,0.85)');
+      ctx.fillStyle = g; ctx.fillRect(L, PUSH.back, R - L, PUSH.edge - PUSH.back);
+      ctx.fillStyle = '#c9d0ff'; ctx.fillRect(L - 6, PUSH.back, 6, PUSH.gutter - PUSH.back); ctx.fillRect(R, PUSH.back, 6, PUSH.gutter - PUSH.back);
+      ctx.fillStyle = 'rgba(10,12,24,0.8)'; ctx.fillRect(L - 12, PUSH.gutter, 12, PUSH.tray - PUSH.gutter); ctx.fillRect(R, PUSH.gutter, 12, PUSH.tray - PUSH.gutter);
+      ctx.globalAlpha = 0.22; ctx.fillStyle = '#ffd23f'; ctx.fillRect(L, PUSH.edge, R - L, PUSH.tray - PUSH.edge); ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffd23f'; ctx.fillRect(L, PUSH.edge - 2, R - L, 4);
+      label(ctx, 'OVER THE EDGE = YOURS', (L + R) / 2, PUSH.tray - 14, '#ffd23f', 14);
+      // the shelf
+      ctx.fillStyle = '#9aa6e8'; ctx.fillRect(L, PUSH.back, R - L, front - PUSH.back);
+      ctx.fillStyle = '#7a86c8'; for (let x = L + 10; x < R; x += 30) ctx.fillRect(x, PUSH.back, 12, front - PUSH.back);
+      ctx.fillStyle = '#e8ecff'; ctx.fillRect(L, front - 6, R - L, 6);
+      // the coins: falling ones go into the tray or the gutter
+      for (const c of st.coins) drawCoin(ctx, c, c.x, c.y, 1);
+      for (const c of st.out) {
+        ctx.globalAlpha = 1 - c.t;
+        if (c.out === 'pay') drawCoin(ctx, c, c.x, c.y + c.t * 40, 1 - c.t * 0.3);
+        else drawCoin(ctx, c, c.x + Math.sign(c.x - W / 2) * c.t * 10, c.y + c.t * 20, 1 - c.t * 0.6);
+        ctx.globalAlpha = 1;
+      }
+      // coins in the air, with a shadow where they land
+      for (const a of st.air) {
+        const x = a.x0 + (a.x - a.x0) * a.t, y = PUSH.railY + 16 + (a.y - PUSH.railY - 16) * a.t;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(a.x, a.y, PUSH.r * a.t, 0, TAU); ctx.fill();
+        drawCoin(ctx, { r: PUSH.r }, x, y - Math.sin(a.t * Math.PI) * 30, 1.4 - a.t * 0.4);
+      }
+      // the rail and the dropper
+      ctx.fillStyle = '#9aa6e8'; ctx.fillRect(L - 12, PUSH.railY + 12, R - L + 24, 5);
+      ctx.fillStyle = '#ff7ad9'; ctx.beginPath(); ctx.roundRect(st.dx - 24, PUSH.railY, 48, 18, 6); ctx.fill();
+      if (st.drops > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(st.dx, PUSH.railY + 30); ctx.lineTo(st.dx, PUSH.front + PUSH.amp); ctx.stroke(); ctx.setLineDash([]);
+        drawCoin(ctx, { r: PUSH.r }, st.dx, PUSH.railY + 30, st.cd > 0 ? 0.6 : 1);
+      }
+      // Mortimer beside the machine
+      ctx.fillStyle = '#7a4a1e'; ctx.fillRect(PUSH.snailX - 22, PUSH.snailY + 20, 44, 6); ctx.fillRect(PUSH.snailX - 3, PUSH.snailY + 26, 6, 50);
+      snail(api, ctx, PUSH.snailX, PUSH.snailY, 1.4, -1, st.wow > 0 && Math.sin(t * 30) > 0);
+      label(ctx, 'DROPS ×' + st.drops, 70, api.HUD_H + 22, st.drops ? '#e8ecff' : '#8a8fb0', 18);
+      if (st.drops > 0) label(ctx, 'TAP THE DROPPER = DROP', (L + R) / 2, api.H - 40, Math.sin(t * 6) > 0 ? '#7cf2a8' : '#ffffff', 16);
+      drawBank(api, ctx);
+      drawTalk(api, ctx, PUSH.snailX, PUSH.snailY - 30);
+    },
+    tap(api, x, y) { if (Math.abs(x - api.state.dx) < PUSH.tapR && y < PUSH.railY + PUSH.tapR) pushDrop(api); },
+  };
+
+  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort, pusher };
 })();

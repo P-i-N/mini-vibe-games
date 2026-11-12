@@ -672,6 +672,17 @@ window.BB_SNAIL = {
       'The bricks won this time. They will be unbearable.',
       'Rest. Wash your hands. Come back.',
     ],
+    // Game-over screen: one line of his invoice.
+    invoice: [
+      'Bricks broken: most of them. Repairs: your problem.',
+      'Coins dropped: many. Finder fee: mine.',
+      'Seat rental: free. Seat warmth: priceless.',
+      'Paddle wear: light. Pride wear: heavy. No charge.',
+      "Pip's crumbs: two. Pip's work: less than two.",
+      'Coins lost to crows: some. Feelings about crows: strong.',
+      'Balls lost: all of them. Ball funeral: free.',
+      'Snail patience used: none. Plenty left. Come back.',
+    ],
     // The player beat level 50.
     victory: [
       'Level 50! I have to go lie down. I was already lying.',
@@ -727,16 +738,40 @@ window.BB_SNAIL = {
       'I hired Pip off a damp log. Best deal I ever made.',
       'Let go of the paddle on a Pip capsule and he drives. Cheaply.',
     ],
-    // Play: coins lay on the floor and nobody swept them up.
+    // Play: coins fell past the paddle and are lost.
     spill: [
-      'Coins on the floor! Drag the paddle down there.',
-      'That was rent money. On the floor.',
-      'Sweep the floor. With the paddle.',
-      'I heard coins roll away. I heard it slowly.',
+      'Coins fell past you! Get under them.',
+      'That was rent money. In the pit.',
+      'Catch them. With the paddle. It is wide enough.',
+      'I heard coins drop away. I heard it slowly.',
       'Buy a magnet. Or use your thumb. Your choice.',
-      'Floor coins wait a moment. Then they leave. Like customers.',
-      'The floor is not a bank. Pick it up.',
-      'Coins on the ground. My heart on the ground.',
+      'Coins do not wait. They fall. Like my hopes.',
+      'The pit is not a bank. Catch them.',
+      'Coins in the pit. My heart in the pit.',
+    ],
+    // Play: the event "Penny Stampede" starts. Coins on bricks run off; caught coins count double.
+    stampede: [
+      'Penny Stampede! The coins grew legs. Catch them for double.',
+      'The coins on the bricks are running! Get under them!',
+      'Panic in the stock! Every coin you catch counts twice.',
+      'Coins with legs. Now I have seen everything. Catch them.',
+      'They run faster than me. Everything does. Catch them, double pay.',
+      'Stampede! Coins jump off the bricks. Paddle under them, quick.',
+    ],
+    // Play: the player catches the capsule "Quake". Each paddle bounce shakes the coins off the bricks.
+    quake: [
+      'Quake! Every bounce shakes the coins loose.',
+      'Each bounce rattles the bricks. Coins come down. Catch them.',
+      'A quake capsule. My shelves hate this. Bounce away.',
+      'Bounce the ball and the bricks shake. Coins rain down. Be under them.',
+    ],
+    // Play: five coins on one brick merge into one fat coin.
+    fatcoin: [
+      'Five coins on one brick became one fat coin. Rich and lazy.',
+      'A fat coin! It ate its friends. Do not let it fall past you.',
+      'Five became one. Heavy. Worth all five. Do not drop it.',
+      'That coin got fat sitting on a brick. I relate.',
+      'A fat coin! It sat still too long. Very snail of it.',
     ],
     // Play: the special of the day "PIP'S SHIFT" starts. Pip steers when the player lets go.
     dayoff: [
@@ -748,6 +783,14 @@ window.BB_SNAIL = {
       'Pip clocked in. Let go of the paddle and watch him sweat.',
       'Today Pip earns his crumbs. Let go and he drives.',
       'Pip steers when you let go. I charge extra for the show.',
+    ],
+    // Play: the special of the day "HAPPY HOUR" rings its bell. Coins are worth triple for 3 seconds.
+    happy: [
+      'Happy Hour! Three seconds of triple coins. Grab!',
+      'Ding! Happy Hour. It lasts three seconds. Shop rules.',
+      'Triple coins! Quick! The bell only rings once.',
+      'Happy Hour! Everything triple. Even my regret.',
+      'The bell! Three seconds, three times the coins. Move.',
     ],
     // Pause screen: headlines of "The Bazaar Bugle".
     bugle: [
@@ -763,7 +806,7 @@ window.BB_SNAIL = {
       'THUMBTACK SHORTAGE HITS BAZAAR',
       'PIGEONS ON STRIKE, BLIMPS DELAYED',
       'MYSTERY BOX STILL A MYSTERY',
-      'CROW SPOTTED NEAR FLOOR COINS',
+      'CROW SPOTTED NEAR LOOSE COINS',
       'SNAIL ANNOUNCES SALE, THEN RETHINKS',
       'BRICK UNION CALLS COFFEE BREAK',
       'SHOP CLOCK RUNS SLOW, OWNER SLOWER',
@@ -806,7 +849,7 @@ window.BB_SNAIL = {
       'Brick upon brick. Wall upon wall.',
       'A hero rises. Well, sits.',
       'The bricks did not see it coming.',
-      'Coins! Coins upon the floor!',
+      'Coins! Coins upon the bricks!',
       'Gravity. The old enemy.',
       'Alas! The ball is lost.',
       'But hope bounces back.',
@@ -838,6 +881,31 @@ window.BB_SNAIL = {
       'Half a card. Worth half of nothing.',
       'Too slow for bingo. I know the feeling.',
     ],
+    // Play: the event "Going Once" starts. One brick gets a price tag that rises every second.
+    auction: [
+      'Going once! That brick has a price tag. It rises. Slowly. Like me.',
+      'Auction time. Break the tagged brick before I say sold.',
+      'Do I hear one coin? Two? The brick hears it. Break it.',
+      'Going once... going... still going... I am slow. Hit it.',
+      'The price climbs every second. Wait for it. Not too long.',
+      'Lot number one: a brick. Fine condition. Break it to claim the bid.',
+    ],
+    // Play: "Going Once", the player broke the tagged brick in time.
+    auctionWin: [
+      'Sold! To the player on the seat.',
+      'Sold! Fair price. Too fair. I regret it.',
+      'Gavel down. The coins are yours. My gavel is a lettuce.',
+      'Sold at a high price. You waited well. I wait better.',
+      'Broken and paid. A pleasure doing auction.',
+    ],
+    // Play: "Going Once", time ran out.
+    auctionLose: [
+      'Going twice... sold! To the pigeon at the back.',
+      'Sold to a pigeon. He paid in crumbs.',
+      'Too slow. The pigeon bid. The pigeon won.',
+      'Sold, to a pigeon. He does not even have a shelf.',
+      'The pigeon raised a wing. I took it as a bid.',
+    ],
     // Play: the bricks take a coffee break and take double damage.
     coffee: [
       'Coffee break! The bricks are off guard. Hit them twice as hard.',
@@ -846,25 +914,25 @@ window.BB_SNAIL = {
       'Coffee time. The bricks are soft and sleepy. Go.',
       'They put the kettle on. Now put the ball on them.',
     ],
-    // Play: Quill Cheapwing, the crow who steals floor coins, flies in.
+    // Play: Quill Cheapwing, the crow who steals the coins that lie on bricks, flies in.
     quill: [
-      'Quill Cheapwing! Watch the floor coins. Watch your pockets.',
+      'Quill Cheapwing! Watch the coins on the bricks. And your pockets.',
       'That crow again. He sells second-hand everything. Mostly mine.',
-      'Quill is here. Sweep the coins before he does.',
+      'Quill is here. Shake the coins loose before he gets them.',
       'Cheapwing! Hit him with the ball. Gently. Then not gently.',
       'My rival. He undercuts me by flying. Unfair.',
-      'A crow in my bazaar. Guard the floor.',
+      'A crow in my bazaar. Guard the bricks.',
       'Quill! He has no shop. He has a sack and no shame.',
       'Here comes Cheapwing. Every coin he takes is a coin I lose.',
     ],
     // Play: Quill Cheapwing himself.
     quillSay: [
       'Cheapwing Trading! Low prices!',
-      'Floor coins? Finders keepers.',
+      'Coins on a shelf? Finders keepers.',
       'Snail prices? I fly prices.',
       'Shiny! Into the sack you go.',
       'Why crawl when you can fly?',
-      'All half off. Off the floor.',
+      'All half off. Off the bricks.',
       'No receipts. No refunds. No snail.',
       'Lovely coins. Mine now.',
       'Tell Mortimer I said hurry up.',
@@ -872,7 +940,7 @@ window.BB_SNAIL = {
     ],
     // Play: Quill is driven off.
     quillFlee: [
-      'Off you go, Cheapwing! And stay off my floor.',
+      'Off you go, Cheapwing! And stay off my bricks.',
       'He flew. Fast, like a coward with wings.',
       'Quill is gone. Your coins are safe. Mine later.',
       'Shoo! Bazaar rules: no crows, no credit.',
@@ -883,7 +951,58 @@ window.BB_SNAIL = {
       'He got away with the coins. Into his sack. My future sack.',
       'Cheapwing wins this one. I will raise prices to recover.',
       'Gone, with coins. That crow will gloat all week.',
-      'He took the floor coins. Next time, sweep faster.',
+      'He took the coins off the bricks. Next time, break faster.',
+    ],
+    // Play: a level starts with an IOU brick. Quill left a note; break the brick and he pays back.
+    iou: [
+      'An IOU brick! Quill left a note. Break it and he pays.',
+      'Cheapwing owes you. He wrote it on a brick. Break the brick.',
+      'IOU from Quill. Crows pay their debts. When cornered.',
+      'He took your coins last time and left this note. Collect.',
+      'A note from Quill: "I owe you." Break it. Make him mean it.',
+    ],
+    // Play: Quill himself, when the IOU is paid.
+    iouPaid: [
+      'Fine. Paid. Do not frame it.',
+      'Here. Every coin. Almost.',
+      'Debt paid. My sack is crying.',
+      'Take it. I hate fair deals.',
+      'Paid in full. Tell no crows.',
+    ],
+    // Play: the mini-boss Sackbelly Mole digs in. He tunnels between the bricks and bags the coins.
+    mole: [
+      'Sackbelly Mole! He digs between the bricks and bags every coin.',
+      'A mole in my bricks. Hit him before his sack is full.',
+      'That is Sackbelly. He tunnels, he stuffs, he never pays.',
+      'The mole is digging. No coin on a brick is safe now.',
+      'Sackbelly is back. Big sack, small manners. Drive him out.',
+      'Watch the tunnels. Where he passes, the coins go missing.',
+    ],
+    // Play: Sackbelly Mole himself.
+    moleSay: [
+      'Mmf! Mine! All mine!',
+      'Into the sack. Mmf.',
+      'Shiny! Mmmf. Shiny!',
+      'Sack not full yet. Mmf.',
+      'Dig, dig, grab, grab.',
+      'Mmf. Coins taste nice.',
+      'No looking! Busy stuffing.',
+      'Bigger sack next time. Mmf.',
+    ],
+    // Play: Sackbelly Mole is driven off.
+    moleFlee: [
+      'The mole ran! He dropped half his sack, too.',
+      'Sackbelly is gone. Back down his hole. Good.',
+      'Driven off! I will fill his tunnels with receipts.',
+      'He dug away with empty paws. My favourite kind of mole.',
+      'Bye, mole. Next time bring money, not a sack.',
+    ],
+    // Play: Sackbelly Mole digs away with the coins.
+    moleWin: [
+      'He dug away with the coins. I heard his sack jingle.',
+      'Sackbelly wins. Somewhere below, a mole is very rich.',
+      'Gone, with the coins. I hope his sack has a hole.',
+      'The mole got away. Hit him sooner next time.',
     ],
     // Play: the player takes the dare. Guns and drones are off for the level.
     holster: [

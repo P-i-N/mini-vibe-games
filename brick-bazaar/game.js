@@ -96,20 +96,28 @@
   ];
   // The late game: from these levels the shop has seals, sets and more gear.
   const SEAL_FROM = 26, SET_FROM = 26, FLARE_FROM = 26, BOY_FROM = 26;
-  // Pip, his pins and the floor; the rules are at "Pip and his pins".
-  const FLOOR_Y = PADDLE_Y + PADDLE_H / 2, COIN_REST = 1.6; // a coin lies on the floor for COIN_REST seconds
+  // Pip and his pins; the rules are at "Pip and his pins".
+  // Coins are objects in the field: the bricks stop them. See coinVsBricks.
+  const COIN_R = 7, COIN_BOUNCE = 0.3, COIN_REST_V = 40; // radius, share of the speed that a bounce keeps, the speed below which a coin comes to rest
+  const COIN_HOP = 150; // speed of the hop of a coin when its brick is hit
+  const FAT_N = 5, FAT_K = 1.4, FAT_CRACK_S = 2, FAT_CRACK_K = 0.2, FAT_FALL = 500; // fat coin: coins that merge, value factor, seconds between cracks, share of the brick health per crack, fall speed
+  const RATTLE_W = 30, RATTLE_K = 0.35; // Rattle Smash: half width of the cone at the paddle, and its growth per px of height
+  const QUAKE_S = 6, QUAKE_FROM = 20; // the capsule Quake
+  const AUCTION_S = 12, AUCTION_BID = 3, AUCTION_STEP = 2, AUCTION_MAX = 20; // Going Once: length, first price, rise per second, top price (in coins)
+  const STAMPEDE_S = 8, STAMPEDE_V = 70, STAMPEDE_MIN = 3; // Penny Stampede: length, walk speed, coins on bricks that it needs
+  const HAPPY_EVERY = 15, HAPPY_S = 3; // HAPPY HOUR: seconds between bells, seconds of triple coins
   const PIN_S = 12, PIN_GAP = 6, COFFEE_K = 0.25, JITTER_K = 1 / 3; // pins: life, seconds until the next one, cut of that time per coffee, both times on Too Much Coffee
   const BULL_K = 3, BULL_CAPSULE = 5, DARE_BULLS = 3; // bullseye: damage factor, each n-th one drops a capsule, count for the dare
   const TACK_RAD = 46; // radius of the blast of a Blasting Tack
   const BOUNCE_K = 1.08; // bounce angle in rad for each unit of hit offset on the paddle
   const AIM_MAX = 1.0, AIM_OFF = 0.8, AIM_SPREAD = 0.05; // Pip at the wheel: flattest shot in rad, farthest hit offset, random spread in rad
   const AUTO_SPEED = 620, LAZY = 0.7, PIP_WAIT = 0.5, PIP_S = 10; // Pip at the wheel: px/s, the offset that he accepts with no pin, seconds with no input until he steers, seconds of the capsule
-  const SPILL_HECKLE = 12; // coins lost on the floor in one level before the shopkeeper speaks
+  const SPILL_HECKLE = 12; // coins that fall past the paddle in one level before the shopkeeper speaks
   const PIP_GAP = 9; // seconds between two lines of Pip
   const CALL_FROM = 24, CALL_CHANCE = 0.3; // a called pin: "off the wall first" pays double
   const BLIMP_PIN = 0.5; // chance that Pip pins a loot blimp when one comes
   const JAR_PINS = 4, JAR_GAP = 0.4, JAR_S = 10; // Tack Jar: extra pins, seconds between them, length
-  const RAKE_K = 0.2; // Floor Rake: extra value of a coin that is swept off the floor, per level
+  const RAKE_K = 0.2; // Brick Rake: extra value of a coin that lay on a brick, per level
   const WHIP_V = 900; // Whip Bounce: paddle speed in px/s that gives the ball double damage
   const HOLSTER_FROM = 21; // first level of the dare that switches guns and drones off
   const EVENT_CHANCE = 0.3, FILM_S = 9, BINGO_S = 15, BINGO_PAY = 12, COFFEE_S = 8; // mid-level events
@@ -151,7 +159,7 @@
     { id: 'd_over', at: 18, cat: 'drone', icon: '⚙️', name: 'Overclock', max: 3, base: 120, grow: 1.8,
       desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => DRONE_IDS.some((d) => lv(d) > 0), reqText: 'Needs a drone' },
     { id: 'd_ufo', at: 34, cat: 'drone', icon: '🛸', name: 'Abductor', max: 2, base: 900, grow: 2.5,
-      desc: (l) => `A saucer that beams away half of a brick every few seconds. Owned: ${l}/2.` },
+      desc: (l) => `A saucer that beams away half of the brick that your ball hit last. Owned: ${l}/2.` },
     { id: 'd_parrot', at: 15, cat: 'drone', icon: '🦜', name: 'Polly', max: 1, base: 600, grow: 1,
       desc: () => `Rides on your paddle. Every ${PARROT_EVERY}th paddle bounce she pecks the lowest brick. She repeats what bosses say, and it hurts them.` },
 
@@ -213,8 +221,8 @@
       desc: (l) => `Streak payouts are ${(l + 1) * 25}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
     { id: 'foebounty', at: 9, cat: 'eco', icon: '🏆', name: 'Trophy Hunter', max: 3, base: 70, grow: 1.7,
       desc: (l) => `The first ${l ? l + 1 + ' monsters' : 'monster'} of each kind that you pop in a level drop${l ? '' : 's'} a capsule.` },
-    { id: 'rake', at: 22, cat: 'eco', icon: '🧹', name: 'Floor Rake', max: 3, base: 260, grow: 2,
-      desc: (l) => `A coin that you sweep off the floor is worth ${Math.round((l + 1) * RAKE_K * 100)}% more.` },
+    { id: 'rake', at: 22, cat: 'eco', icon: '🧹', name: 'Brick Rake', max: 3, base: 260, grow: 2,
+      desc: (l) => `A coin that lay on a brick is worth ${Math.round((l + 1) * RAKE_K * 100)}% more when you catch it.` },
     { id: 'bounty', at: 4, cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 15}%.` },
     { id: 'bonds', at: 20, cat: 'eco', icon: '📜', name: 'Bazaar Bonds', max: 8, base: 220, grow: 1.45,
@@ -372,7 +380,7 @@
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
   const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, pin: 14, smash: 16 };
   // The first level on which each capsule can drop.
-  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, pip: 12, storm: 14, gold: 17, nuke: 20, jar: 25, potato: 28 };
+  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, pip: 12, storm: 14, gold: 17, nuke: 20, quake: QUAKE_FROM, jar: 25, potato: 28 };
   const unlocked = (it) => (run.level >= it.at || lv(it.id) > 0) && (!it.seals || run.sealsEver > 0) && (!it.show || it.show());
   // upgrades that can still go up: the pool for sales and the Mystery Box
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
@@ -780,6 +788,7 @@
     { id: 'wind', name: 'WINDY DAY', text: 'Gusts push the ball and the coins' },
     { id: 'night', name: 'NIGHT MARKET', text: 'Lights out. Coins are worth 50% more' },
     { id: 'bill', name: 'YOU BREAK IT, YOU BUY IT', text: 'Every brick goes on your bill' },
+    { id: 'happy', name: 'HAPPY HOUR', text: 'A bell rings now and then. For 3 seconds coins are worth triple' },
     { id: 'wrap', name: 'ROUND THE WORLD', text: 'The side walls are open. The ball comes back in on the other side' },
     { id: 'dayoff', name: "PIP'S SHIFT", text: 'Let go, and Pip steers. Your own bullseyes pay double', from: 14 },
     { id: 'slide', name: 'LANDSLIDE', text: 'Bricks slide down into every gap', from: 26, fixed: true },
@@ -1078,11 +1087,11 @@
   // ---------- Quill Cheapwing ----------
   // A crow trader, Mortimer's rival. He visits once in each band of QUILL_BAND_N levels that starts at a QUILL_BANDS
   // level; the last level of a band always has him if he did not come before. He flies between ledges and to the coins
-  // that lie on the floor, and keeps the coins that he reaches. A ball hurts him only while he sits: he spills his sack
+  // that lie on bricks, and keeps the coins that he reaches. A ball hurts him only while he sits: he spills his sack
   // and flies on. After QUILL_HITS hits he drops a purse and leaves; after QUILL_S seconds he leaves with the sack.
   // He never costs a ball or a life. He is not a foe: guns, drones, lightning and the goal of the level ignore him.
   const QUILL_BANDS = [21, 31, 41], QUILL_BAND_N = 9, QUILL_AT = 8, QUILL_S = 25, QUILL_HITS = 3, QUILL_PURSE = 12;
-  const QUILL_FLY = 300, QUILL_SIT = 2.5, QUILL_PECK = 1, QUILL_R = 12, QUILL_FOOT = 8, QUILL_REACH = 18, QUILL_TALK = 5, QUILL_EDGE = 40;
+  const QUILL_FLY = 300, QUILL_SIT = 2.5, QUILL_PECK = 1, QUILL_R = 12, QUILL_FOOT = 8, QUILL_REACH = 18, QUILL_TALK = 5, QUILL_EDGE = 110;
   // The band whose visit is due at level n: the first band that has started and has had no visit. -1 = none.
   // A visit that did not happen in its band (a level that was skipped or cleared too fast) comes on the next level.
   const quillBand = (n) => QUILL_BANDS.findIndex((a, k) => n >= a && !run.quill.bands.includes(k));
@@ -1097,19 +1106,38 @@
     G.quill = { x: exit(Math.random() < 0.5 ? 0 : W), y: TOP, t: 0, hits: 0, sack: [], talkT: QUILL_TALK, sitT: 0, out: false };
     quillPerch(G.quill);
     G.heckled.quill = G.heckled.quillFlee = G.heckled.quillWin = false;
-    heckle('quill', 'Quill Cheapwing! Watch the floor coins.'); sfx.squawk();
+    heckle('quill', 'Quill Cheapwing! He takes the coins that lie on bricks.'); sfx.squawk();
   }
-  // A coin on the floor comes first; else a free ledge; else a place on the floor.
+  // A coin that lies on a brick comes first; else a free ledge. With no brick to sit on he leaves.
   function quillPerch(Q) {
-    const coins = G.coins.filter((c) => !c.dead && c.rest != null);
+    const coins = G.coins.filter((c) => !c.dead && c.on);
     const spots = coins.length ? [] : ledges(new Set([...G.birds.map((o) => o.on), Q.on]));
     Q.coin = coins.length ? pick(coins) : null;
-    Q.on = spots.length ? pick(spots) : null;
-    Q.tx = Q.coin ? Q.coin.x : Q.on ? Q.on.x + Q.on.w / 2 : rand(QUILL_EDGE, W - QUILL_EDGE);
-    Q.ty = (Q.on ? Q.on.y : FLOOR_Y) - QUILL_FOOT;
+    Q.on = Q.coin ? Q.coin.on : spots.length ? pick(spots) : null;
+    if (!Q.on) { quillLeave(Q); return; }
+    Q.tx = Q.coin ? Q.coin.x : Q.on.x + Q.on.w / 2;
+    Q.ty = Q.on.y - QUILL_FOOT;
     Q.fly = true;
   }
+  // What Quill carries away is a debt. The next level has a brick with his IOU on it; the player who breaks it
+  // gets the coins back, and one more.
+  function quillOwes(Q) {
+    run.quill.debt = (run.quill.debt || 0) + Q.sack.reduce((a, v) => a + v, 0); Q.sack = [];
+  }
+  function pinIou() {
+    const all = G.bricks.filter((k) => hurtable(k) && !k.mimic);
+    if (run.daily || !run.quill.debt || !all.length) return;
+    pick(all).iou = true;
+    after(3, () => heckle('iou', 'Cheapwing left an IOU on a brick. Break it. Collect.'));
+  }
+  function payIou(x, y) {
+    const total = run.quill.debt + 1, n = Math.min(8, total), each = Math.floor(total / n);
+    dropCoin(x, y, n, true); G.coins.slice(-n).forEach((c, i) => { c.val = i ? each : total - each * (n - 1); });
+    run.quill.debt = 0; sfx.jackpot();
+    say(clamp(x, 110, W - 110), y - 18, snailSay('iouPaid') || 'Fine. Paid. With interest.', '#c9b6ff', 1.8);
+  }
   function quillLeave(Q) {
+    quillOwes(Q);
     Q.out = true; Q.fly = true; Q.on = Q.coin = null;
     Q.tx = exit(Q.x); Q.ty = TOP;
   }
@@ -1122,7 +1150,7 @@
     if (!Q.out) {
       if (Q.coin && !Q.coin.dead) Q.tx = Q.coin.x;
       for (const c of G.coins) {
-        if (c.dead || c.rest == null || Math.hypot(c.x - Q.x, c.y - Q.y) > QUILL_REACH) continue;
+        if (c.dead || !c.on || Math.hypot(c.x - Q.x, c.y - Q.y) > QUILL_REACH) continue;
         c.dead = true; Q.sack.push(c.val); sfx.steal();
       }
       if ((Q.talkT -= dt) <= 0) { Q.talkT = QUILL_TALK; say(clamp(Q.x, QUILL_EDGE, W - QUILL_EDGE), Q.y - 24, snailSay('quillSay'), '#c9b6ff', 1.6); }
@@ -1130,7 +1158,7 @@
     if (Q.fly) {
       if (!walkTo(Q, QUILL_FLY, dt)) return;
       if (Q.out) { G.quill = null; return; }
-      Q.fly = false; Q.sitT = Q.on ? QUILL_SIT : QUILL_PECK;
+      Q.fly = false; Q.sitT = Q.coin ? QUILL_PECK : QUILL_SIT;
       return;
     }
     if (Q.on && (!Q.on.alive || Q.on.row > 90)) { quillPerch(Q); return; }
@@ -1176,12 +1204,134 @@
     }
   }
 
+  // ---------- Sackbelly Mole ----------
+  // A mini-boss on the MOLE_LEVELS of a normal run. He tunnels from brick to brick and puts the coins that he reaches
+  // in a sack that hangs below him; each coin makes him slower. A ball hit on the sack spills it, MOLE_SPILL times the
+  // value. MOLE_HITS ball hits on his body drive him off with a purse and a capsule. After MOLE_S seconds he digs away
+  // with the sack. He never costs a ball or a life. He is not a foe: guns, drones, lightning and the goal of the level
+  // ignore him.
+  const MOLE_LEVELS = [25, 35], MOLE_AT = 10, MOLE_S = 30, MOLE_HITS = 3, MOLE_PURSE = 15, MOLE_SPILL = 1.5;
+  const MOLE_SPEED = 60, MOLE_SLOW = 0.04, MOLE_MIN = 0.4, MOLE_JUMP_V = 320, MOLE_REACH = 20, MOLE_R = 11, MOLE_SACK_R = 7, MOLE_SACK_MAX = 15;
+  // MOLE_GRAB_WAIT = seconds after a spill in which he takes no coins, so that he does not take back what fell out
+  const MOLE_HIT_CD = 0.3, MOLE_GRAB_WAIT = 1.5, MOLE_DIG = 0.6, MOLE_TALK = 6, MOLE_EDGE = 110, MOLE_DIRT = '#8a5a3a';
+  // The next brick is one cell away at most, also on a diagonal.
+  const MOLE_STEP_X = BW + GAP + 1, MOLE_STEP_Y = BH + GAP + 1;
+  const moleSpot = (k) => k.alive && k.row < 90 && !k.slide;
+  const moleSpeed = (M) => (M.jump ? MOLE_JUMP_V : MOLE_SPEED * Math.max(MOLE_MIN, 1 - MOLE_SLOW * M.sack.length));
+  const moleSackR = (M) => Math.min(MOLE_SACK_MAX, MOLE_SACK_R + M.sack.length);
+  const moleSackY = (M) => M.y + MOLE_R + moleSackR(M);
+  function startMole() {
+    if (G.safari || G.boss || G.clearT >= 0 || G.mole) return;
+    const all = G.bricks.filter(moleSpot);
+    if (!all.length) return;
+    const k = pick(all);
+    G.mole = { x: k.x + k.w / 2, y: k.y + k.h / 2, t: 0, hits: 0, sack: [], to: null, cd: 0, grabT: 0, talkT: MOLE_TALK, dig: 0, out: false, jump: false, pop: false };
+    burst(G.mole.x, G.mole.y, MOLE_DIRT, 12, 140);
+    G.heckled.mole = G.heckled.moleFlee = G.heckled.moleWin = false;
+    heckle('mole', 'Sackbelly Mole! He digs between the bricks and bags every coin.'); sfx.eek();
+  }
+  // A neighbour brick with coins comes first, else a random neighbour. With no neighbour he pops out and goes to the
+  // nearest brick. With no brick he leaves.
+  function moleNext(M) {
+    const all = G.bricks.filter(moleSpot);
+    if (!all.length) { moleLeave(M); return; }
+    const dist = (k) => Math.hypot(k.x + k.w / 2 - M.x, k.y + k.h / 2 - M.y);
+    const other = all.filter((k) => dist(k) > 1);
+    const near = other.filter((k) => Math.abs(k.x + k.w / 2 - M.x) <= MOLE_STEP_X && Math.abs(k.y + k.h / 2 - M.y) <= MOLE_STEP_Y);
+    const rich = near.filter((k) => G.coins.some((c) => !c.dead && c.on === k));
+    M.pop = !near.length;
+    M.to = rich.length ? pick(rich) : near.length ? pick(near) : (other.length ? other : all).reduce((a, k) => (dist(k) < dist(a) ? k : a));
+  }
+  function moleLeave(M) {
+    M.out = true; M.dig = MOLE_DIG; M.to = null; M.jump = false;
+    burst(M.x, M.y, MOLE_DIRT, 10, 120);
+  }
+  // The sack falls open: k times the value of each coin, the fraction rounds up at random.
+  function moleSpill(M, k) {
+    const n = M.sack.length;
+    if (!n) return;
+    dropCoin(M.x, moleSackY(M), n, true);
+    G.coins.slice(-n).forEach((c, i) => { const raw = M.sack[i] * k; c.val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); c.spilt = true; });
+    M.sack = []; M.grabT = MOLE_GRAB_WAIT;
+  }
+  function updateMole(dt) {
+    const M = G.mole;
+    if (!M) return;
+    M.t += dt;
+    if (M.cd > 0) M.cd -= dt;
+    if (M.out) { if ((M.dig -= dt) <= 0) G.mole = null; return; }
+    if (G.clearT >= 0) { moleSpill(M, 1); moleLeave(M); return; }
+    if (M.t >= MOLE_S) { moleLeave(M); heckle('moleWin', 'The mole dug away with the coins.'); return; }
+    if (M.grabT > 0) M.grabT -= dt;
+    else {
+      const at = G.bricks.find((k) => moleSpot(k) && M.x >= k.x && M.x <= k.x + k.w && M.y >= k.y && M.y <= k.y + k.h);
+      for (const c of G.coins) {
+        if (c.dead || c.spilt || (!(at && c.on === at) && Math.hypot(c.x - M.x, c.y - M.y) > MOLE_REACH)) continue;
+        c.dead = true; M.sack.push(c.val); sfx.steal();
+      }
+    }
+    if ((M.talkT -= dt) <= 0) { M.talkT = MOLE_TALK; say(clamp(M.x, MOLE_EDGE, W - MOLE_EDGE), M.y - 30, snailSay('moleSay'), '#e0b87a', 1.6); }
+    if (!M.to || !moleSpot(M.to)) moleNext(M);
+    if (M.out) return;
+    M.tx = M.to.x + M.to.w / 2; M.ty = M.to.y + M.to.h / 2;
+    if (!walkTo(M, moleSpeed(M), dt)) return;
+    M.jump = false;
+    moleNext(M);
+  }
+  function moleSackHit(M) {
+    if (M.cd > 0 || !M.sack.length) return;
+    M.cd = MOLE_HIT_CD;
+    burst(M.x, moleSackY(M), '#ffd84a', 12, 180); sfx.jackpot();
+    say(clamp(M.x, MOLE_EDGE, W - MOLE_EDGE), M.y - 24, 'RIIIP!', '#ffd84a', 0.9);
+    moleSpill(M, MOLE_SPILL);
+  }
+  function moleHit(M) {
+    if (M.cd > 0) return;
+    M.cd = MOLE_HIT_CD; M.hits++;
+    burst(M.x, M.y, MOLE_DIRT, 12, 160); sfx.eek();
+    say(clamp(M.x, MOLE_EDGE, W - MOLE_EDGE), M.y - 24, 'EEK!', '#ffffff', 0.8);
+    if (M.hits < MOLE_HITS) {
+      const far = G.bricks.filter((k) => moleSpot(k) && Math.hypot(k.x + k.w / 2 - M.x, k.y + k.h / 2 - M.y) > MOLE_STEP_X);
+      if (far.length) { M.to = pick(far); M.jump = true; }
+      return;
+    }
+    moleSpill(M, 1);
+    dropCoin(M.x, M.y, MOLE_PURSE, true); G.pus.push({ x: M.x, y: M.y, vy: 110, k: rollPU() });
+    moleLeave(M);
+    heckle('moleFlee', 'Off you go, mole!');
+  }
+  function drawMole(t) {
+    const M = G.mole;
+    if (!M) return;
+    const s = M.out ? M.dig / MOLE_DIG : 1, up = M.pop || M.jump;
+    ctx.save(); ctx.translate(M.x, M.y); ctx.scale(s, s);
+    // the sack on a string below him
+    const r = moleSackR(M), sy = MOLE_R + r;
+    ctx.strokeStyle = '#5a3a24'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, MOLE_R - 3); ctx.lineTo(0, sy - r); ctx.stroke();
+    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(0, sy, r, 0, TAU); ctx.fill();
+    if (M.sack.length) { ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(0, sy + 1, r * 0.4, 0, TAU); ctx.fill(); }
+    if (!up) { ctx.fillStyle = MOLE_DIRT; ctx.beginPath(); ctx.ellipse(0, 6, 17, 6, 0, 0, TAU); ctx.fill(); }
+    const bob = up ? 0 : Math.sin(t * 10) * 1.2;
+    ctx.fillStyle = '#5b4034'; ctx.beginPath(); ctx.arc(0, bob - 2, MOLE_R, Math.PI, 0); ctx.lineTo(MOLE_R, 4); ctx.lineTo(-MOLE_R, 4); ctx.fill();
+    ctx.fillStyle = '#ff9ab0'; ctx.beginPath(); ctx.arc(0, bob + 1, 3, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(-4, bob - 4, 2.6, 0, TAU); ctx.moveTo(6.6, bob - 4); ctx.arc(4, bob - 4, 2.6, 0, TAU); ctx.stroke();
+    // miner's helmet and lamp
+    ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(0, bob - 8, 8, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#fff6b0'; ctx.beginPath(); ctx.arc(0, bob - 13, 2.5, 0, TAU); ctx.fill();
+    ctx.restore();
+    if (M.out) return;
+    for (let i = 0; i < MOLE_HITS; i++) {
+      ctx.fillStyle = i < M.hits ? '#ff5c5c' : '#5a5f78'; ctx.beginPath(); ctx.arc(M.x + (i - (MOLE_HITS - 1) / 2) * 7, M.y - 24, 2.5, 0, TAU); ctx.fill();
+    }
+  }
+
   function updateCritters(dt) {
     updateFrogs(dt);
     updateWalkers(dt);
     updatePeeks(dt);
     updateCameo(dt);
     updateQuill(dt);
+    updateMole(dt);
   }
   // ---------- the game talks back ----------
   // The shopkeeper comments on how you play. Each line comes at most once per level.
@@ -1275,8 +1425,8 @@
     G = {
       safari, fever0: run.fever, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
       lost: 0, dingBest: 0, smashes: 0, ding3: 0, bulls: 0, bullN: 0, spilled: 0, marks: [], pinT: PIN_GAP, autoBall: null, inputT: -9, down: false, drove: false, pipT: -9, boy: null, boyLeft: BOY_SAVES, loose: null, trophies: {}, cuckooT: -9, cuckooFever: false, cone: null,
-      portals: [], wind: 0, lastBounceT: -9, birds: [], frogs: [], walkers: [], peeks: [], cameo: null, quill: null, bellies: 0, bribe: false, heckled: {}, heckle: null, idleT: 0, wallT: 0, dry: 0, toasts: [], bill: 0,
-      sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, event: null, bingo: null, card: null, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
+      portals: [], wind: 0, lastBounceT: -9, birds: [], frogs: [], walkers: [], peeks: [], cameo: null, quill: null, mole: null, bellies: 0, bribe: false, heckled: {}, heckle: null, idleT: 0, wallT: 0, dry: 0, toasts: [], bill: 0,
+      sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, event: null, bingo: null, card: null, auction: null, happy: false, lastHit: null, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
       bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
@@ -1313,7 +1463,9 @@
       for (let i = crowd(WALKER_FROM, 0.33, 3); i > 0; i--) addWalker();
       for (let i = crowd(PEEK_FROM, 0.25, 2); i > 0; i--) addPeek();
       if (run.level >= CAMEO_FROM && Math.random() < CAMEO_CHANCE) after(rand(8, 25), startCameo);
+      pinIou();
       if (quillDue()) after(QUILL_AT, startQuill);
+      if (MOLE_LEVELS.includes(run.level) && !run.daily) after(MOLE_AT, startMole);
     }
     if (!safari) setupField();
     G.brick0 = destructibleLeft();
@@ -1362,7 +1514,7 @@
     A.tune(run.level); A.music(G.boss || safari ? 2 : 1);
     if (G.boss) sfx.warn();
   }
-  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0, pip: 0, jar: 0, film: 0, coffee: 0 });
+  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0, pip: 0, jar: 0, film: 0, coffee: 0, quake: 0, stampede: 0 });
 
   const MAX_BALLS = 8;
   const CHICKEN_FROM = 12, WANTED_S = 15;
@@ -1419,10 +1571,10 @@
     life: { c: '#ff5c8a', l: '♥', w: 0.45 }, cash: { c: '#ffd700', l: '$', w: 1.8 }, net: { c: '#6ee7ff', l: 'N', w: 1 },
     mega: { c: '#ff7ad9', l: 'B', w: 1.6 }, storm: { c: '#fff27a', l: '⚡', w: 1.4 }, x2: { c: '#ffb02e', l: '×2', w: 1.4 },
     freeze: { c: '#a8e6ff', l: '❄', w: 1.3 }, gold: { c: '#ffd23f', l: '★', w: 1.1 }, nuke: { c: '#ff5c5c', l: '☢', w: 0.5 },
-    blimp: { c: '#ffb0e6', l: '🎈', w: 1 }, potato: { c: '#d9a066', l: '🥔', w: 1 }, pip: { c: '#8fb4ff', l: 'P', w: 1.2 }, jar: { c: '#ff5c8a', l: '📌', w: 0.9 },
+    blimp: { c: '#ffb0e6', l: '🎈', w: 1 }, potato: { c: '#d9a066', l: '🥔', w: 1 }, pip: { c: '#8fb4ff', l: 'P', w: 1.2 }, jar: { c: '#ff5c8a', l: '📌', w: 0.9 }, quake: { c: '#c8874a', l: '≋', w: 1 },
   };
   const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
-    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!', potato: 'HOT POTATO!', pip: 'PIP DRIVES! Let go', jar: 'TACK JAR!' };
+    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!', potato: 'HOT POTATO!', pip: 'PIP DRIVES! Let go', jar: 'TACK JAR!', quake: 'QUAKE! Bounces shake the coins loose' };
   // Hot Potato: the lowest ball becomes a fuse ball. Each paddle bounce adds a charge; the next brick that it touches
   // explodes, bigger with each charge, and the charge is gone.
   const POTATO_MAX = 6, POTATO_S = 15;
@@ -1437,7 +1589,7 @@
   function rollPU() {
     const foes = G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
-      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato' && k !== 'pip' && k !== 'jar'));
+      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato' && k !== 'pip' && k !== 'jar' && k !== 'quake'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
@@ -1494,6 +1646,7 @@
     else if (k === 'blimp') spawnBlimp();
     else if (k === 'pip') setFx('pip', puDur(PIP_S));
     else if (k === 'jar') { setFx('jar', puDur(JAR_S)); G.pinT = 0; }
+    else if (k === 'quake') { setFx('quake', puDur(QUAKE_S)); heckle('quake', 'Shake the shelves. I will count what falls.'); }
     else if (k === 'potato') { const b = G.balls.reduce((a, o) => (!a || o.y > a.y ? o : a), null); if (b) b.potato = { n: 0, t: puDur(POTATO_S) }; }
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
@@ -1514,8 +1667,40 @@
   function brickColor(b) {
     return TYPE_COLOR[b.type] || BRICK_COLORS[(b.maxhp - 1 + b.row) % BRICK_COLORS.length];
   }
+  // A coin that lies on a brick hops, so that it can fall off the edge. A fat coin is too heavy to hop.
+  function hop(c) {
+    if (!c.on || c.fat) return;
+    c.vy = -rand(0.7, 1.1) * COIN_HOP; c.vx = rand(-0.6, 0.6) * COIN_HOP; c.on = null;
+  }
+  // A hit on brick b makes the coins that lie on it hop.
+  function shakeCoins(b) {
+    for (const c of G.coins) if (c.on === b) hop(c);
+  }
+  // Rattle Smash: a smash makes the coins hop that lie in a cone above x.
+  function rattle(x) {
+    for (const c of G.coins) if (Math.abs(c.x - x) <= RATTLE_W + (PADDLE_Y - c.y) * RATTLE_K) hop(c);
+  }
+  // FAT_N coins on one brick merge into a fat coin. It is worth FAT_K times their sum, it cracks its brick every
+  // FAT_CRACK_S seconds, and it falls fast when the brick is gone.
+  function mergeCoins() {
+    const piles = new Map();
+    for (const c of G.coins) {
+      if (!c.on || c.fat || c.dead) continue;
+      if (!piles.has(c.on)) piles.set(c.on, []);
+      piles.get(c.on).push(c);
+    }
+    for (const [k, pile] of piles) {
+      if (pile.length < FAT_N || !hurtable(k)) continue;
+      const part = pile.slice(0, FAT_N), x = clamp(part.reduce((a, c) => a + c.x, 0) / FAT_N, k.x + COIN_R, k.x + k.w - COIN_R);
+      for (const c of part) c.dead = true;
+      G.coins.push({ x, y: k.y - COIN_R, vx: 0, vy: 0, spin: 0, val: Math.round(part.reduce((a, c) => a + c.val, 0) * FAT_K), fat: true, on: k, sat: true, crackT: FAT_CRACK_S });
+      sfx.jackpot(); ring(x, k.y, 30, '#ffd84a', 0.4); say(clamp(x, 60, W - 60), k.y - 22, 'FAT COIN!', '#ffd84a', 1.1, true);
+      heckle('fatcoin', 'That coin ate four others. Respect.');
+    }
+  }
   function hitBrick(b, dmg, fromBall) {
     if (!b.alive) return false;
+    shakeCoins(b);
     if (b.type === 'stone') { b.flash = 0.12; sfx.stone(); return false; }
     if (b.type === 'turtle' && !fromBall) { b.flash = 0.06; return false; }
     b.byBall = fromBall;
@@ -1567,6 +1752,8 @@
     if (special('cuckoo')) cuckoo(cx, cy);
     if (G.noLoot) return;
     if (b.bingo) bingoBrick(b, cx, cy);
+    if (G.auction && G.auction.k === b) auctionSold(cx, cy);
+    if (b.iou) payIou(cx, cy);
     if (G.fx.panic > 0) dropCoin(cx, cy, 1, true);
     if (special('bill')) {
       G.bill += Math.max(1, Math.round(coinVal() * 0.6));
@@ -1643,7 +1830,31 @@
     { id: 'coffee', from: 11, start: startCoffee },
     { id: 'film', from: 12, start: startFilm },
     { id: 'bingo', from: 13, start: startBingo },
+    { id: 'auction', from: 11, start: startAuction },
+    { id: 'stampede', from: 14, start: startStampede },
   ];
+  // Going Once: one brick gets a price that rises each second. The player who breaks it in AUCTION_S seconds gets the price.
+  function startAuction() {
+    const all = G.bricks.filter((k) => hurtable(k) && !k.mimic);
+    if (!all.length) return;
+    G.auction = { k: pick(all), t: 0 };
+    say(W / 2, H * 0.42, 'GOING ONCE...', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'Break the brick with the price tag', '#ffd84a', 2);
+    sfx.warn(); heckle('auction', 'One brick. Rising price. Do I hear a ball?');
+  }
+  const auctionBid = () => Math.min(AUCTION_MAX, AUCTION_BID + Math.floor(G.auction.t) * AUCTION_STEP);
+  function auctionSold(x, y) {
+    const n = auctionBid();
+    G.auction = null; dropCoin(x, y, n, true); sfx.jackpot(); say(x, y - 16, 'SOLD! +' + n, '#ffffff', 1.2, true);
+    G.heckled.auctionWin = false; heckle('auctionWin', 'Sold. To the one with the ball.');
+  }
+  // Penny Stampede: for STAMPEDE_S seconds the coins that lie on bricks run along their row and fall off its end.
+  // A coin that the player catches in that time counts double. With too few coins on bricks, Googly Panic comes.
+  function startStampede() {
+    if (G.coins.filter((c) => c.on).length < STAMPEDE_MIN) { startPanic(); return; }
+    setFx('stampede', STAMPEDE_S);
+    say(W / 2, H * 0.42, 'PENNY STAMPEDE!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'Coins that you catch count double', '#ffd84a', 2);
+    sfx.eek(); heckle('stampede', 'The coins grew legs. I am not insured for legs.');
+  }
   // Channel Flip: for FILM_S seconds the game is a silent film with title cards, and coins count double.
   function startFilm() {
     setFx('film', FILM_S); G.card = null;
@@ -1675,6 +1886,17 @@
   }
   function updateEvents(dt) {
     if (G.fx.film > 0 && (!G.card || (G.card.t -= dt) <= 0)) G.card = { s: snailSay('film') || 'The ball. It approaches.', t: 2.4 };
+    const A1 = G.auction;
+    if (A1 && G.clearT < 0 && ((A1.t += dt) >= AUCTION_S || !A1.k.alive)) {
+      G.auction = null;
+      say(W / 2, H * 0.42, 'SOLD to a pigeon', '#c9d0ff', 1.4); heckle('auctionLose', 'Sold to a pigeon. He paid in crumbs.');
+    }
+    const bell = special('happy') && G.started && G.clearT < 0 && G.time % HAPPY_EVERY < HAPPY_S && G.time > HAPPY_S;
+    if (bell && !G.happy) {
+      sfx.ding(4); flashScreen('#ffd84a', 0.15); say(W / 2, H * 0.42, 'HAPPY HOUR! Coins ×3', '#ffd84a', 1.6, true);
+      heckle('happy', 'Happy hour. Three seconds. I am already sad.');
+    }
+    G.happy = bell;
     if (!G.bingo || G.clearT >= 0 || (G.bingo.t -= dt) > 0) return;
     G.bingo = null;
     for (const k of G.bricks) k.bingo = 0;
@@ -1683,6 +1905,20 @@
   // The numbers of Brick Bingo and the cups of the Coffee Break, on top of the bricks.
   function drawEvents(t) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const k of G.bricks) {
+      if (!k.alive || !k.iou) continue;
+      ctx.save(); ctx.translate(k.x + k.w / 2, k.y + k.h / 2); ctx.rotate(-0.12);
+      ctx.fillStyle = '#fff6d8'; ctx.fillRect(-15, -8, 30, 16);
+      ctx.fillStyle = '#3a2f55'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.fillText('IOU', 0, 0.5);
+      ctx.restore();
+    }
+    if (G.auction) {
+      const k = G.auction.k, x = clamp(k.x + k.w / 2, 30, W - 30), y = k.y - 12 + Math.sin(t * 5) * 1.5;
+      ctx.fillStyle = '#ffffff'; rr(x - 24, y - 10, 48, 20, 5); ctx.fill();
+      ctx.strokeStyle = '#ffb02e'; ctx.lineWidth = 2; rr(x - 24, y - 10, 48, 20, 5); ctx.stroke();
+      ctx.fillStyle = '#1b1f33'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillText('🪙 ' + auctionBid(), x, y + 0.5);
+      ctx.fillStyle = '#ffb02e'; ctx.fillRect(x - 22, y + 12, 44 * (1 - G.auction.t / AUCTION_S), 3);
+    }
     if (G.fx.coffee > 0) {
       ctx.font = '13px system-ui, sans-serif';
       G.bricks.forEach((k, i) => { if (k.alive && i % 3 === 0) ctx.fillText('☕', k.x + k.w / 2, k.y - 3 + Math.sin(t * 3 + i) * 2); });
@@ -1955,6 +2191,8 @@
         if (C && !C.out && ballVsRect(b, C.x - C.w / 2, C.y, C.w, C.h)) cameoHit(C);
         const Q = G.quill;
         if (Q && !Q.fly && !Q.out && ballVsCircle(b, Q.x, Q.y, QUILL_R)) quillHit(Q);
+        const M = G.mole;
+        if (M && !M.out) { if (ballVsCircle(b, M.x, moleSackY(M), moleSackR(M))) moleSackHit(M); else if (ballVsCircle(b, M.x, M.y, MOLE_R)) moleHit(M); }
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
           if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
@@ -2046,7 +2284,7 @@
     }
     G.sweet = rand(-0.7, 0.7);
     if (G.level >= FROM.smash && G.time - G.tapT < 0.2) {
-      G.tapT = -9; b.smash = true; b.pierce += 3; G.smashes++;
+      G.tapT = -9; b.smash = true; b.pierce += 3; G.smashes++; rattle(b.x);
       say(b.x, PADDLE_Y - 46, 'SMASH!', '#ff9a3d', 0.8, true); ring(b.x, PADDLE_Y, 70, '#ff9a3d', 0.3, 4); sfx.whack(); shake(5);
     }
     if (relic('spin')) b.spin = clamp(paddle.vx / 300, -2, 2);
@@ -2056,6 +2294,7 @@
   }
   // The damage of one ball hit on brick k. The smash, the Bank Shot relic and a bullseye multiply it.
   function ballHit(b, dmg, k) {
+    G.lastHit = k;
     const m = (b.smash ? 2 : 1) * (b.whip ? 2 : 1) * (G.fx.coffee > 0 ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0)) * pinTouch(b, k);
     if (k && b.banks > 0 && relic('rebound')) popNeighbour(k, dmg);
     b.banks = 0;
@@ -2066,6 +2305,7 @@
   // relics that trigger on a paddle bounce
   function paddleBounce(b) {
     G.paddleHits++; G.dry++; G.lastBounceT = G.time;
+    if (G.fx.quake > 0) { for (const c of G.coins) hop(c); shake(4); sfx.stone(); }
     if (b.potato) b.potato.n = Math.min(POTATO_MAX, b.potato.n + 1);
     if (lv('d_parrot') && !holstered() && G.paddleHits % PARROT_EVERY === 0) parrotPeck();
     for (const g in GUNS) if (G.reload[g] > 0) G.reload[g] = Math.max(0.01, G.reload[g] - RELOAD_HIT);
@@ -2406,7 +2646,8 @@
         if (!d.target || d.target.dead) {
           let bd = Infinity; d.target = null;
           for (const c of G.coins.concat(G.pus)) {
-            if (c.claimed && c.claimed !== d) continue;
+            // a coin that lies on a brick is out of reach for the collector too
+            if (c.on || (c.claimed && c.claimed !== d)) continue;
             const dd = Math.hypot(c.x - d.x, c.y - d.y); if (dd < bd) { bd = dd; d.target = c; }
           }
           if (d.target) d.target.claimed = d;
@@ -2439,8 +2680,9 @@
       } else if (d.type === 'ufo') {
         if (d.target && !d.target.alive) { d.target = null; d.beam = 0; }
         if (!d.target && active && (d.cd -= dt) <= 0) {
-          const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && k.type !== 'pinata' && k.type !== 'runner' && k.type !== 'turtle' && !k.taken);
-          d.target = opts.length ? pick(opts) : null;
+          // the saucer follows the player's aim: it takes the brick that a ball hit last
+          const k = G.lastHit;
+          d.target = k && hurtable(k) && !k.taken ? k : null;
           if (d.target) d.target.taken = true;
         }
         const side = G.drones.indexOf(d) % 2 ? 80 : -80;
@@ -2471,7 +2713,7 @@
     for (const c of G.coins) {
       if (c.dead) continue;
       if (G.clearT >= 0) {
-        // level cleared: every coin still in the air flies straight to the paddle
+        // level cleared: every coin flies straight to the paddle, also from a brick that is left
         const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy) || 1, sp = 900 * dt;
         if (d <= sp + 10) { c.dead = true; collectCoin(c); continue; }
         c.x += (dx / d) * sp; c.y += (dy / d) * sp; c.spin += dt * 12;
@@ -2482,26 +2724,33 @@
         c.vy -= 1300 * dt; c.x += (G.boss.x - c.x) * Math.min(1, dt * 3);
         if (c.y < G.boss.y + G.boss.h) { c.dead = true; say(c.x, c.y + 20, 'TAXED!', '#ff5c5c', 0.6); sfx.steal(); continue; }
       }
-      // a coin that reaches the floor lies there for a moment, so that the paddle can sweep it up
-      const resting = c.rest != null;
-      if (resting && (c.rest -= dt) <= 0) {
-        c.dead = true; G.spilled += c.val; burst(c.x, c.y, '#8a8fa3', 3, 60);
-        if (G.spilled >= SPILL_HECKLE * coinVal()) heckle('spill', 'Coins on the floor! Sweep them up.');
-        continue;
+      c.vy = Math.min(c.vy + 420 * dt, c.fat ? FAT_FALL : 330); c.vx *= 1 - dt * (c.on ? 6 : 1.5); c.vx += G.wind * dt;
+      if (c.on && G.fx.stampede > 0) { c.run = c.run || (c.x < paddle.x ? 1 : -1); c.vx = c.run * STAMPEDE_V; }
+      if (c.fat && c.on && (c.crackT -= dt) <= 0) {
+        c.crackT = FAT_CRACK_S; burst(c.x, c.y + COIN_R, '#ffd84a', 4, 80);
+        hitBrick(c.on, Math.ceil(c.on.maxhp * FAT_CRACK_K), false);
       }
-      c.vy = resting ? 0 : Math.min(c.vy + 420 * dt, 330); c.vx *= 1 - dt * (resting ? 5 : 1.5); c.vx += G.wind * dt;
       if (ml) {
         const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy);
         if (d < mRad && d > 1) { c.vx += (dx / d) * mPow * dt * 2; c.vy += (dy / d) * mPow * dt; }
       }
-      c.x += c.vx * dt; c.y += c.vy * dt; c.spin += dt * 8;
+      c.x += c.vx * dt; c.y += c.vy * dt;
+      if (!c.on) c.spin += dt * 8;
       if (c.x < 6) { c.x = 6; c.vx = Math.abs(c.vx); } if (c.x > W - 6) { c.x = W - 6; c.vx = -Math.abs(c.vx); }
+      c.on = coinVsBricks(c);
+      if (c.on) c.sat = true;
       if (onPaddle(c.x, c.y, 8)) {
         c.dead = true;
-        if (resting && lv('rake')) { const raw = c.val * (1 + RAKE_K * lv('rake')); c.val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
+        if (c.sat && lv('rake')) { const raw = c.val * (1 + RAKE_K * lv('rake')); c.val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
+        if (c.run && G.fx.stampede > 0) c.val *= 2;
         collectCoin(c);
-      } else if (handsOn()) c.dead = c.y > H + 10;
-      else if (c.y >= FLOOR_Y) { c.y = FLOOR_Y; if (!resting) c.rest = COIN_REST; }
+      } else if (c.y > H + 10) {
+        // a coin that falls past the paddle is lost
+        c.dead = true;
+        if (handsOn()) continue;
+        G.spilled += c.val;
+        if (G.spilled >= SPILL_HECKLE * coinVal()) heckle('spill', 'Coins fell past the paddle. That was your job.');
+      }
     }
     for (const p of G.pus) {
       if (p.dead) continue;
@@ -2514,8 +2763,30 @@
       if (onPaddle(p.x, p.y, 10)) { p.dead = true; collectPU(p); }
       else if (p.y > H + 14) p.dead = true;
     }
+    if (G.clearT < 0) mergeCoins();
     G.coins = G.coins.filter((c) => !c.dead);
     G.pus = G.pus.filter((p) => !p.dead);
+  }
+  // Coin c against the bricks. A brick stops a coin from every side. A coin that comes down slowly on top of a brick
+  // stays there: it is out of reach until the brick breaks or a hit shakes it off. Returns the brick that the coin
+  // lies on, or null.
+  function coinVsBricks(c) {
+    let on = null;
+    for (const k of G.bricks) {
+      if (!k.alive || c.y + COIN_R <= k.y || c.y - COIN_R >= k.y + k.h || c.x + COIN_R <= k.x || c.x - COIN_R >= k.x + k.w) continue;
+      const ox = k.w / 2 + COIN_R - Math.abs(c.x - (k.x + k.w / 2)), oy = k.h / 2 + COIN_R - Math.abs(c.y - (k.y + k.h / 2));
+      if (ox < oy) {
+        const side = c.x < k.x + k.w / 2 ? -1 : 1;
+        c.x += side * ox; c.vx = side * Math.abs(c.vx) * COIN_BOUNCE;
+      } else if (c.y > k.y + k.h / 2) {
+        // only a coin that moves up bounces off the bottom of a brick; a coin that is caught between two rows stays there
+        if (c.vy < 0) { c.y = k.y + k.h + COIN_R; c.vy = -c.vy * COIN_BOUNCE; }
+      } else {
+        c.y = k.y - COIN_R;
+        if (c.vy > COIN_REST_V) c.vy *= -COIN_BOUNCE; else { c.vy = 0; on = k; }
+      }
+    }
+    return on;
   }
   function onPaddle(x, y, r) {
     return y + r >= PADDLE_Y - 2 && y - r <= PADDLE_Y + PADDLE_H + 6 && paddles().some((p) => Math.abs(x - p.x) <= p.w / 2 + r);
@@ -3386,6 +3657,7 @@
     if (run.sealsEver >= 5) sticker('seal');
     return n;
   }
+  const snailBill = () => { const line = snailSay('invoice'); return line ? `<div class="stat">🧾 <i>${line}</i></div>` : ''; };
   function gameOver() {
     mode = 'over'; pauseBtn.style.display = 'none'; A.music(0); A.fever(false); sfx.over();
     bankStats();
@@ -3400,6 +3672,7 @@
       <div class="stat">Bricks <b>${st.bricks}</b> · Monsters <b>${st.foes}</b> · Stars <b>${st.stars}</b></div>
       <div class="stat">Coins earned <b>${st.coins}</b> · Best streak <b>${st.streak}</b></div>
       <div class="stat">Best: level <b>${best.level}</b> · score <b>${best.score}</b></div>
+      ${snailBill()}
       ${stickerNote()}
       <div style="height:1.2em"></div>
       ${run.daily ? '' : `<button class="big gold" data-act="continue">Try again (keep upgrades, ${keep} 🪙)</button>
@@ -3654,7 +3927,7 @@
   // ---------- fever ----------
   // Breaking bricks fills the gauge. A full gauge starts a fever: double coins and double ball damage.
   const feverOn = () => G.feverT > 0;
-  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.fx.film > 0 ? 1 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') || special('insomnia') ? 0.5 : 0);
+  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.fx.film > 0 ? 1 : 0) + (G.happy ? 2 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') || special('insomnia') ? 0.5 : 0);
   function addFever(v) {
     if (feverOn() || G.clearT >= 0 || G.level < FROM.fever) return;
     G.feverIdle = 0;
@@ -3906,6 +4179,10 @@
     if (b.auto) { sfx.ding(0); ring(x, y, 26, '#8fb4ff', 0.35); say(clamp(x, 70, W - 70), y - 18, "Pip's bullseye", '#8fb4ff', 0.9); return; }
     const n = Math.min(++G.bullN, 5), called = m.call && b.banks > 0;
     b.bull = true; G.bulls++;
+    // Jackpot Shelf: the coins that lie on the pinned brick are worth double
+    const shelf = G.coins.filter((c) => c.on === m.ref && !c.dead && !c.shelved);
+    for (const c of shelf) { c.val *= 2; c.shelved = true; }
+    if (shelf.length) say(clamp(x, 70, W - 70), y - 56, 'JACKPOT SHELF! Coins ×2', '#ffd84a', 1.1);
     sfx.ding(n); ring(x, y, 26 + n * 6, '#fff27a', 0.35); ring(x, y, 12, '#ffffff', 0.25, 2); burst(x, y, '#fff27a', 8, 150);
     say(clamp(x, 70, W - 70), y - 18, called ? 'CALLED IT! ×2' : n > 1 ? 'BULLSEYE ×' + n : 'BULLSEYE!', called ? '#7cf2ff' : '#fff27a', 0.9, n >= 5 || called);
     pip('pipBull');
@@ -3963,12 +4240,6 @@
     const line = snailSay(key);
     if (!line) return;
     G.pipT = G.time; say(clamp(paddle.x, 110, W - 110), PADDLE_Y - 34, line, '#cfe8ff', 1.8);
-  }
-  // The floor line where coins come to rest.
-  function drawFloor() {
-    if (handsOn()) return;
-    ctx.fillStyle = 'rgba(124,242,255,0.18)';
-    for (let x = 4; x < W; x += 16) ctx.fillRect(x, FLOOR_Y + 9, 8, 2);
   }
   function drawPins(t) {
     for (const m of G.marks) {
@@ -4089,7 +4360,7 @@
       </div>
       ${snailBubble(verdict)}
       ${s.heat > 0 ? chip(`🌶️ Heat ${run.heat}: tougher bricks, bonuses +${Math.round((heatPay() - 1) * 100)}%`, 'hot') : s.heat < 0 ? chip(`🧊 Heat cools to ${run.heat}: softer bricks`) : ''}
-      ${s.spilled >= Math.max(5, s.picked * 0.15) ? chip(`🪙 ${s.spilled} coins stayed on the floor. Sweep them up with the paddle.`) : ''}
+      ${s.spilled >= Math.max(5, s.picked * 0.15) ? chip(`🪙 ${s.spilled} coins fell past the paddle.`) : ''}
       ${s.bet && !s.betWon ? chip(`🎟️ Speed bet lost: −${s.bet} coins`, 'bad') : ''}
       ${s.dare && !s.darePay ? chip(`🤞 Dare failed: ${s.dare.toLowerCase()}`) : ''}
       ${s.seals ? chip(`🦭 +${s.seals} Bazaar Seal${s.seals > 1 ? 's' : ''}. You have ${run.seals}. Spend them Upstairs.`, 'new') : ''}
@@ -4528,13 +4799,20 @@
       }
     }
   }
+  // A coin in the air spins. A coin that lies on a brick is flat. In the Penny Stampede it stands up and has legs.
+  // A fat coin is bigger.
   function drawCoin(c) {
-    if (c.rest < 0.8 && Math.sin(c.rest * 40) < 0) return;
-    const sx = Math.abs(Math.cos(c.spin));
-    ctx.fillStyle = '#a8730a'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 7 * sx + 1, 7, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 5.5 * sx + 0.5, 5.5, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.ellipse(c.x - 1.5 * sx, c.y - 2, 2 * sx + 0.3, 1.6, 0, 0, TAU); ctx.fill();
-    if (c.val > 1 && sx > 0.5) { ctx.fillStyle = '#8a5a00'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(c.val, c.x, c.y + 0.5); }
+    const R = c.fat ? 1.6 : 1, walk = c.on && c.run && G.fx.stampede > 0, flat = c.on && !walk;
+    const sx = flat || walk ? 1 : Math.abs(Math.cos(c.spin)), sy = flat ? 0.55 : 1, y = c.y + COIN_R - 7 * sy * R - (walk ? 3 : 0);
+    if (walk) {
+      const step = Math.sin(G.time * 22 + c.x) * 2.5;
+      ctx.strokeStyle = '#8a5a00'; ctx.lineWidth = 1.5; ctx.beginPath();
+      ctx.moveTo(c.x - 2, y + 5); ctx.lineTo(c.x - 2 + step, c.y + COIN_R); ctx.moveTo(c.x + 2, y + 5); ctx.lineTo(c.x + 2 - step, c.y + COIN_R); ctx.stroke();
+    }
+    ctx.fillStyle = '#a8730a'; ctx.beginPath(); ctx.ellipse(c.x, y, (7 * sx + 1) * R, 7 * sy * R, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.ellipse(c.x, y, (5.5 * sx + 0.5) * R, 5.5 * sy * R, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.ellipse(c.x - 1.5 * sx * R, y - 2 * sy * R, (2 * sx + 0.3) * R, 1.6 * sy * R, 0, 0, TAU); ctx.fill();
+    if (c.val > 1 && sx > 0.5 && !flat) { ctx.fillStyle = '#8a5a00'; ctx.font = `bold ${c.fat ? 11 : 8}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(c.val, c.x, y + 0.5); }
   }
   function drawPU(p, t) {
     const d = PU[p.k];
@@ -4695,7 +4973,7 @@
     ctx.globalAlpha = 1;
   }
 
-  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A'], ['pip', 'P'], ['jar', '📌'], ['film', '🎞'], ['coffee', '☕']];
+  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A'], ['pip', 'P'], ['jar', '📌'], ['film', '🎞'], ['coffee', '☕'], ['quake', '≋'], ['stampede', '🪙']];
   const fxColor = (k) => (PU[k] || PU.ammo).c;
   function drawHUD(t) {
     const g = ctx.createLinearGradient(0, 0, 0, HUD_H);
@@ -4924,10 +5202,10 @@
     if (G.portals.length) drawPortals(t);
     drawBirds(t);
     drawQuill(t);
+    drawMole(t);
     drawFrogs(t);
     drawWalkers();
     drawNet(t);
-    drawFloor();
     drawAim();
     for (const p of G.pus) drawPU(p, t);
     for (const c of G.coins) drawCoin(c);
@@ -4984,6 +5262,7 @@
     blimp(kind) { return spawnBlimp(kind); }, panic() { startPanic(); }, safari(kind) { startSafari(kind); },
     critter(kind) { ({ frog: addFrog, walker: addWalker, peek: addPeek, cameo: startCameo })[kind](); },
     quill() { if (G) startQuill(); },
+    mole() { if (G) startMole(); },
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
     get summary() { return lastSummary; },
@@ -4991,7 +5270,7 @@
     seals(n) { run.seals += n; run.sealsEver += n; },
     special(id) { run.nextSpecial = id; },
     set(id) { for (const i of SETS.find((s) => s.id === id).items) run.up[i] = maxOf(ITEM_BY_ID[i]); },
-    pin() { addPin(); }, pipDrive(sec = PIP_S) { setFx('pip', sec); }, event(id) { EVENTS.find((e) => e.id === id).start(); },
+    pin() { addPin(); }, pipDrive(sec = PIP_S) { setFx('pip', sec); }, event(id) { EVENTS.find((e) => e.id === id).start(); }, owe(n) { run.quill.debt = n; },
     loose() { if (G) knockHud(); }, slide(b) { landslide(b); },
     starRun(keep) { beginStarRun(keep); }, daily() { beginDaily(); }, victory() { showVictory(); },
     open() { openShop(); }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: canvas.getBoundingClientRect().left + x * scale, clientY: canvas.getBoundingClientRect().top + y * scale })); },
