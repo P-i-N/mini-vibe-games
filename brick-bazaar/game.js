@@ -85,14 +85,14 @@
   };
   function gunDesc(g, l) {
     const t = GUN_TEXT[g];
-    if (!l) return t[0] + ' Fires and reloads by itself.';
+    if (!l) return t[0] + ' Fires by itself. Paddle bounces reload it.';
     const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : '';
-    return `${t[0]} Each level: faster and stronger.${next}${l >= 5 && l < gunMax() ? ' The Gun Workshop allows this level.' : ''}`;
+    return `${t[0]} Paddle bounces reload it. Each level: faster and stronger.${next}${l >= 5 && l < gunMax() ? ' The Gun Workshop allows this level.' : ''}`;
   }
   const CATS = [
     { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
     { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Coins' }, { id: 'blimp', name: '🎈 Blimps' },
-    { id: 'wild', name: '🎲 Wild' }, { id: 'dark', name: '🌶️ Spicy' },
+    { id: 'wild', name: '🎲 Wild' }, { id: 'arcade', name: '🎪 Arcade' }, { id: 'dark', name: '🌶️ Spicy' },
   ];
   // at = the level from which the shop stocks the item. A new player sees three items; two or three more arrive per level.
   // Normal items are upgrades: level lv(id), cost base * grow^level, up to max.
@@ -129,7 +129,7 @@
     { id: 'd_over', at: 18, cat: 'drone', icon: '⚙️', name: 'Overclock', max: 3, base: 120, grow: 1.8,
       desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => DRONE_IDS.some((d) => lv(d) > 0), reqText: 'Needs a drone' },
     { id: 'd_ufo', at: 34, cat: 'drone', icon: '🛸', name: 'Abductor', max: 2, base: 900, grow: 2.5,
-      desc: (l) => `A saucer that beams up a whole brick every few seconds. Owned: ${l}/2.` },
+      desc: (l) => `A saucer that beams away half of a brick every few seconds. Owned: ${l}/2.` },
 
     { id: 'width', at: 2, cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
       desc: () => 'Paddle +12% wider.' },
@@ -200,7 +200,7 @@
 
     { id: 'power', at: 11, cat: 'wild', icon: '🔥', name: 'Overcharge', max: 99, base: 150, grow: 1.35,
       desc: (l) => `All damage +10%. Now +${l * 10}%. No limit.` },
-    { id: 'box', at: 10, cat: 'wild', icon: '🎁', name: 'Mystery Box', price: () => boxPrice(), full: () => upgradePool().length === 0,
+    { id: 'box', at: 10, cat: 'wild', icon: '🎁', name: 'Mystery Box', flat: true, price: () => boxPrice(), full: () => upgradePool().length === 0,
       desc: () => 'One level of a random upgrade. Often worth more than it costs.',
       use: () => { const it = pick(upgradePool()); run.up[it.id] = lv(it.id) + 1; lastBox = lv(it.id) < maxOf(it) ? it.id : null; return `🎁 ${it.icon} ${it.name} level ${lv(it.id)}!`; } },
     { id: 'reroll', at: 12, cat: 'wild', icon: '🏷️', name: 'New Sales', price: () => 20 * (1 + shopRerolls),
@@ -212,7 +212,7 @@
     { id: 'life', at: 4, cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => lifePrice(), full: () => run.lives >= 6,
       desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.`,
       use: () => { run.lives++; run.lifeBought++; } },
-    { id: 'parbet', at: 10, cat: 'wild', icon: '🎟️', name: 'Speed Bet', price: () => betStake(), full: () => run.bet > 0,
+    { id: 'parbet', at: 10, cat: 'wild', icon: '🎟️', name: 'Speed Bet', flat: true, price: () => betStake(), full: () => run.bet > 0,
       desc: () => (run.bet ? `You bet ${run.bet} coins on the next level.` : `Bet that you clear the next level in the first half of the clock. Win: ${BET_PAYS} times your stake.`),
       use: () => { run.bet = betStake(); return '🎟️ The bet is on!'; } },
     { id: 'order', at: 17, cat: 'wild', icon: '📅', name: 'Special Order', price: () => 40 + 8 * run.level, full: () => !run.offer || !!run.nextSpecial || !!levelDef(run.level).boss,
@@ -233,15 +233,23 @@
     { id: 'chili', at: 23, cat: 'dark', icon: '🌶️', name: 'Ghost Pepper', price: () => 150 + 30 * run.level,
       desc: () => `Heat +1, right now: tougher bricks${run.heat >= 0 ? ', bigger bonuses' : ''}. Heat is ${run.heat}.`,
       use: () => { run.heat++; if (run.heat >= 8) sticker('hot'); return '🌶️ It burns!'; } },
-    { id: 'icecream', at: 23, cat: 'dark', icon: '🍦', name: 'Ice Cream', price: () => 40 + 10 * run.level, full: () => run.heat <= HEAT_MIN,
+    { id: 'icecream', at: 23, cat: 'dark', icon: '🍦', name: 'Ice Cream', price: () => Math.round((40 + 10 * run.level) * Math.pow(HEAT_HP, Math.max(0, run.heat))), full: () => run.heat <= HEAT_MIN || run.iceAt === run.level,
       desc: () => `Heat −1, right now: softer bricks${run.heat > 0 ? ', smaller bonuses' : ''}. Heat is ${run.heat}.`,
-      use: () => { run.heat--; return '🍦 Ahh. Cooler.'; } },
+      use: () => { run.heat--; run.iceAt = run.level; return '🍦 Ahh. Cooler. One per visit.'; } },
     { id: 'devil', at: 25, cat: 'dark', icon: '😈', name: "Devil's Bargain", price: () => 0, full: () => run.lives <= 1 || relicChoices().length === 0,
       desc: () => 'Give one life. Pick a relic.', verb: 'Trade a life',
       use: () => { run.lives--; run.pendingRelic = true; } },
     { id: 'edge', at: 30, cat: 'dark', icon: '🗡️', name: 'Double Edge', max: 3, base: 500, grow: 2.2,
       desc: (l) => `All damage +25%, but the clock is ${EDGE_S} seconds shorter.${l ? ` Now +${l * 25}%, −${l * EDGE_S} s.` : ''}` },
   ];
+  // The arcade: the mini-games of minigames.js (window.BBMini) as shop items. The price is the stake, the game pays a
+  // multiple of it, and each game can be played once per shop visit.
+  const ARCADE_FROM = { shell: 12, race: 15, whack: 18 };
+  const arcadeDone = (id) => !!(run.arcade && run.arcade.at === run.level && run.arcade[id]);
+  for (const g of window.BBMini ? window.BBMini.list : []) {
+    ITEMS.push({ id: 'mg_' + g.id, at: ARCADE_FROM[g.id] || 20, cat: 'arcade', icon: g.icon, name: g.name, verb: 'Play', flat: true, price: () => Math.round(betStake() * priceIndex()), full: () => arcadeDone(g.id),
+      desc: () => `${g.blurb} The price is your stake. One game per visit.`, use: () => { run.pendingMini = g.id; } });
+  }
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
   for (const it of ITEMS) {
     if (!it.gun) continue;
@@ -259,12 +267,13 @@
   const betStake = () => Math.round((15 + 4 * run.level) * COIN_MULT);
   // The Mystery Box costs three quarters of the average price in its pool.
   function boxPrice() { const pool = upgradePool(); return pool.length ? Math.round(0.75 * pool.reduce((a, it) => a + itemCost(it), 0) / pool.length) : 0; }
-  // The cheaper half of the upgrade pool: prizes come from it.
-  function cheapPool() { const pool = upgradePool().sort((a, b) => itemCost(a) - itemCost(b)); return pool.slice(0, Math.ceil(pool.length / 2)); }
   const goalieRecharge = (l) => [0, 12, 9, 6, 6][Math.min(l, 4)];
   const lv = (id) => (run && run.up[id]) || 0;
   const ownsAnyGun = () => Object.keys(GUNS).some((g) => lv('gun_' + g) > 0);
   const RELOAD_CUT = 0.82; // reload time factor per Quick Hands level
+  // A reload runs at RELOAD_IDLE of its speed by itself, and each paddle bounce takes RELOAD_HIT seconds off it.
+  // So a player who keeps the balls in play reloads fast, and guns do little for a player who does not play.
+  const RELOAD_IDLE = 0.5, RELOAD_HIT = 1.6;
   const DRONE_IDS = ['d_orbit', 'd_hunter', 'd_collect', 'd_goalie', 'd_blimp', 'd_ufo'];
   const gunMax = () => 5 + lv('workshop');
   const maxOf = (it) => (it.gunItem ? gunMax() : it.max);
@@ -286,21 +295,35 @@
   };
   const SAND_S = 8, EDGE_S = 8, BET_PAYS = 2.5, SAFARI_S = 20;
   // Heat: the game adapts to the player. A fast clear adds heat, a slow clear removes heat.
-  // Each point makes bricks, monsters and bosses 25% tougher, and the level bonuses 6% bigger.
-  const HEAT_MIN = -6, HEAT_HP = 1.25, HEAT_PAY = 0.06;
+  // Each point makes bricks, monsters and bosses 25% tougher, and the level bonuses 6% bigger, up to 30%.
+  const HEAT_MIN = -6, HEAT_HP = 1.25, HEAT_PAY = 0.06, HEAT_PAY_MAX = 0.3;
   const heatMult = () => Math.pow(HEAT_HP, run.heat);
-  const heatPay = () => 1 + HEAT_PAY * Math.max(0, run.heat);
+  // The change of Heat after a level. share = the part of the clock that the level took. A level that takes
+  // HEAT_TARGET of its clock changes nothing; a faster or slower level moves Heat in proportion, so that one very
+  // fast level is answered at once. The caller scales the share to a map of HEAT_BRICKS bricks, because a small map
+  // is always quick.
+  const HEAT_TARGET = 0.4, HEAT_GAIN = 0.5, HEAT_BRICKS = 50;
+  const heatStep = (share, late) => (late ? -3 : clamp(Math.round((HEAT_GAIN * Math.log(HEAT_TARGET / Math.max(share, 0.03))) / Math.log(HEAT_HP)), -3, 3));
+  const heatPay = () => 1 + Math.min(HEAT_PAY_MAX, HEAT_PAY * Math.max(0, run.heat));
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
-  const FROM = { capsules: 2, spin: 3, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, smash: 16 };
+  const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, smash: 16 };
   // The first level on which each capsule can drop.
   const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, storm: 14, gold: 17, nuke: 20 };
   const unlocked = (it) => run.level >= it.at || lv(it.id) > 0;
   // upgrades that can still go up: the pool for sales and the Mystery Box
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
 
+  // Prices follow the player's wealth, as Heat follows the player's speed. refCoins(level) is the money that an
+  // average run has earned when it reaches that level; earned() is what this run has earned. A richer run pays more
+  // and a poorer run pays less, so that the shop cannot be bought empty early, whatever new coin source the game gets.
+  // flat = an item whose price is a stake or is already made from other prices.
+  const PRICE_FROM = 12, PRICE_K = 0.65;
+  const earned = () => run.coins + (run.spent || 0);
+  const refCoins = (n) => 3.1 * Math.pow(n, 2.75);
+  const priceIndex = () => (run.level < PRICE_FROM ? 1 : clamp(Math.pow(earned() / refCoins(run.level), PRICE_K), 0.7, 99));
   function itemCost(it) {
-    if (it.price) return it.price();
-    return Math.round(it.base * Math.pow(it.grow, lv(it.id)) * (onSale(it) ? SALE : 1) * haggleF(it));
+    if (it.price) return Math.round(it.price() * (it.flat ? 1 : priceIndex()));
+    return Math.round(it.base * Math.pow(it.grow, lv(it.id)) * (onSale(it) ? SALE : 1) * haggleF(it) * priceIndex());
   }
   // Two random upgrades are discounted on every shop visit.
   const SALE = 0.7;
@@ -332,8 +355,29 @@
   };
   const TIP_LINES = { 1: 'Oh! A tip! Thank you.', 5: 'I will name a brick after you.', 9: 'One more and you get a surprise.', 10: 'Here. A Mystery Box, on the house.',
     24: 'One more. Trust me.', 25: 'My favourite brick will visit your next level. Be gentle. Or not.', 49: 'One more and I open the back room.', 50: 'Take a relic. I am retiring. Kidding.' };
-  let keeper = '', haggleArm = false, lastBox = null;
-  const quip = (ev) => { keeper = pick(QUIPS[ev]); };
+  let keeper = '', haggleArm = false, lastBox = null, lastPaid = 0;
+  // Mortimer's lines are in snail.js. A key that is not there falls back to the short list in QUIPS.
+  // {n} in a line is replaced by a number.
+  function snailSay(key, n) {
+    const all = (window.BB_SNAIL && window.BB_SNAIL.lines) || {};
+    const list = all[key] && all[key].length ? all[key] : QUIPS[key] || [];
+    return list.length ? pick(list).replace('{n}', n) : '';
+  }
+  const quip = (ev, n) => { keeper = snailSay(ev, n) || snailSay('open'); };
+  const snailBubble = (key, n) => { const t = snailSay(key, n); return t ? `<div class="keeper"><span class="snail">🐌</span><span class="bubble">${t}</span></div>` : ''; };
+  // What he says when the player comes in: the most special thing first.
+  function greet() {
+    const idx = priceIndex(), last = lastSummary, pct = Math.round(Math.abs(idx - 1) * 100);
+    if (levelDef(run.level).boss) quip('boss');
+    else if (last && last.boss) quip('afterBoss');
+    else if (last && last.late) quip('lateVisit');
+    else if (run.lives <= 1) quip('lives1');
+    else if (idx >= 1.15 && Math.random() < 0.6) quip('inflation', pct);
+    else if (idx <= 0.9 && Math.random() < 0.6) quip('discount', pct);
+    else if (!ITEMS.some((it) => unlocked(it) && itemState(it) === 'ok')) quip('broke');
+    else if (run.coins > 6 * betStake() && Math.random() < 0.4) quip('rich');
+    else quip('open');
+  }
   // One haggle per shop visit: the price of one upgrade goes 25% down or 25% up, until you leave.
   const haggleF = (it) => (run.haggle && run.haggle.id === it.id && run.haggle.at === run.level ? run.haggle.f : 1);
   function haggle(it) {
@@ -347,8 +391,9 @@
   const tipCost = () => Math.max(1, Math.round(coinVal() * (1 + run.tips / 4)));
   function tip() {
     if (run.coins < tipCost()) { quip('poor'); sfx.nope(); return; }
+    run.spent = (run.spent || 0) + tipCost();
     run.coins -= tipCost(); run.tips++; shopMsg = '';
-    keeper = TIP_LINES[run.tips] || pick(QUIPS.tip); sfx.coin(run.tips % 8);
+    keeper = TIP_LINES[run.tips] || snailSay('tip'); sfx.coin(run.tips % 8);
     if (run.tips === 10) { sticker('tipper'); if (upgradePool().length) shopMsg = ITEM_BY_ID.box.use(); }
     if (run.tips === 25) run.favourite = true;
     if (run.tips === 50 && relicChoices().length) run.pendingRelic = true;
@@ -366,12 +411,13 @@
   }
   function buy(it) {
     if (itemState(it) !== 'ok') { sfx.nope(); quip('poor'); return false; }
-    const sale = onSale(it);
-    run.coins -= itemCost(it);
+    const sale = onSale(it), cost = itemCost(it);
+    run.coins -= cost; run.spent = (run.spent || 0) + cost; lastPaid = cost;
     shopMsg = ''; lastBox = null;
     if (it.use) shopMsg = it.use() || '';
     else run.up[it.id] = lv(it.id) + 1;
-    quip(QUIPS[it.id] ? it.id : sale ? 'sale' : 'buy');
+    quip(QUIPS[it.id] ? it.id : !it.use && lv(it.id) >= maxOf(it) ? 'maxed' : sale ? 'sale' : it.gunItem ? 'gunBuy' : it.cat === 'drone' ? 'droneBuy'
+      : it.cat === 'blimp' ? 'blimpBuy' : it.id === 'relicbuy' ? 'relicBuy' : 'buy');
     sfx.buy(); buzz(12); saveRun(); return true;
   }
 
@@ -381,7 +427,7 @@
     return { level: 1, coins: 0, lives: 3, up: {}, lifeBought: 0, relicsBought: 0, score: 0,
       relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats(),
       heat: 0, bet: 0, offer: null, nextSpecial: null, safariAt: 0, pendingSafari: false,
-      kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0 };
+      spent: 0, kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0 };
   }
   const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0, blimps: 0 });
   function saveRun() { if (run) store.set(SAVE_KEY, run); }
@@ -393,6 +439,10 @@
     r.relics = r.relics || {}; r.fever = r.fever || 0; r.deals = r.deals || [];
     r.lifeBought = r.lifeBought || 0; r.relicsBought = r.relicsBought || 0; r.bonusStart = r.bonusStart || 0;
     r.stats = Object.assign(newStats(), r.stats || {});
+    if (r.spent == null) {
+      r.spent = 0;
+      for (const it of ITEMS) for (let i = 0; it.base && i < (r.up[it.id] || 0); i++) r.spent += Math.round(it.base * Math.pow(it.grow, i));
+    }
     r.heat = r.heat || 0; r.bet = r.bet || 0; r.tips = r.tips || 0; r.banked = r.banked || {}; r.star3 = r.star3 || 0;
     // The Big Ball upgrade is gone. A save that has it gets the coins back.
     for (let i = 0; i < (r.up.bigball || 0); i++) r.coins += Math.round(85 * Math.pow(1.8, i));
@@ -419,7 +469,7 @@
     { id: 'convoy', icon: '🚂', name: 'Convoy Robbery', hint: 'Pop all five blimps of a convoy.' },
     { id: 'tilt', icon: '🎯', name: 'Tilt', hint: 'Light all seven bumpers twice in one round.' },
     { id: 'bubble', icon: '🎈', name: 'Bubble Wrap Enthusiast', hint: 'Pop 25 blimps in one run.' },
-    { id: 'spin', icon: '❤️', name: 'Spin Doctor', hint: 'Win the triple heart on the bandit.' },
+    { id: 'spin', icon: '🐚', name: 'Shell Shocked', hint: 'Find the pearl in the shell game.' },
     { id: 'tipper', icon: '🫙', name: 'Big Tipper', hint: 'Tip the shopkeeper 10 times in one run.' },
     { id: 'bounty', icon: '🤠', name: 'Bounty Hunter', hint: 'Win a Wanted Poster.' },
     { id: 'hoard', icon: '🗿', name: 'Relic Hoarder', hint: 'Own 8 relics.' },
@@ -676,9 +726,12 @@
   }
   // ---------- the game talks back ----------
   // The shopkeeper comments on how you play. Each line comes at most once per level.
+  // text = the line to use when snail.js has no line for the id
   function heckle(id, text) {
-    if (G.heckled[id]) return;
-    G.heckled[id] = true; G.heckle = { s: text, t: 4 }; sfx.taunt();
+    if (!G || G.safari || G.heckled[id]) return;
+    const line = snailSay(id) || text;
+    if (!line) return;
+    G.heckled[id] = true; G.heckle = { s: line, t: 4 }; sfx.taunt();
   }
   function updateHeckle(dt) {
     if (G.heckle && (G.heckle.t -= dt) <= 0) G.heckle = null;
@@ -687,7 +740,7 @@
     G.wallT = paddle.x <= paddle.w / 2 + 2 || paddle.x >= W - paddle.w / 2 - 2 ? G.wallT + dt : 0;
     if (G.idleT > 6) heckle('idle', 'Still there? 🧻');
     if (G.wallT > 5) heckle('wall', 'Wall-hugger detected.');
-    if (G.dry >= 8) heckle('dry', 'The ball is bored.');
+    if (G.dry >= 8 && !G.boss) heckle('dry', 'The ball is bored.');
     if (!said10 && performance.now() - sessionT0 > 600000) { said10 = true; heckle('ten', '10 minutes. Legs still awake?'); dropCoin(paddle.x, PADDLE_Y - 200, 10, true); }
   }
   // Silly achievements: once per run, for things that every player does. Each pays one coin.
@@ -700,8 +753,8 @@
   }
   // A joke that happens once per run: the game "stops working" after a nuke. Nothing is lost.
   function fakeCrash() {
-    if (mode !== 'play' || G.clearT >= 0) return;
-    mode = 'crash'; A.music(0); sfx.nope();
+    if (mode !== 'play' || G.clearT >= 0 || run.crashed) return;
+    run.crashed = true; mode = 'crash'; A.music(0); sfx.nope();
     showOverlay(`<div class="center"><div class="crash"><div class="ct">brick_bazaar.exe has stopped working</div>
       <div class="cb">The bricks are too broken to continue.<br>Error 0xSNAIL</div>
       <div class="cbtns"><button class="cbtn" data-act="uncrash">Send report</button><button class="cbtn" data-act="uncrash">Cry</button></div></div></div>`, 'see');
@@ -711,8 +764,17 @@
     blimps: { name: 'Blimp Safari', title: '🎈 SAFARI 🎈', over: 'SAFARI OVER!', count: 'Blimps popped 🎈', tip: 'BONUS ROUND! Pop the blimps with your ball. You cannot lose a ball here' },
     pinata: { name: 'Piñata Party', title: '🪅 PIÑATA 🪅', over: 'PARTY OVER!', count: 'Piñata hits 🪅', tip: 'BONUS ROUND! Whack the piñata with your ball. Each hit pays more. You cannot lose a ball here' },
     bumper: { name: 'Bumper Bazaar', title: '🎯 BUMPERS 🎯', over: 'LAST CALL!', count: 'Bumper hits 🎯', tip: 'BONUS ROUND! Light all seven bumpers for a jackpot. You cannot lose a ball here' },
+    stock: { name: 'Stock Toss', title: '📦 STOCK TOSS 📦', over: 'SHELVES EMPTY!', count: 'Coins caught 📦', tip: 'BONUS ROUND! No ball. Catch what the snail throws. Not the socks' },
   };
-  const BONUS_ORDER = ['blimps', 'pinata', 'bumper'];
+  const BONUS_ORDER = ['blimps', 'stock', 'pinata', 'bumper'];
+  // Stock Toss: the snail walks on a shelf and throws coins, coin bags and socks. A sock makes the paddle small for a moment.
+  const STOCK_LINES = ['Inventory day!', 'That one is fragile!', 'No refunds on socks!', 'Catch! I have no hands.', 'Everything must go. Down.', 'Mind the antiques!'];
+  function throwStock(f) {
+    const roll = Math.random();
+    if (roll < 0.16) enemyShot(f.x, f.y + 14, rand(-0.25, 0.25), 210, 'sock');
+    else dropCoin(f.x, f.y + 10, roll < 0.28 ? 4 : 1, true);
+    if (Math.random() < 0.07) say(clamp(f.x, 110, W - 110), f.y - 30, pick(STOCK_LINES), '#ffffff', 1.4);
+  }
   const BUMPERS = [[120, 180], [240, 150], [360, 180], [75, 300], [240, 280], [405, 300], [240, 400]];
   // each boss gives a different bonus round
   const bossBonus = (lvl) => BONUS_ORDER[(Math.round(lvl / 10) - 1) % BONUS_ORDER.length];
@@ -762,6 +824,7 @@
       G.net = 999; G.blimpT = safari === 'blimps' ? 0.6 : -1;
       if (safari === 'pinata') spawnFoe('pinata', W / 2, 190);
       if (safari === 'bumper') for (const [x, y] of BUMPERS) spawnFoe('bumper', x, y);
+      if (safari === 'stock') { const f = spawnFoe('snail', W / 2, 128); f.shelf = true; f.dir = 1; f.cd = 2.2; G.started = true; }
     }
     else if (G.def.boss) G.boss = makeBoss(G.def.boss);
     else if (run.level >= blimpFrom()) { G.blimpsLeft = 1 + lv('bait') + (run.kit === 'blimps' ? 1 : 0); G.blimpT = special('blimps') ? 4 : rand(6, 14); }
@@ -777,7 +840,7 @@
     }
     if (!safari) run.bonusStart = 0;
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
-    serve();
+    if (safari !== 'stock') serve();
     // drones
     for (let i = 0; i < lv('d_orbit'); i++) G.drones.push({ type: 'orbit', a: (i / Math.max(1, lv('d_orbit'))) * Math.PI * 2, cd: 0.5 + i * 0.3, x: W / 2, y: PADDLE_Y - 40 });
     for (let i = 0; i < lv('d_hunter'); i++) G.drones.push({ type: 'hunter', x: rand(80, 400), y: 420, vx: 0, vy: 0, cd: 0, target: null });
@@ -789,6 +852,7 @@
     hideOverlay();
     pauseBtn.style.display = 'block';
     if (!safari && run.coins === 0 && run.level > 3) sticker('broke');
+    if (!safari && run.level >= 4 && Math.random() < 0.35) after(2.5, () => heckle('levelStart'));
     hud.coins = run.coins;
     A.fever(false); A.rush(99); A.streak(0);
     A.tune(run.level); A.music(G.boss || safari ? 2 : 1);
@@ -854,7 +918,7 @@
   const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
     mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!' };
   function rollPU() {
-    const foes = G.foes.length > 0 || (G.boss && !G.boss.dead);
+    const foes = G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
       .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
@@ -873,6 +937,7 @@
     }
   }
   function collectCoin(c) {
+    if (G.safari === 'stock') G.popped++;
     run.coins += c.val; G.levelCoins += c.val; run.stats.coins += c.val;
     if (relic('overload') && ++G.coinCount % 30 === 0) for (let i = 0; i < 3; i++) after(i * 0.15, stormStrike);
     // quick pickups climb the scale
@@ -971,7 +1036,8 @@
     shards(b); burst(cx, cy, brickColor(b), 5);
     run.score += 10 * b.maxhp * (feverOn() ? 2 : 1);
     G.combo++; G.comboPop = 1; A.streak(G.combo); G.dry = 0;
-    ach('brick', 'Touched a brick'); G.comboBest = Math.max(G.comboBest, G.combo);
+    ach('brick', 'Touched a brick');
+    if (G.combo === 30) heckle('streak'); G.comboBest = Math.max(G.comboBest, G.combo);
     run.stats.bricks++; run.stats.streak = Math.max(run.stats.streak, G.combo);
     sfx.pop(G.combo);
     addFever(special('party') ? 0.08 : 0.04);
@@ -1329,6 +1395,7 @@
   // relics that trigger on a paddle bounce
   function paddleBounce(b) {
     G.paddleHits++; G.dry++;
+    for (const g in GUNS) if (G.reload[g] > 0) G.reload[g] = Math.max(0.01, G.reload[g] - RELOAD_HIT);
     if (relic('hydra') && G.balls.length < HYDRA_MAX && Math.random() < 0.15) splitBall(b.x, b.y, b.vx, b.vy);
     if (relic('aftershock') && G.paddleHits % 4 === 0 && anyTarget()) {
       G.shots.push({ x: b.x, y: PADDLE_Y - 4, vx: 0, vy: -380, dmg: gunDmg(3), k: 'rocket', rad: 52 }); sfx.rocket();
@@ -1345,12 +1412,14 @@
   function loseLife() {
     G.combo = 0; G.flawless = false; G.lost++; A.streak(0);
     ach('lose', 'Lost a ball. It happens');
+    heckle('lose');
     if (G.secondWind > 0) {
       G.secondWind--; sfx.net();
       say(W / 2, H / 2, 'Second Wind!', '#6ee7ff', 1.4, true);
       serve(); return;
     }
-    run.lives--; sfx.lose(); shake(12); flashScreen('#ff2a4d', 0.35); buzz(90);
+    run.lives--; sfx.lose();
+    if (run.lives === 1) { G.heckled.lastLife = false; G.heckle = null; heckle('lastLife'); } shake(12); flashScreen('#ff2a4d', 0.35); buzz(90);
     G.fx = noFx();
     if (run.lives <= 0) { gameOver(); return; }
     say(W / 2, H / 2, 'Ball lost!', '#ff6b8b', 1.2, true);
@@ -1366,7 +1435,7 @@
   function updateOvertime(dt) {
     if (G.clearT >= 0 || !G.started || G.safari) return;
     const left = timeLeft();
-    if (clockOn() && left > 0 && left <= 10 && Math.ceil(left) < G.lastTick) { G.lastTick = Math.ceil(left); sfx.tick(); A.rush(left); }
+    if (clockOn() && left > 0 && left <= 10 && Math.ceil(left) < G.lastTick) { G.lastTick = Math.ceil(left); sfx.tick(); A.rush(left); heckle('timeLow'); }
     if (left <= 0) {
       if (!G.crumbling) {
         G.crumbling = true; G.timeUp = clockOn();
@@ -1436,7 +1505,7 @@
     for (const g in GUNS) {
       const l = lv('gun_' + g); if (!l) continue;
       if (G.reload[g] > 0) {
-        G.reload[g] -= dt * (overdrive() ? 4 : 1);
+        G.reload[g] -= dt * (overdrive() ? 4 : RELOAD_IDLE);
         if (G.reload[g] <= 0) { G.clip[g] = clipSize(g); if (active) sfx.reload(); }
         continue;
       }
@@ -1686,7 +1755,7 @@
         const k = d.target;
         d.target = null; d.beam = 0; d.cd = 4 / oc;
         say(k.x + k.w / 2, k.y, 'ZOOP!', '#7ee0ff', 0.7); sfx.teleport(); ring(k.x + k.w / 2, k.y + k.h / 2, 40, '#7ee0ff', 0.4);
-        hitBrick(k, k.hp, false);
+        hitBrick(k, Math.ceil(k.maxhp * 0.5), false);
       } else if (d.type === 'goalie') {
         let tx = paddle.x, lowest = -1;
         for (const b of G.balls) if (!b.stuck && b.vy > 0 && b.y > lowest) { lowest = b.y; tx = b.x; }
@@ -1781,7 +1850,7 @@
   }
   function snailHit(f) {
     f.flash = 0.12; sfx.eek();
-    say(clamp(f.x, 100, W - 100), f.y - 26, pick(SNAIL_CRIES), '#ffffff', 1.4);
+    say(clamp(f.x, 100, W - 100), f.y - 26, snailSay('lunch') || pick(SNAIL_CRIES), '#ffffff', 1.4);
     if (f.paid++ < 5) dropCoin(f.x, f.y, 1, true);
   }
   function bonusHit(f) {
@@ -1832,6 +1901,7 @@
     if (x != null) { f.hitCd = 0.5; return f; }
     if (G.safari) return f;
     say(W / 2, f.y - 34, d.call, d.body, 1.4); sfx.blimp();
+    if (Math.random() < 0.4) heckle('blimp');
     if (G.level === FROM.blimp) say(W / 2, f.y - 12, 'Hit it with the ball for coins!', '#ffffff', 2.4);
     return f;
   }
@@ -2025,6 +2095,9 @@
           f.dead = true; f.escaped = true;
           say(clamp(f.x, 80, W - 80), HUD_H + 20, `Thief got away with ${f.loot}!`, '#ff6b8b', 1.4);
         }
+      } else if (f.type === 'snail' && f.shelf) {
+        f.x = W / 2 + Math.sin(f.t * 0.9) * 170; f.dir = Math.cos(f.t * 0.9) >= 0 ? 1 : -1;
+        if (G.clearT < 0 && (f.cd -= dt) <= 0) { f.cd = 0.34; throwStock(f); }
       } else if (f.type === 'snail') {
         f.x += f.dir * 14 * dt;
         if ((f.x < -40 && f.dir < 0) || (f.x > W + 40 && f.dir > 0)) f.dead = true;
@@ -2208,7 +2281,8 @@
         B.moveT = 5.5 - B.phase; poof(B.x, B.y + B.h / 2, '#d4a5ff');
         B.x = pick([90, W / 2, W - 90].filter((x) => Math.abs(x - B.x) > 40));
         // from phase 2 the Baron also appears lower in the field
-        B.by = B.phase >= 2 && Math.random() < 0.5 ? 250 : BOSS_Y;
+        B.by = B.phase >= 2 && Math.random() < 0.5 ? 292 : BOSS_Y;
+        B.y = B.by + Math.sin(B.t * 2) * 5;
         poof(B.x, B.y + B.h / 2, '#d4a5ff'); sfx.teleport();
       }
       if ((B.atkT -= dt) > 0) return;
@@ -2225,7 +2299,7 @@
     (B, dt, live, fast) => {
       B.x += B.vx * fast * dt; B.y += B.vy * fast * dt;
       if (B.x < B.w / 2) { B.x = B.w / 2; B.vx = Math.abs(B.vx); } if (B.x > W - B.w / 2) { B.x = W - B.w / 2; B.vx = -Math.abs(B.vx); }
-      if (B.y < 66) { B.y = 66; B.vy = Math.abs(B.vy); } if (B.y > (B.phase >= 2 ? 300 : 116)) { B.y = B.phase >= 2 ? 300 : 116; B.vy = -Math.abs(B.vy); }
+      if (B.y < 66) { B.y = 66; B.vy = Math.abs(B.vy); } if (B.y > 116) { B.y = 116; B.vy = -Math.abs(B.vy); }
       if (!live || (B.atkT -= dt) > 0) return;
       const roll = Math.random();
       if (roll < 0.45) { B.atkT = 2.8; for (let i = 0; i < 3 + B.phase; i++) enemyShot(rand(20, W - 20), HUD_H + 4, 0, rand(190, 250)); sfx.bossFire(); bossSay('Rain!'); }
@@ -2292,6 +2366,7 @@
   }
   function drawSnail(f) {
     const d = f.dir, flash = f.flash > 0;
+    if (f.shelf) { ctx.fillStyle = '#7a4a1e'; rr(14, f.y + 13, W - 28, 7, 3); ctx.fill(); }
     ctx.fillStyle = flash ? '#ffffff' : '#e8c98a'; rr(f.x - 16, f.y + 4, 32, 9, 4); ctx.fill();
     ctx.beginPath(); ctx.ellipse(f.x + d * 15, f.y - 2, 5, 8, d * 0.3, 0, 7); ctx.fill();
     ctx.fillStyle = flash ? '#ffffff' : '#c8874a'; ctx.beginPath(); ctx.arc(f.x - d * 3, f.y - 2, 11, 0, 7); ctx.fill();
@@ -2374,6 +2449,10 @@
         ctx.fillStyle = '#7a0f1e'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
         ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r - 2, 0, 7); ctx.fill();
         ctx.fillStyle = '#3a0008'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('☠', s.x, s.y + 1);
+      } else if (s.k === 'sock') {
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.t * 5);
+        ctx.font = '20px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧦', 0, 0);
+        ctx.restore();
       } else if (s.k === 'paper') {
         ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.sin(s.t * 6) * 0.5);
         ctx.fillStyle = '#f4f6ff'; ctx.fillRect(-7, -9, 14, 18);
@@ -2486,6 +2565,9 @@
     const betWon = run.bet && !late && G.clock <= G.par / 2 ? Math.round(run.bet * BET_PAYS) : 0;
     const dare = run.dare ? DARES[run.dare].text : '', darePay = run.dare && DARES[run.dare].done() ? betStake() : 0;
     const insurance = special('bill') && !late ? G.bill : 0;
+    // the Back Alley pays the level bonuses a second time
+    const alley = run.alley && !late ? pay.bonus + pay.speed + pay.starBonus + pay.heatBonus : 0;
+    run.alley = false; run.coins += alley;
     run.coins += interest + bonds + betWon + darePay + insurance;
     run.stats.stars += stars;
     run.star3 = stars === 3 ? run.star3 + 1 : 0;
@@ -2504,10 +2586,10 @@
     let heat = 0;
     if (lvl >= FROM.heat && !G.def.boss) {
       const r = G.clock / G.par, was = run.heat;
-      run.heat = clamp(run.heat + (late ? -2 : r < 0.15 ? 2 : r < 0.3 ? 1 : r > 0.6 ? -1 : 0), HEAT_MIN, 99);
+      run.heat = clamp(run.heat + heatStep(r * Math.pow(HEAT_BRICKS / Math.max(10, G.brick0), 0.6), late), HEAT_MIN, 99);
       heat = run.heat - was;
     }
-    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance,
+    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance, alley,
       combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.clock), par: G.par, flawless: G.flawless, late, timed, boss: !!G.def.boss };
     run.bet = 0; run.nextSpecial = null; run.wanted = false; run.dare = null; run.odd = null; if (!G.def.boss) run.favourite = false;
     if (run.heat >= 8) sticker('hot');
@@ -2528,6 +2610,7 @@
     const keep = Math.floor(run.coins / 2), st = run.stats;
     showOverlay(`<div class="center">
       <h2>Out of balls</h2>
+      ${snailBubble('gameOver')}
       ${record ? '<div class="newbest">★ NEW BEST ★</div>' : ''}
       <div class="stat">Reached level <b>${run.level}</b> · Score <b>${run.score}</b></div>
       <div class="stat">Bricks <b>${st.bricks}</b> · Monsters <b>${st.foes}</b> · Stars <b>${st.stars}</b></div>
@@ -2556,6 +2639,7 @@
     showOverlay(`<div class="center">
       <div class="logo">BRICK<br>BAZAAR</div>
       <div class="tag">Smash bricks. Grab coins. Shop for silly hardware.</div>
+      ${snailBubble('menu')}
       ${saved ? `<button class="big gold" data-act="resume">Continue · level ${saved.level} · ${saved.coins} 🪙</button>` : ''}
       <button class="big" data-act="newrun">${saved ? 'New run' : 'Play'}</button>
       ${stickerCount() ? `<button class="big alt" data-act="album">📒 Sticker album ${stickerCount()}/${STICKERS.length}</button>` : ''}
@@ -2582,7 +2666,7 @@
     const have = stickerCount();
     const btns = KITS.filter((k) => have >= k.need).map((k) => `<button class="relic kit" data-kit="${k.id}">
       <span class="ric">${k.icon}</span><span class="rnm">${k.name}</span><span class="rds">${k.desc}</span></button>`).join('');
-    showOverlay(`<div class="center"><div class="tally-sub">THE SHED OF JUNK</div><h2>Pick a starting kit</h2><div class="relics">${btns}</div>
+    showOverlay(`<div class="center"><div class="tally-sub">THE SHED OF JUNK</div><h2>Pick a starting kit</h2>${snailBubble('kits')}<div class="relics">${btns}</div>
       <div class="hint">More stickers open more kits.</div></div>`, 'see');
   }
   function showPause() {
@@ -2601,12 +2685,13 @@
   }
 
   const heatTag = () => (run.heat > 0 ? '🌶️ Heat ' : '🧊 Heat ') + run.heat;
+  const priceTag = () => { const p = Math.round((priceIndex() - 1) * 100); return Math.abs(p) < 5 ? '' : p > 0 ? ` · 📈 prices +${p}%` : ` · 📉 prices ${p}%`; };
   let shopCat = 'weap';
   function openShop() {
     mode = 'shop'; pauseBtn.style.display = 'none'; A.music(0);
     if (shopLevel !== run.level) { shopLevel = run.level; shopRerolls = 0; }
     shopMsg = ''; haggleArm = false; lastBox = null;
-    quip(levelDef(run.level).boss ? 'boss' : 'open');
+    greet();
     renderShop(false);
   }
   const SHOP_TABS_FROM = 10; // with fewer items than this, the shop is one short list without tabs
@@ -2630,7 +2715,7 @@
       else if (state === 'max') btn = `<button class="buy max" disabled>${it.id === 'life' ? 'Full' : it.use ? 'Sold out' : 'Maxed'}</button>`;
       else {
         const verb = l ? 'Upgrade' : 'Buy';
-        btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${it.verb || `${verb} · ${itemCost(it)} 🪙`}</button>`;
+        btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${it.verb && !itemCost(it) ? it.verb : `${it.verb || verb} · ${itemCost(it)} 🪙`}</button>`;
       }
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
         ${sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
@@ -2646,7 +2731,7 @@
     const teaser = later.length ? `<div class="teaser">🔒 More stock arrives after level ${Math.min(...later) - 1}</div>` : '';
     const relics = relicIcons();
     showOverlay(`<div class="shop">
-      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
+      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}${priceTag()}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
       ${relics ? `<div class="relicbar">Relics ${relics}</div>` : ''}
       <div class="keeper"><span class="snail">🐌</span><span class="bubble">${keeper}</span></div>
       ${shopMsg ? `<div class="shopmsg">${shopMsg}${lastBox ? ' <button class="mini" data-act="don">🎲 Double or nothing?</button>' : ''}</div>` : ''}
@@ -2658,6 +2743,23 @@
       </div><button class="big" data-act="next">Start level ${run.level} ▶</button></div>
     </div>`);
     const items = ov.querySelector('.items'); if (items) items.scrollTop = st;
+  }
+  function startMini() {
+    const id = run.pendingMini, stake = lastPaid;
+    run.pendingMini = null;
+    if (!run.arcade || run.arcade.at !== run.level) run.arcade = { at: run.level };
+    run.arcade[id] = true; saveRun();
+    mode = 'mini';
+    showOverlay('<div class="mghost"></div>');
+    window.BBMini.play(id, ov.firstChild, { stake, level: run.level, sfx, say: (key) => snailSay(key), done: (mult) => {
+      if (mode !== 'mini') return;
+      const win = Math.round(stake * (mult || 0));
+      run.coins += win; saveRun();
+      if (id === 'shell' && win) sticker('spin');
+      quip(win > stake ? 'arcadeWin' : 'arcadeLose');
+      shopMsg = win ? `🎪 You won ${win} coins.` : '🎪 The arcade keeps your stake.';
+      mode = 'shop'; renderShop(false);
+    } });
   }
   function takeRelic(id) {
     run.relics[id] = true; run.pendingRelic = false; saveRun();
@@ -2674,11 +2776,12 @@
       const it = ITEM_BY_ID[t.dataset.buy];
       if (haggleArm) { haggle(it); renderShop(true, it.id); return; }
       const ok = buy(it);
-      if (ok && run.pendingSafari) startSafari(); else if (ok && run.pendingRelic) showRelics(); else renderShop(true, ok ? it.id : null);
+      if (ok && run.pendingMini) startMini(); else if (ok && run.pendingSafari) startSafari(); else if (ok && run.pendingRelic) showRelics(); else renderShop(true, ok ? it.id : null);
       return;
     }
     if (t.dataset.relic) { takeRelic(t.dataset.relic); return; }
     if (t.dataset.kit) { beginRun(t.dataset.kit); return; }
+    if (t.dataset.fork) { takeFork(t.dataset.fork); return; }
     const act = t.dataset.act;
     if (act === 'newrun') { if (KITS.some((k) => k.need > 0 && stickerCount() >= k.need)) showKits(); else beginRun('none'); }
     else if (act === 'album') showAlbum();
@@ -2694,9 +2797,6 @@
     }
     else if (act === 'next') { lastSummary = null; startLevel(); }
     else if (act === 'tallynext') afterTally();
-    else if (act === 'pull') pull();
-    else if (act === 'take') claim(true);
-    else if (act === 'leave') claim(false);
     else if (act === 'unpause') { mode = 'play'; hideOverlay(); playMusic(); ach('pause', 'Found the pause button'); heckle('back', 'Welcome back. We did not look.'); }
     else if (act === 'uncrash') {
       mode = 'play'; hideOverlay(); playMusic(); sticker('crash');
@@ -2765,6 +2865,7 @@
   function startFever() {
     run.fever = 0; G.feverT = G.feverMax = 8 + (relic('engine') ? 4 : 0);
     say(W / 2, H * 0.46, 'FEVER! ×2', '#ffe066', 1.8, true);
+    heckle('fever');
     sfx.fever(); sfx.riser(); buzz([30, 40, 30]); flashScreen('#ffe066', 0.35); A.music(2); A.fever(true);
     for (let i = 0; i < 3; i++) after(i * 0.12, () => ring(paddle.x, PADDLE_Y, 260, RAINBOW[i * 2], 0.6, 4));
     if (relic('twinfever')) for (const b of G.balls.slice()) if (!b.stuck) splitBall(b.x, b.y, b.vx, b.vy);
@@ -2808,7 +2909,7 @@
   }
 
   function nuke() {
-    if (!run.crashed && run.level >= 15) { run.crashed = true; after(0.7, fakeCrash); }
+    if (!run.crashed && run.level >= 15) after(0.7, fakeCrash);
     sfx.nuke(); flashScreen('#ffffff', 0.8); shake(16); buzz([60, 30, 120]); G.hitstop = 0.1;
     ring(W / 2, H / 2, 420, '#ff5c5c', 0.7, 6);
     const dmg = Math.round(3 * power());
@@ -2869,7 +2970,7 @@
     mode = 'relic'; pauseBtn.style.display = 'none';
     const cards = relicChoices().map((r, i) => `<button class="relic" data-relic="${r.id}" style="animation-delay:${i * 0.12}s">
       <span class="ric">${r.icon}</span><span class="rnm">${r.name}</span><span class="rds">${r.desc}</span></button>`).join('');
-    showOverlay(`<div class="center"><div class="tally-sub">A GIFT FROM THE BAZAAR</div><h2>Pick a relic</h2><div class="relics">${cards}</div>
+    showOverlay(`<div class="center"><div class="tally-sub">A GIFT FROM THE BAZAAR</div><h2>Pick a relic</h2>${snailBubble('relicPick')}<div class="relics">${cards}</div>
       <div class="hint">Relics last for the whole run.</div></div>`, 'see');
     sfx.relic();
   }
@@ -2902,50 +3003,43 @@
   }
 
   // ---------- level results ----------
+  // The results screen. The button is outside the part that scrolls, so that it is always in view.
   function showTally() {
     mode = 'tally'; pauseBtn.style.display = 'none'; A.music(0); A.fever(false);
     const s = lastSummary;
     const row = (label, v) => (v ? `<div class="trow"><span>${label}</span><b data-count="${v}">0</b></div>` : '');
-    const lost = (label, v) => (v ? `<div class="trow lost"><span>${label}</span><b>−${v}</b></div>` : '');
+    const chip = (text, cls = '') => `<div class="chip ${cls}">${text}</div>`;
     const purse = `<div class="trow total"><span>Purse</span><b id="purse" data-count="${run.coins}">0</b></div>`;
+    const page = (body) => showOverlay(`<div class="tallyv"><div class="tbody">${body}</div>
+      <div class="tfoot"><button class="big gold" data-act="tallynext">${tallyLabel(s)}</button></div></div>`, 'see');
     if (s.safari) {
-      showOverlay(`<div class="center tally">
-        <div class="tally-sub">BONUS ROUND</div>
-        <div class="tally-title">${BONUS[s.safari].over}</div>
+      page(`<div class="tally-sub">BONUS ROUND</div><div class="tally-title">${BONUS[s.safari].over}</div>
         ${s.record ? '<div class="newbest">★ BEST HAUL ★</div>' : ''}
         <div class="trows">${row(BONUS[s.safari].count, s.popped)}${row('Coins grabbed', s.picked)}${purse}</div>
-        ${stickerNote()}
-        <button class="big gold" data-act="tallynext">${run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
-      </div>`, 'see');
+        ${snailBubble('tallyBonus')}${stickerNote()}`);
       countUp();
       return;
     }
+    const parts = [['clear', s.bonus], ['speed', s.speed], ['stars', s.starBonus], ['heat', s.heatBonus], ['piggy', s.interest], ['bonds', s.bonds],
+      ['bet', s.betWon], ['dare', s.darePay], ['insurance', s.insurance], ['alley', s.alley]].filter(([, v]) => v);
     const fresh = run.level > 2 ? ITEMS.filter((it) => it.at === run.level) : [];
-    const note = (ok, text) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '✔' : '✖'} ${text}</span>`;
-    const heat = !s.heat ? '' : s.heat > 0
-      ? `<div class="heatnote up">🌶️ HEAT UP! Heat ${run.heat}: tougher bricks, bonuses +${Math.round((heatPay() - 1) * 100)}%</div>`
-      : `<div class="heatnote">🧊 Heat cools to ${run.heat}: softer bricks</div>`;
-    showOverlay(`<div class="center tally">
-      <div class="tally-sub">LEVEL ${s.level} · ${s.name.toUpperCase()}</div>
+    const verdict = s.late ? 'tallyLate' : s.boss ? 'tallyBoss' : !s.flawless ? 'tallyClumsy' : s.time < s.par * 0.25 ? 'tallyFast'
+      : s.stars === 3 ? 'tallyThree' : s.time > s.par * 0.8 ? 'tallySlow' : 'tallyOk';
+    page(`<div class="tally-sub">LEVEL ${s.level} · ${s.name.toUpperCase()}</div>
       <div class="tally-title ${s.late ? 'late' : ''}">${s.late ? "TIME'S UP!" : 'CLEARED!'}</div>
       <div class="stars">${[0, 1, 2].map((i) => `<span class="star ${i < s.stars ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.3}s">★</span>`).join('')}</div>
-      <div class="starnotes">${note(true, 'Cleared')}${note(s.time <= s.par, `${s.timed ? 'Clock' : 'Par'} ${s.time}s / ${s.par}s`)}${note(s.flawless, 'No ball lost')}</div>
       <div class="trows">
-        ${row('Coins grabbed', s.picked)}${row('Clear bonus', s.bonus)}${row('Speed bonus', s.speed)}${row('Star bonus', s.starBonus)}${row('Heat bonus 🌶️', s.heatBonus)}
-        ${row('Piggy interest', s.interest)}${row('Bond payout', s.bonds)}${row('Speed bet won 🎟️', s.betWon)}${row('Dare done 🤞', s.darePay)}${row('Insurance paid the bill 🧾', s.insurance)}
-        ${lost('Bonus lost to the clock', s.lost)}${s.betWon ? '' : lost('Speed bet lost', s.bet)}
+        ${row('Coins grabbed', s.picked)}${row('Bonus', parts.reduce((a, [, v]) => a + v, 0))}
+        ${parts.length > 1 ? `<div class="tparts">${parts.map(([k, v]) => `${k} ${v}`).join(' · ')}</div>` : ''}
+        ${s.late ? `<div class="trow lost"><span>Bonus lost to the clock</span><b>−${s.lost}</b></div>` : ''}
         ${purse}
       </div>
-      <div class="tally-streak">Best streak <b>${s.combo}</b>${s.streak ? ` · streak coins <b>${s.streak}</b>` : ''}</div>
-      ${s.dare && !s.darePay ? `<div class="nospin">Dare failed: ${s.dare.toLowerCase()}. It costs nothing.</div>` : ''}
-      ${heat}
-      ${stickerNote()}
-      ${fresh.length ? `<div class="unlock">🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}</div>` : ''}
-      ${s.late ? '<div class="nospin">The bandit is closed after a time-out.</div>' : s.level >= FROM.spin ? banditHtml() : ''}
-      <button class="big gold" id="tallygo" data-act="tallynext">${tallyLabel(s)}</button>
-    </div>`, 'see');
-    if (!s.bandit) s.bandit = { free: s.late || s.level < FROM.spin ? 0 : Math.max(1, s.stars - 1), paid: 0, busy: false, prize: null, msg: '' };
-    renderBandit();
+      ${snailBubble(verdict)}
+      ${s.heat > 0 ? chip(`🌶️ Heat ${run.heat}: tougher bricks, bonuses +${Math.round((heatPay() - 1) * 100)}%`, 'hot') : s.heat < 0 ? chip(`🧊 Heat cools to ${run.heat}: softer bricks`) : ''}
+      ${s.bet && !s.betWon ? chip(`🎟️ Speed bet lost: −${s.bet} coins`, 'bad') : ''}
+      ${s.dare && !s.darePay ? chip(`🤞 Dare failed: ${s.dare.toLowerCase()}`) : ''}
+      ${fresh.length ? chip(`🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}`, 'new') : ''}
+      ${stickerNote()}`);
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
     countUp();
   }
@@ -2964,120 +3058,44 @@
     }
     requestAnimationFrame(tick);
   }
-  // ---------- the bandit ----------
-  // A slot machine with three drums on the results screen. Three of a kind win a prize. To take a prize costs
-  // a heart (on the last heart: the price of an Extra Life). Two of a kind pay a few coins. A level cleared in time
-  // gives one free pull, and one more for three stars. More pulls cost coins, and the price doubles each time.
-  // The drums are not fair: SLOT_PAIR and SLOT_TRIPLE say how often drum two and drum three copy drum one.
-  const SLOT_PAIR = 0.5, SLOT_TRIPLE = 0.42;
-  const slotCoins = () => Math.round(4 * betStake() * levelVal());
-  const pairCoins = () => Math.round(0.4 * betStake());
-  const pullPrice = () => Math.round(0.5 * betStake() * Math.pow(2, lastSummary.bandit.paid));
-  // w = how often the symbol comes, from = the first level whose results screen can show it, free = no heart to pay.
-  const SLOT = [
-    { id: 'coin', icon: '🪙', w: 30, from: 0, name: 'COIN SHOWER', text: () => `+${slotCoins()} coins`, win: () => { run.coins += slotCoins(); } },
-    { id: 'gift', icon: '🎁', w: 20, from: 0, name: 'TWO FREE UPGRADES', text: () => 'Two upgrades from the shop',
-      win: () => {
-        const got = [];
-        for (let i = 0; i < 2; i++) {
-          const pool = cheapPool();
-          if (!pool.length) { run.coins += 100; got.push('+100 coins'); continue; }
-          const it = pick(pool); run.up[it.id] = lv(it.id) + 1; got.push(`${it.icon} ${it.name}`);
-        }
-        return got.join(' and ');
-      } },
-    { id: 'power', icon: '🔥', w: 15, from: 5, name: 'OVERCHARGE', text: () => 'All damage +20%, for the rest of the run', win: () => { run.up.power = lv('power') + 2; } },
-    { id: 'life', icon: '❤️', w: 12, from: 0, free: true, name: 'TRIPLE HEART', text: () => '+3 lives, and this one is free', win: () => { run.lives = Math.min(6, run.lives + 3); sticker('spin'); } },
-    { id: 'bonus', icon: '🎈', w: 12, from: 8, name: 'BONUS ROUND', text: () => 'A bonus round, right after this screen', win: () => { run.pendingSafari = pick(BONUS_ORDER); } },
-    { id: 'relic', icon: '🗿', w: 8, from: 5, name: 'RELIC', text: () => 'You pick a relic', ok: () => relicChoices().length > 0 && !run.pendingRelic, win: () => { run.pendingRelic = true; } },
-    { id: 'seven', icon: '7️⃣', w: 3, from: 0, free: true, name: 'JACKPOT', text: () => `+${slotCoins() * 3} coins, and this one is free`, win: () => { run.coins += slotCoins() * 3; } },
-  ];
-  const SLOT_MISS = ['Nothing. The drums laugh.', 'So close. Not really.', 'The house thanks you.', 'Three different things. Impressive, in a way.'];
-  function rollReels() {
-    const syms = SLOT.filter((k) => run.level - 1 >= k.from && (!k.ok || k.ok()));
-    const roll = (not) => {
-      const opts = syms.filter((k) => k !== not);
-      let r = Math.random() * opts.reduce((a, k) => a + k.w, 0);
-      for (const k of opts) { r -= k.w; if (r <= 0) return k; }
-      return opts[0];
-    };
-    const a = roll(), b = Math.random() < SLOT_PAIR ? a : roll(a);
-    return [a, b, a === b ? (Math.random() < SLOT_TRIPLE ? a : roll(a)) : roll()];
-  }
-  const banditHtml = () => `<div class="bandit"><div class="drums">${'<span class="drum">❔</span>'.repeat(3)}</div>
-    <div class="bmsg"></div><div class="bbtns"></div><div class="brules">Three of a kind win. A prize costs a heart ❤️.</div></div>`;
-  const tallyLabel = (s) => (s.boss && !s.safariDone ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶`
-    : BONUS[run.pendingSafari] ? `Bonus round: ${BONUS[run.pendingSafari].name} ▶` : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶');
-  function renderBandit() {
-    const box = ov.querySelector('.bandit'), b = lastSummary && lastSummary.bandit;
-    if (!box || !b) return;
-    const last = run.lives <= 1;
-    box.querySelector('.bmsg').innerHTML = b.msg;
-    box.querySelector('.bbtns').innerHTML = b.busy ? '' : b.prize
-      ? `<button class="big gold" data-act="take" ${last && run.coins < lifePrice() ? 'disabled' : ''}>Take it · ${last ? `−${lifePrice()} 🪙` : '−1 ❤️'}</button><button class="big alt" data-act="leave">Leave it</button>`
-      : `<button class="big alt" data-act="pull" ${b.free > 0 || run.coins >= pullPrice() ? '' : 'disabled'}>🎰 Pull · ${b.free > 0 ? `free (${b.free} left)` : `${pullPrice()} 🪙`}</button>`;
-    const purse = ov.querySelector('#purse'); if (purse) { purse.dataset.count = run.coins; purse.textContent = run.coins; }
-    const go = ov.querySelector('#tallygo'); if (go) go.textContent = tallyLabel(lastSummary);
-  }
-  function pull() {
-    const b = lastSummary && lastSummary.bandit, box = ov.querySelector('.bandit');
-    if (!b || !box || b.busy || b.prize) return;
-    if (b.free > 0) b.free--;
-    else { if (run.coins < pullPrice()) { sfx.nope(); return; } run.coins -= pullPrice(); b.paid++; }
-    const res = rollReels(), drums = [...box.querySelectorAll('.drum')];
-    // the last drum turns longer when the first two match
-    const stops = [9, 17, res[0] === res[1] ? 36 : 25];
-    b.busy = true; b.msg = ''; box.classList.remove('hot'); drums.forEach((d) => d.classList.remove('stop'));
-    renderBandit();
-    let n = 0;
-    const timer = setInterval(() => {
-      if (!box.isConnected) { clearInterval(timer); b.busy = false; settle(res); return; }
-      n++;
-      drums.forEach((d, i) => {
-        if (n < stops[i]) d.textContent = SLOT[(n + i * 2) % SLOT.length].icon;
-        else if (n === stops[i]) {
-          d.textContent = res[i].icon; d.classList.add('stop'); sfx.whack();
-          if (i === 1 && res[0] === res[1]) { box.classList.add('hot'); sfx.riser(); }
-        }
-      });
-      if (n < stops[2]) { if (n % 2) sfx.tick(); return; }
-      clearInterval(timer); b.busy = false; settle(res);
-    }, 70);
-  }
-  function settle(res) {
-    const b = lastSummary.bandit, [x, y, z] = res;
-    if (x === y && y === z) {
-      b.prize = x; b.msg = `<b>${x.icon} ${x.name}!</b> ${x.text()}`;
-      sfx.jackpot(); buzz([30, 30, 60]);
-      if (x.free) { claim(true); return; }
-    } else if (x === y || y === z || x === z) {
-      const n = pairCoins(); run.coins += n; b.msg = `Two of a kind: +${n} coins`; sfx.coin(4);
-    } else { b.msg = pick(SLOT_MISS); sfx.nope(); }
-    saveRun(); renderBandit();
-  }
-  function claim(take) {
-    const b = lastSummary && lastSummary.bandit, p = b && b.prize;
-    if (!p) return;
-    if (!take) { b.prize = null; b.msg = 'You keep your heart. The drums look sad.'; saveRun(); renderBandit(); return; }
-    if (!p.free) {
-      if (run.lives > 1) run.lives--;
-      else if (run.coins >= lifePrice()) run.coins -= lifePrice();
-      else { sfx.nope(); return; }
-    }
-    b.prize = null;
-    const text = p.text(), got = p.win();
-    b.msg = `<b>${p.icon} ${p.name}!</b> ${got || text}`;
-    sfx.relic(); buzz(30); saveRun(); renderBandit();
-  }
+  const tallyLabel = (s) => (s.boss && !s.safariDone ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶` : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶');
   function afterTally() {
     const s = lastSummary;
-    if (s && s.bandit && s.bandit.busy) return;
     if (s && s.level === LEVELS.length && !run.champion) { run.champion = true; meta.wins++; saveMeta(); saveRun(); showVictory(); return; }
     // every boss pays with a bonus round
     if (s && s.boss && !s.safariDone) { s.safariDone = true; startSafari(bossBonus(s.level)); return; }
     if (run.pendingSafari) { startSafari(); return; }
+    if (s && !s.safari && !s.forked && !s.boss && s.level >= FORK_FROM && s.level % 3 === 0) { s.forked = true; showFork(); return; }
     if (run.pendingRelic) { showRelics(); return; }
     openShop();
+  }
+  // From level FORK_FROM, after every third level, the snail offers three ways on.
+  const FORK_FROM = 21;
+  const FORKS = {
+    skip: { icon: '🚪', name: 'The Shortcut', text: () => `Skip level ${run.level}. You get its clear bonus: ${forkPay()} coins.`, line: 'Nobody uses it. It is quite clean.' },
+    scenic: { icon: '🌄', name: 'The Scenic Route', text: () => 'A bonus round, right now.', line: 'Slow. Pretty. My kind of road.' },
+    alley: { icon: '🕳️', name: 'The Back Alley', text: () => 'The next level has a special of the day and pays its bonus twice.', line: 'I would not. So you should.' },
+  };
+  const forkPay = () => Math.round((15 + run.level * 4) * COIN_MULT * levelVal());
+  function showFork() {
+    mode = 'fork';
+    // a boss level or a level that gives a relic cannot be skipped
+    const open = Object.keys(FORKS).filter((k) => k !== 'skip' || (run.level % 5 !== 0 && !levelDef(run.level).boss));
+    const doors = open.map((k) => `<button class="relic kit" data-fork="${k}"><span class="ric">${FORKS[k].icon}</span><span class="rnm">${FORKS[k].name}</span>
+      <span class="rds">${FORKS[k].text()}<br><i>🐌 "${FORKS[k].line}"</i></span></button>`).join('');
+    showOverlay(`<div class="center"><div class="tally-sub">A FORK IN THE ROAD</div><h2>Which way?</h2><div class="relics">${doors}</div></div>`, 'see');
+    sfx.relic();
+  }
+  function takeFork(k) {
+    if (k === 'scenic') { startSafari(pick(BONUS_ORDER)); return; }
+    if (k === 'skip') {
+      run.coins += forkPay(); run.level++;
+      rollDeals(); recordBest();
+    } else {
+      const stone = levelDef(run.level).map.some((row) => row.includes('X'));
+      run.alley = true; run.nextSpecial = pick(SPECIALS.filter((x) => !(x.open && stone))).id;
+    }
+    saveRun(); sfx.buy(); afterTally();
   }
   function showVictory() {
     mode = 'victory'; sfx.clear();
@@ -3085,6 +3103,7 @@
     showOverlay(`<div class="center tally">
       <div class="tally-sub">THE AUDIT IS OVER</div>
       <div class="tally-title">THE BAZAAR<br>IS YOURS!</div>
+      ${snailBubble('victory')}
       <div class="stat">Score <b>${run.score}</b> · Stars <b>${st.stars}</b>/${LEVELS.length * 3}</div>
       <div class="stat">Bricks smashed <b>${st.bricks}</b> · Monsters popped <b>${st.foes}</b></div>
       <div class="stat">Coins earned <b>${st.coins}</b> · Best streak <b>${st.streak}</b></div>
@@ -3776,12 +3795,7 @@
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
     get summary() { return lastSummary; },
-    // uses up the free pulls without the animation; take = take the prizes while more than 2 hearts are left
-    bandit(take) {
-      const b = lastSummary && lastSummary.bandit, out = [];
-      while (b && b.free > 0) { b.free--; settle(rollReels()); if (b.prize) { out.push(b.prize.id); claim(take && run.lives > 2); } }
-      return out.join(',');
-    },
+    price() { return priceIndex(); },
   };
 
   showMenu();

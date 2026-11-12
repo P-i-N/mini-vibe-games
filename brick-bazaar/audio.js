@@ -146,12 +146,12 @@ window.BBAudio = (() => {
   // music's grid. Notes that land in one slot become a dyad or triad of the chord. A short noise transient at the
   // real moment keeps the hit immediate.
   const MEL_MAX = 8; // melodic effect notes that ring at once; a new note steals the oldest one
-  let gridT = 0, gridStep = 0; // time and number of the last step that the scheduler wrote
+  let gridT = 0, gridStep = 0, gridLen = 0; // time, number and length of the last step that the scheduler wrote
   const mel = { pos: 0, last: -9, note: 72, bass: 0, wall: 0, voices: [], slots: [] };
 
   // Time of the next grid slot, plus n slots. res: 0.5 = 32nd notes, 1 = 16th notes.
   function gridAt(res, n = 0) {
-    const len = stepLen(), h = len * res;
+    const len = gridLen || stepLen(), h = len * res;
     const k = Math.ceil((ctx.currentTime + 0.004 - gridT) / h) + n, q = k * res;
     let t = gridT + k * h;
     if (sec && Number.isInteger(q) && ((gridStep + q) & 1)) t += sec.swing * len;
@@ -354,7 +354,7 @@ window.BBAudio = (() => {
     streak: [120, (tier = 1) => {
       const i = int(tier, 5);
       melo('streak', 'bell', 1, 0.05, (ch) => tones(ch, ch[1] + 12, ch[1] + 40)[i]);
-      melo('streak', 'bell', 1, 0.045, (ch) => tones(ch, ch[1] + 12, ch[1] + 40)[i + 2], 1);
+      melo('streak', 'bell', 1, 0.045, (ch) => tones(ch, ch[1] + 12, ch[1] + 41)[i + 2], 1);
     }],
     split: [60, () => { const f = ct(1, ri(3)), g = ct(2, ri(3)); tone(f, 0.1, { type: 'triangle', vol: 0.05, to: f * 2 }); tone(g, 0.1, { type: 'triangle', vol: 0.04, to: g * 2, at: 0.05 }); }],
     relic: [0, () => cadence([2, 4, 6], 'bell', 0.05, { step: 2, hold: 1, duck: true })],
@@ -603,7 +603,7 @@ window.BBAudio = (() => {
       if ((step & 15) === 0) barQ.push({ t: nextT, ch: sec.chords[(step >> 4) & 3] });
       while (barQ.length > 4) curChord = barQ.shift().ch;
       if (musicOn) playStep(step, nextT);
-      gridT = nextT; gridStep = step;
+      gridT = nextT; gridStep = step; gridLen = stepLen();
       nextT += stepLen(); step = (step + 1) & 63;
     }
   }

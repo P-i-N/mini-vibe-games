@@ -21,17 +21,21 @@ After a change to a game, increase the `?v=` number of its scripts and styleshee
 | `game.js` | Game rules, shop, enemies, bosses, rendering |
 | `levels.js` | The 50 campaign maps and the map legend. Levels after 50 are generated in `game.js`. |
 | `audio.js` | Synthesised sound effects and generative music. Effects take their pitch from the chord that the music plays. The music has five channels; the menu and the shop fade to an ambient mix. The music follows the game through `fever(on)`, `streak(n)`, `rush(secondsLeft)` and `beat()`. The effects that fire most often play the next note of a riff, on the grid of the music, each family with its own instrument; big moments end on the tonic. Each level has one of six styles (mode, tempo, swing). |
+| `snail.js` | The lines of Mortimer, the snail who keeps the shop. Data only: `BB_SNAIL.lines[key]` is a list, and the game picks one line at random. |
+| `minigames.js`, `minigames.css` | The arcade mini-games of the shop (`BBMini.list`, `BBMini.play`). They do not use game.js. |
 | `style.css` | Menus, shop, results screens |
 
-`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`, `bandit(take)` (uses the free pulls without the animation). To go to a level: `__bb.run.level = 40; __bb.next()`.
+`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`. To go to a level: `__bb.run.level = 40; __bb.next()`.
 
-A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, lucky spin, fever, sales, streaks, blimps, the clock, the sweet spot, heat, specials, the smash) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
+A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, fever, sales, streaks, blimps, the clock, the sweet spot, heat, specials, the smash) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
 
 Balance values that belong together: `HP_CURVE` (brick toughness by level), `BOSS_K` (boss health as a multiple of the brick toughness), `GUNS` (rate, clip, reload, damage), the `base`/`grow` prices in `ITEMS`, and the coin value (`levelVal`, `coinVal`). Change one, then play some levels at both ends of the campaign.
 
 Three systems keep a long run in balance:
 
-*   **Heat.** After each level from `FROM.heat`, the clear time changes `run.heat`: less than 30% of the clock adds heat, more than 60% removes heat, a timeout removes two. One point of heat makes bricks 25% tougher (`HEAT_HP`) and the level bonuses 6% bigger (`HEAT_PAY`). `HP_CURVE` is the toughness for average play; heat corrects it for each player.
+*   **Heat.** After each level from `FROM.heat`, the clear time changes `run.heat` (`heatStep`): a level that takes `HEAT_TARGET` of its clock changes nothing, a faster level adds up to 3 points, a slower level removes up to 3. One point of heat makes bricks 25% tougher (`HEAT_HP`) and the level bonuses 6% bigger (`HEAT_PAY`, up to `HEAT_PAY_MAX`). `HP_CURVE` is the toughness for average play; heat corrects it for each player.
+*   **Prices.** From level `PRICE_FROM`, shop prices follow the wealth of the run (`priceIndex`): what the run has earned against `refCoins(level)`, the money of an average run at that level. A rich run pays more and a poor run pays less. This keeps the shop from being bought empty, whatever new coin source the game gets.
+*   **Guns.** A reload runs slowly by itself and each paddle bounce takes time off it (`RELOAD_IDLE`, `RELOAD_HIT`). Brick toughness then pushes against play, not against guns that fire without the player. Do not add a weapon that works at full power with no paddle play, and do not add anything that removes a brick whatever its health.
 *   **The clock.** From `FROM.clock`, each level has a time limit (`parTime`). A level that is not clear in time pays no clear, speed, star or heat bonus and no lucky spin. The remaining bricks crumble without loot.
 *   **Coin value.** The value of a coin rises with the level (`levelVal`), so the income follows the prices. The coin upgrades add small percentages. Do not add an upgrade that multiplies the income without a steep price.
 
@@ -52,7 +56,9 @@ Rules for a map, from play feedback:
 
 A dev check for these rules is not in the repository; the level numbers of the `NEW:` tips and the boss maps (top five rows empty) must stay as they are.
 
-The results screen has a slot machine (`SLOT`, `rollReels`, `pull`, `settle`, `claim`). Three of a kind win a prize, and to take a prize costs a heart. `SLOT_PAIR` and `SLOT_TRIPLE` set how often the drums match.
+The results screen (`showTally`) shows two sums, one line of the snail and a few one-line notes. Its button is outside the part that scrolls. Keep it short: put new information in a note, not in a new row.
+
+The shop has an arcade tab: each mini-game of `BBMini.list` is a shop item whose price is the stake (`startMini`). After every third level from `FORK_FROM`, the snail offers a fork in the road (`showFork`).
 
 Data that outlives a run is in `meta` (`localStorage` key `brickbazaar.meta.v1`): the sticker album (`STICKERS`, `sticker(id)`) and the lifetime totals. Stickers open starting kits (`KITS`). To reset them, remove that key.
 
