@@ -3,6 +3,7 @@
    Map legend: 1-9 brick hit points, S steel, B bomb, T TNT barrel (huge blast), G gold, C chest (a coin on every hit),
    X stone (unbreakable), H hive (spawns blobs), Z volt (zaps its row), P prism (splits the ball),
    D dice (random effect), ? mystery (drops a capsule), J pinata (only a ball can break it; it rains candy), O bumper (a ball that hits it rings and pays),
+   U turtle (only a ball can hurt it: a hit on the shell deals triple damage, the belly underneath takes none),
    ( and ) a pair of portals, . empty.
    slide = { row: pixels per second } makes a row a conveyor. wheel = { x, y, r, n, speed, hp } adds n bricks that turn around a hub.
    foes = enemies that join the level. boss = boss kind (1-5); boss levels keep the top five rows free. */
@@ -43,18 +44,18 @@ window.BB_LEVELS = [
   { name: 'Blob Farm', map: ['H55555555H', '5555555555', '..........', '4444444444', 'X.X.XX.X.X', '4?444444?4', '..........', '..........', '33.3333.33', '..........', '.3..33..3.'], slide: { 4: 26 }, foes: { splitter: 2, mender: 1 }, tip: 'Big blobs split in two' },
   { name: 'Dive Bombers', map: ['..666666..', '...S66S...', '....66....', '....55....', '5555555555', '5P5S55S5P5', '...4444...', '....44....', '....4J....', '..........', '..........', '.4.4..4.4.'], foes: { bomber: 3, shooter: 1 }, tip: 'Bombers blink, then dive at your paddle. Move away or pop them' },
   { name: 'The Vault', map: ['7777J77777', '6666666666', '..........', '..........', '66XXXXXX66', '55X)GC7X55', '..XG?CGX..', '55X7GG7X55', '..XXXXXX..', '..........', '....(.....', '..........', '5........5'], foes: { thief: 2, bomber: 1 }, tip: 'NEW: portals. The only way into the vault' },
-  { name: 'Lightning Rods', map: ['7Z777777Z7', '7777777777', '..........', '6Z666666Z6', '6666666666', '..........', '5Z5Z55Z5Z5', '..........', '..........', '.Z..ZZ..Z.', '.6..66..6.', '.X..XX..X.'], foes: { shooter: 2, splitter: 1 } },
-  { name: 'Checkmate', map: ['7.J.7.7.7.', '.S.S.S.S.S', '6.6.6.6.6.', '.6.D.6.D.6', '6.6.6.6.6.', '.T.5.5.T.5', '..........', '..........', '....55....', '...5..5...', '....55....'], foes: { drifter: 2, bomber: 2, mender: 1 } },
+  { name: 'Lightning Rods', map: ['7Z777777Z7', '7777777777', '..........', '6Z666666Z6', '6666666666', '..........', '5Z5Z55Z5Z5', '..........', '..........', '.Z..ZZ..Z.', '.U..66..U.', '.X..XX..X.'], foes: { shooter: 2, splitter: 1 }, tip: 'NEW: turtles. Hit them from above or from the side' },
+  { name: 'Checkmate', map: ['7.J.7.7.7.', '.S.S.S.S.S', '6.6.6.6.6.', '.U.D.6.D.U', '6.6.6.6.6.', '.T.5.5.T.5', '..........', '..........', '....55....', '...U..U...', '....55....'], foes: { drifter: 2, bomber: 2, mender: 1 } },
   { name: 'Slime Moat', map: ['8888888888', '8HH8888HH8', '7777777777', '..........', '6666666666', '6P6?66?6P6', '5555555555', '..........', 'X..XXXX..X', '..........', '..55..55..'], slide: { 8: -26 }, foes: { splitter: 2, shooter: 2 } },
   { name: 'Slime Queen', map: ['..........', '..........', '..........', '..........', '..........', '6666666666', '5?5S55S5?5', '..........', '5555..5555'], boss: 4, tip: 'BOSS! The Slime Queen bounces around and rains goo' },
-  { name: 'Tax Season', map: ['8C8....8C8', '888....888', '7S7.88.7S7', '777.77.777', '6D6.77.6D6', '666.66.666', '666.66.666', '..........', '..........', '.6.C..C.6.'], foes: { thief: 3, bomber: 1 } },
-  { name: 'Prism Break', map: ['....PP....', '...8888...', '..8J88J8..', '..777777..', '.77P77P77.', '.77777777.', '666P66P666', '6666666666', '..........', '..........', '5..5PP5..5', '55......55'], foes: { shooter: 2, mender: 1, drifter: 2 } },
+  { name: 'Tax Season', map: ['8C8....8C8', '888....888', '7S7.88.7S7', '777.77.777', '6D6.77.6D6', '666.66.666', '666.66.666', '..........', '..........', '.U.C..C.U.'], foes: { thief: 3, bomber: 1 } },
+  { name: 'Prism Break', map: ['....PP....', '...8888...', '..8J88J8..', '..777777..', '.U7P77P7U.', '.77777777.', '666P66P666', '6666666666', '..........', '..........', '5..UPPU..5', '55......55'], foes: { shooter: 2, mender: 1, drifter: 2 } },
   { name: 'Honeycomb', map: ['.8.8.8.8.8', '8H8.8.8H8.', '.8.8.8.8.8', '7.7.7.7.7.', '.7.7H7.7.7', '..........', '6.6.6.6.6.', '.6.6.6.6.6', '..........', '..........', '.6.6..6.6.'], foes: { splitter: 2, mender: 1 } },
-  { name: 'Minefield', map: ['8T8B8T8B8T', '8888888888', '..........', 'B7T7B7T7B7', '7777777777', '..........', '6B6T6B6T6B', '6666666666', '..........', '.O..OO..O.', '..........', 'B6......6B'], foes: { bomber: 3 } },
+  { name: 'Minefield', map: ['8T8B8T8B8T', '8888888888', '..........', 'B7T7B7T7B7', '7777777777', '..........', '6B6T6B6T6B', '6666666666', '..........', '.O..OO..O.', '..........', 'BU......UB'], foes: { bomber: 3 } },
   { name: 'Casino', map: ['GDGDGDGDGD', '99J9999J99', '8C8D88D8C8', '8..8..8..8', '8..8..8..8', '7D777777D7', '7777777777', '..........', '..........', 'G?G?..?G?G'], foes: { thief: 3, shooter: 1 } },
   { name: 'Iron Curtain', map: ['SSSSSSSSSS', '9999999999', 'S9S9SS9S9S', '8888888888', '888.88.888', 'T77.77.77T', '777....777', '77......77', '..........', '..........', 'S.X....X.S'], foes: { shooter: 3, mender: 1 } },
   { name: 'The Swarm', map: ['H88888888H', '8888HH8888', '..........', '8888888888', '..........', 'X8X8XX8X8X', '7777777777', '..........', '..........', '7Z7....7Z7'], slide: { 5: 30 }, foes: { bomber: 2, splitter: 2, drifter: 2 } },
-  { name: 'Rainbow Road', map: ['..9PJZ9D..', '.98C88T89.', '987?77P789', '9876D6Z789', '87T.66.?78', '876....678', '7Z......D7', '6........6', '..........', '5C5T5?5P5Z'], foes: { shooter: 2, thief: 1, mender: 1, bomber: 1 } },
+  { name: 'Rainbow Road', map: ['..9PJZ9D..', '.98C88T89.', '987?77P789', '9876D6Z789', '87T.66.?78', '876....678', '7Z......D7', '6........6', '..........', '5CUT5?UP5Z'], foes: { shooter: 2, thief: 1, mender: 1, bomber: 1 } },
   { name: 'Final Exam', map: ['9999999999', '9SCS99SCS9', '..........', '8888888888', '8T8H88H8T8', '..........', '7777777777', '7D7Z77Z7D7', '..........', '6666666666', '..........', '..........', 'SPS.66.SPS', '.X......X.'], foes: { shooter: 2, mender: 2, bomber: 2, splitter: 1 } },
   { name: 'The Auditor', map: ['..........', '..........', '..........', '..........', '..........', '7777777777', 'S7C7SS7C7S', '..........', '6666..6666'], boss: 5, tip: 'FINAL BOSS! The Auditor wants your coins' },
 ];

@@ -88,3 +88,63 @@
 .mg-crate.mg-out { background: #2a1d3a; }
 .mg-crate.mg-out.mg-is-snail { background: #13302a; }
 .mg-crate.mg-hit { background: #4a1530; }
+
+/* Mortimer on the game area */
+.mg-root [hidden] { display: none; }
+.mg-keeper.mg-live { width: 100%; max-width: 22em; margin: 0 auto 0.5em; flex-shrink: 0; }
+.mg-snail.mg-hop { animation: mg-hop 0.35s ease-out; }
+@keyframes mg-hop { 40% { transform: translateY(-0.35em) rotate(-8deg); } }
+
+/* Claw Machine */
+.mg-cab { position: relative; height: 12em; width: 100%; max-width: 22em; margin: 0 auto; border-radius: 0.9em;
+  border: 0.2em solid #ff4f8b; background: linear-gradient(180deg, #1d2350, #161a36); overflow: hidden; }
+.mg-claw { position: absolute; top: 0; left: 8.333%; width: 2.6em; margin-left: -1.3em; z-index: 3;
+  display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.mg-cable { width: 0.2em; height: 1em; background: #b8c0f0; transition: height 0.8s ease-in-out; }
+.mg-claw.mg-down .mg-cable { height: 7.4em; }
+.mg-hand { width: 2.4em; height: 1.4em; border: 0.3em solid #ffe680; border-top-width: 0.45em; border-radius: 0.3em 0.3em 1.2em 1.2em;
+  border-bottom-color: transparent; transition: transform 0.2s; }
+.mg-claw.mg-shut .mg-hand { transform: scaleX(0.7); }
+.mg-prize { position: absolute; bottom: 0; width: 16.667%; height: 4em; transition: transform 0.25s ease-in; }
+.mg-prize.mg-lift { transform: translateY(-6.4em); transition: transform 0.8s ease-in-out; }
+.mg-prize.mg-won .mg-toy { animation: mg-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; filter: drop-shadow(0 0 0.3em #ffe680); }
+.mg-toy { position: absolute; left: 0; right: 0; bottom: 1.1em; font-size: 2.4em; line-height: 1; }
+.mg-tag { position: absolute; left: 0; right: 0; bottom: 0.1em; font-size: 0.8em; font-weight: 900; color: #ffe680; }
+.mg-pick .mg-drop { animation: mg-pulse 0.7s ease-in-out infinite alternate; }
+
+/* Higher or Lower */
+.mg-pips { display: flex; justify-content: center; gap: 0.5em; margin-bottom: 0.6em; }
+.mg-pip { padding: 0.2em 0.6em; border-radius: 0.6em; background: #ffffff0d; color: #9aa3d6; font-weight: 800; }
+.mg-pip.mg-on { background: #ffe680; color: #2a1700; animation: mg-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.mg-cards { display: flex; justify-content: center; gap: 1.2em; margin-bottom: 0.4em; }
+.mg-card { width: 3.2em; height: 4.4em; border-radius: 0.4em; background: #f4f6ff; color: #1b1f33; font-size: 1.9em; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0.2em 0 #0006; }
+.mg-card.mg-red { color: #e0204f; }
+.mg-card.mg-back { background: repeating-linear-gradient(45deg, #2f8cff, #2f8cff 0.3em, #1b4fa0 0.3em, #1b4fa0 0.6em);
+  border: 0.12em solid #f4f6ff; }
+.mg-card.mg-deal { animation: mg-wobble 0.25s ease-in-out infinite alternate; }
+.mg-hilo { display: grid; grid-template-columns: 1fr 1fr; gap: 0 0.6em; width: 100%; max-width: 22em; margin: 0 auto; }
+.mg-hilo .mg-big { padding: 0.8em 0.4em; }
+.mg-hilo .mg-cash { grid-column: 1 / -1; }
+.mg-root .mg-big:disabled { opacity: 0.45; cursor: default; }
+
+/* Snail Curling */
+.mg-rink { display: flex; justify-content: center; align-items: flex-end; gap: 0.8em; }
+.mg-ice { position: relative; width: 6.5em; margin: 1em 0 1.2em; border-radius: 0.8em;
+  background: linear-gradient(180deg, #cfe9ff, #eef6ff); box-shadow: 0 0 0 0.6em #cfe9ff, 0 0 0 0.75em #ffffff33; }
+.mg-house { position: absolute; left: 50%; width: 0; height: 0; }
+.mg-ring { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); border-radius: 50%; }
+.mg-ring:nth-child(1) { background: #2f8cff; }
+.mg-ring:nth-child(2) { background: #f4f6ff; }
+.mg-ring:nth-child(3) { background: #ff4f8b; }
+.mg-leaf { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); font-size: 0.9em; line-height: 1; }
+.mg-stone { position: absolute; left: 50%; bottom: 0; font-size: 1.8em; line-height: 1; transform: translate(-50%, 50%); z-index: 2;
+  filter: drop-shadow(0 0.1em 0.1em #0006); }
+.mg-stone.mg-slide { transition: bottom 1.6s cubic-bezier(0.15, 0.7, 0.3, 1), opacity 0.3s; }
+.mg-stone.mg-gone { opacity: 0; }
+.mg-meter { position: relative; width: 1.2em; margin: 1em 0 1.2em; border-radius: 0.6em; background: #ffffff14; overflow: hidden; }
+.mg-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, #5ef0ff, #ff4f8b); }
+.mg-mark { position: absolute; left: 0; right: 0; height: 0.25em; margin-bottom: -0.125em; background: #ffe680; z-index: 1; }
+.mg-shots { min-height: 1.4em; font-weight: 900; color: #ffe680; }
+.mg-hold { touch-action: none; -webkit-touch-callout: none; }
+.mg-pick .mg-hold { animation: mg-pulse 0.7s ease-in-out infinite alternate; }

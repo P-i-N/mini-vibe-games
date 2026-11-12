@@ -202,3 +202,10 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .tallyv .trows { width: 100%; margin-top: 0.5em; }
 .mghost { width: 100%; height: 100%; }
 .relic .rds i { font-style: normal; color: #ffe680; }
+
+/* Seals, sets and the price lock */
+.purse { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25em; }
+.coins.seals { font-size: 0.95em; color: #bfe9ff; background: #12233f; border-color: #5ef0ff55; }
+.setline { font-size: 0.68em; line-height: 1.25; color: #9aa3d6; border-top: 1px dashed #ffffff22; padding-top: 0.3em; }
+.setline.on { color: #7cf2a8; }
+.sale.lock { background: #2f8cff; }
