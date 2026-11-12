@@ -161,3 +161,21 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .heatnote { max-width: 20em; margin: 0 auto 0.8em; padding: 0.5em 0.7em; border-radius: 0.8em; background: #14263a; border: 1px solid #a8e6ff55; color: #cfeaff; font-size: 0.85em; }
 .heatnote.up { background: #3a1a12; border-color: #ff9a3d88; color: #ffd9b0; font-weight: 700; }
 .nospin { color: #ff9aa8; font-size: 0.85em; margin: 0 0 0.8em; }
+.keeper { display: flex; align-items: center; gap: 0.5em; margin-top: 0.45em; flex-shrink: 0; }
+.keeper .snail { font-size: 1.7em; line-height: 1; filter: drop-shadow(0 0 0.2em #ffd84a66); }
+.keeper .bubble { position: relative; flex: 1; padding: 0.4em 0.7em; border-radius: 0.8em; background: #f4f6ff; color: #1b1f33; font-size: 0.85em; font-weight: 600; line-height: 1.25; }
+.keeper .bubble::before { content: ""; position: absolute; left: -0.4em; top: 50%; margin-top: -0.35em; border: 0.35em solid transparent; border-right-color: #f4f6ff; border-left: 0; }
+.minis { display: flex; gap: 0.4em; margin-bottom: 0.4em; }
+.mini { flex: 1; padding: 0.45em 0.4em; border-radius: 0.7em; border: 1px solid #ffffff2a; background: #ffffff10; color: #e8ecff; font: inherit; font-size: 0.85em; font-weight: 700; cursor: pointer; }
+.mini:disabled { opacity: 0.4; cursor: default; }
+.mini.armed { background: #ffd84a; color: #2a2410; border-color: #ffd84a; }
+.shopmsg .mini { display: inline-block; flex: none; margin-left: 0.4em; padding: 0.2em 0.6em; background: #ffd84a; color: #2a2410; border-color: #ffd84a; }
+.stk { display: grid; grid-template-columns: 2.2em 1fr; column-gap: 0.5em; align-items: center; padding: 0.55em 0.6em; border-radius: 0.9em; background: #ffffff08; border: 1px solid #ffffff14; color: #7d86b8; }
+.stk .si { grid-row: 1 / 3; font-size: 1.7em; text-align: center; filter: grayscale(1) opacity(0.5); }
+.stk b { font-size: 0.85em; }
+.stk i { font-style: normal; font-size: 0.72em; line-height: 1.25; }
+.stk.on { background: #12233f; border-color: #5ef0ff55; color: #c9d0ff; }
+.stk.on .si { filter: none; }
+.stk.on b { color: #ffffff; }
+.stat.life { font-size: 0.85em; color: #9aa3d6; margin-top: 0.8em; }
+.relic.kit { padding-top: 0.5em; padding-bottom: 0.5em; }

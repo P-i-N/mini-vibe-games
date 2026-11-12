@@ -2,14 +2,16 @@
 /* Brick Bazaar audio: synthesised sound effects and generative music. No samples.
    Effects take their pitch from the chord that the music plays at that moment. */
 window.BBAudio = (() => {
-  let ctx = null, sfxBus = null, musicBus = null, musicFilter = null, noiseBuf = null;
+  let ctx = null, sfxBus = null, musicBus = null, musicFilter = null, noiseBuf = null, delay = null;
   let sfxOn = true, musicOn = true;
 
   function init() {
     if (!ctx) {
       try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; return; }
+      // iOS: play also when the ringer switch is off
+      if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ } }
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -16; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
+      comp.threshold.value = -16; comp.knee.value = 6; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
       const master = ctx.createGain(); master.gain.value = 0.9;
       master.connect(comp); comp.connect(ctx.destination);
       sfxBus = ctx.createGain(); sfxBus.connect(master);
@@ -20,8 +22,10 @@ window.BBAudio = (() => {
         chan[n] = ctx.createGain(); chan[n].gain.value = MIX[level][n]; chan[n].connect(musicBus);
       }
       // a feedback echo on the melodic channels
-      const delay = ctx.createDelay(1), fb = ctx.createGain(), wet = ctx.createGain();
-      delay.delayTime.value = 0.32; fb.gain.value = 0.3; wet.gain.value = 0.3;
+      // the echo time is three sixteenth notes, so that it stays on the beat
+      const fb = ctx.createGain(), wet = ctx.createGain();
+      delay = ctx.createDelay(1);
+      delay.delayTime.value = echoTime(); fb.gain.value = 0.3; wet.gain.value = 0.3;
       chan.arp.connect(delay); chan.lead.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(musicBus);
       noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
       const d = noiseBuf.getChannelData(0);
@@ -29,7 +33,7 @@ window.BBAudio = (() => {
       nextT = ctx.currentTime + 0.1;
       setInterval(schedule, 40);
     }
-    if (ctx.state === 'suspended' && !document.hidden) ctx.resume();
+    if (ctx.state !== 'running' && !document.hidden) ctx.resume();
   }
   document.addEventListener('visibilitychange', () => {
     if (!ctx) return;
@@ -117,7 +121,8 @@ window.BBAudio = (() => {
     rocket: [80, () => noise(0.25, { type: 'bandpass', f: 500, to: 2600, q: 2, vol: 0.06 })],
     boom: [45, (small) => {
       const v = small ? 0.5 : 1, r = root();
-      noise(0.38, { f: 1500, to: 70, vol: 0.24 * v }); tone(r, 0.32, { type: 'sine', vol: 0.22 * v, to: r / 2 });
+      noise(0.38, { f: 1500, to: 70, vol: 0.24 * v }); tone(r, 0.32, { type: 'sine', vol: 0.2 * v, to: r / 2 });
+      tone(r * 2, 0.25, { type: 'triangle', vol: 0.1 * v, to: r });
     }],
     zap: [50, () => { const f = ct(3, ri(3)); noise(0.09, { type: 'highpass', f: 2500, vol: 0.045 }); tone(f, 0.09, { type: 'sawtooth', vol: 0.028, to: f / 8 }); }],
     lose: [0, () => { const f = ct(1, 0); tone(f, 0.5, { type: 'sawtooth', vol: 0.08, to: f / 4 }); noise(0.3, { f: 600, vol: 0.08 }); }],
@@ -144,7 +149,7 @@ window.BBAudio = (() => {
     bossHit: [40, () => { tone(root(), 0.07, { vol: 0.05 }); noise(0.05, { f: 1500, vol: 0.05 }); }],
     bossDie: [0, () => {
       const r = root();
-      for (let i = 0; i < 4; i++) { noise(0.4, { f: 1500, to: 70, vol: 0.2, at: i * 0.14 }); tone(r, 0.35, { type: 'sine', vol: 0.18, to: r / 2, at: i * 0.14 }); }
+      for (let i = 0; i < 4; i++) { noise(0.4, { f: 1500, to: 70, vol: 0.12, at: i * 0.14 }); tone(r * 2, 0.35, { type: 'triangle', vol: 0.1, to: r / 2, at: i * 0.14 }); }
     }],
     foeHit: [35, () => tone(ct(2, ri(3)), 0.04, { vol: 0.03 })],
     foePop: [30, () => { const f = ct(1, ri(3)); tone(f, 0.13, { type: 'triangle', vol: 0.06, to: f * 2 }); noise(0.06, { type: 'highpass', f: 2000, vol: 0.04 }); }],
@@ -152,7 +157,7 @@ window.BBAudio = (() => {
     bossFire: [60, () => { const f = ct(0, 0); tone(f, 0.15, { type: 'sawtooth', vol: 0.04, to: f / 2 }); }],
     steal: [60, () => { const f = ct(1, ri(3)); tone(f, 0.08, { vol: 0.03, to: f / 2 }); }],
     stun: [0, () => { const r = root(); tone(r * 2, 0.25, { type: 'sawtooth', vol: 0.05, to: r }); }],
-    streak: [0, (tier = 1) => { const i = Math.min(tier, 5); tone(ct(1, i), 0.16, { type: 'triangle', vol: 0.07 }); tone(ct(1, i + 2), 0.2, { type: 'triangle', vol: 0.05, at: 0.07 }); }],
+    streak: [120, (tier = 1) => { const i = Math.min(tier, 5); tone(ct(1, i), 0.16, { type: 'triangle', vol: 0.07 }); tone(ct(1, i + 2), 0.2, { type: 'triangle', vol: 0.05, at: 0.07 }); }],
     split: [60, () => { const f = ct(1, ri(3)), g = ct(2, ri(3)); tone(f, 0.1, { type: 'triangle', vol: 0.05, to: f * 2 }); tone(g, 0.1, { type: 'triangle', vol: 0.04, to: g * 2, at: 0.05 }); }],
     relic: [0, () => arp(climb(1, 0, 7), 0.07, { type: 'sine', vol: 0.07, dur: 0.3 })],
     blimp: [60, () => { tone(ct(3, 0), 0.08, { type: 'sine', vol: 0.06 }); tone(ct(3, 1 + ri(2)), 0.12, { type: 'sine', vol: 0.06, at: 0.07 }); }],
@@ -168,17 +173,18 @@ window.BBAudio = (() => {
     teleport: [0, () => { const f = ct(1, 0); tone(f, 0.16, { type: 'sine', vol: 0.07, to: f * 4 }); }],
     nuke: [0, () => {
       const r = root();
-      noise(0.9, { f: 3000, to: 60, vol: 0.3 }); tone(r * 2, 0.8, { type: 'sine', vol: 0.25, to: r / 2 });
+      noise(0.9, { f: 3000, to: 60, vol: 0.18 }); tone(r * 2, 0.8, { type: 'sine', vol: 0.15, to: r / 2 }); tone(r * 4, 0.5, { type: 'triangle', vol: 0.08, to: r });
       tone(ct(1, 0), 0.5, { type: 'sawtooth', vol: 0.04, to: ct(3, 0) });
     }],
-    jackpot: [0, () => arp(climb(2, 0, 8), 0.045, { type: 'sine', vol: 0.07, dur: 0.14 })],
+    jackpot: [150, () => arp(climb(2, 0, 8), 0.045, { type: 'sine', vol: 0.07, dur: 0.14 })],
     dice: [0, () => { for (let i = 0; i < 3; i++) tone(ct(2, ri(4)), 0.04, { vol: 0.04, at: i * 0.06 }); }],
-    cheer: [0, (tier = 0) => { for (const f of climb(1, Math.min(tier, 4), 3)) tone(f, 0.28, { type: 'sawtooth', vol: 0.035 }); noise(0.1, { type: 'highpass', f: 4000, vol: 0.03 }); }],
+    cheer: [150, (tier = 0) => { for (const f of climb(1, Math.min(tier, 4), 3)) tone(f, 0.28, { type: 'sawtooth', vol: 0.035 }); noise(0.1, { type: 'highpass', f: 4000, vol: 0.03 }); }],
     overdrive: [0, () => { const f = ct(0, 0); tone(f, 0.35, { type: 'sawtooth', vol: 0.05, to: f * 4 }); arp(climb(2, 0, 4), 0.05, { vol: 0.03, dur: 0.08 }); }],
     ding: [0, (n = 0) => { const f = ct(2, Math.min(n, 6)); tone(f, 0.3, { type: 'sine', vol: 0.09 }); tone(f * 2, 0.2, { type: 'sine', vol: 0.04, at: 0.02 }); }],
     squawk: [60, (n = 0) => { const f = ct(1, Math.min(n, 5)); tone(f * 1.5, 0.05, { type: 'square', vol: 0.035, to: f }); tone(f, 0.09, { type: 'sawtooth', vol: 0.04, to: f * 1.3, at: 0.05 }); }],
+    riser: [0, () => noise(1.3, { type: 'bandpass', f: 400, to: 6000, q: 3, vol: 0.05 })],
     roar: [0, () => { noise(0.9, { type: 'bandpass', f: 900, q: 0.6, vol: 0.12 }); for (const f of climb(1, 0, 3)) tone(f, 0.7, { type: 'sawtooth', vol: 0.03 }); }],
-    raspberry: [120, () => { const f = root() / 2; for (let i = 0; i < 6; i++) tone(f * (1 + ri(3) * 0.06), 0.04, { type: 'sawtooth', vol: 0.06, at: i * 0.045 }); }],
+    raspberry: [120, () => { const f = root(); for (let i = 0; i < 6; i++) tone(f * (1 + ri(3) * 0.06), 0.04, { type: 'sawtooth', vol: 0.06, at: i * 0.045 }); }],
     ping: [40, (n = 0) => { tone(ct(3, n % 5), 0.12, { type: 'triangle', vol: 0.06 }); }],
     eek: [90, () => { const f = ct(3, ri(4)); tone(f, 0.06, { type: 'sine', vol: 0.035, to: f * 1.4 }); }],
     whack: [50, () => { noise(0.07, { f: 900, vol: 0.1 }); tone(ct(0, ri(3)), 0.08, { type: 'triangle', vol: 0.07, to: root() / 2 }); }],
@@ -220,6 +226,11 @@ window.BBAudio = (() => {
   const RHY = [[0, 4, 8, 12], [0, 3, 6, 8, 12], [0, 6, 8, 10, 14], [2, 4, 8, 11, 12], [0, 8, 12], [0, 2, 4, 8, 10, 12], [4, 6, 8, 14]];
   const chan = {};
   let step = 0, nextT = 0, level = 0, key = 0, wantKey = 0, sec = null, form = null, formPos = 0;
+  // baseKey = the key of the level, lift = semitones up during a fever, hot = the streak (it adds a faster arpeggio and
+  // hats), rush = tempo factor in the last seconds of the clock, cut = start a new section at the next bar.
+  let baseKey = 0, lift = 0, hot = 0, rush = 1, cut = false, beat0 = 0;
+  const stepLen = () => 60 / (TEMPO[level] * rush) / 4;
+  const echoTime = () => (3 * 60) / TEMPO[level] / 4;
 
   // A melody on the major pentatonic scale of the key. Strong beats land on chord tones.
   // Bar 2 repeats the contour of bar 0, which makes the tune sound intended.
@@ -265,11 +276,18 @@ window.BBAudio = (() => {
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(bus); o.start(t); o.stop(t + dur + 0.03);
   }
+  function padNote(f, t, dur) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.028, t + 0.25); g.gain.linearRampToValueAtTime(0.02, t + dur * 0.7); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(chan.pad); o.start(t); o.stop(t + dur + 0.03);
+  }
   function kick(t) {
     const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    o.type = 'sine'; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(60, t + 0.1);
     g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
     o.connect(g); g.connect(chan.drums); o.start(t); o.stop(t + 0.2);
+    hiss(t, 0.05, 0.008, 'highpass', 3000);
   }
   function hiss(t, vol, dur, type, freq) {
     const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
@@ -281,10 +299,10 @@ window.BBAudio = (() => {
   function snare(t, vol) { hiss(t, vol, 0.12, 'bandpass', 1800); mnote(chan.drums, 190, t, 0.07, 'triangle', vol * 0.8, 0.002); }
 
   function playStep(s, t) {
-    const i = s & 15, bar = (s >> 4) & 3, ch = sec.chords[bar], len = 60 / TEMPO[level] / 4;
-    if (i === 0) for (let k = 1; k < 4; k++) mnote(chan.pad, hz(ch[k]), t, len * 17, 'triangle', 0.03, 0.2);
+    const i = s & 15, bar = (s >> 4) & 3, ch = sec.chords[bar], len = stepLen();
+    if (i === 0) for (let k = 1; k < 4; k++) padNote(hz(ch[k]), t, len * 17);
     for (const [st, up] of BASS[level === 0 ? 0 : level === 2 ? 3 : sec.bass]) if (st === i) mnote(chan.bass, hz(ch[0] + up), t, len * 2.2, 'sawtooth', 0.075);
-    const every = level === 0 ? 4 : level === 1 ? 2 : 1;
+    const every = level === 0 ? 4 : level === 1 && hot < 10 ? 2 : 1;
     if (i % every === 0) {
       const n = sec.arp[(i / every) % 8];
       if (n >= 0) mnote(chan.arp, hz(ch[1 + (n % 3)] + 12 * (1 + Math.floor(n / 3)) + (level === 2 && i >= 8 ? 12 : 0)), t, len * 1.6, level === 0 ? 'sine' : 'square', level === 0 ? 0.04 : 0.016);
@@ -298,17 +316,20 @@ window.BBAudio = (() => {
     const d = DRUMS[level === 2 ? 3 : sec.drum];
     if (d.k.includes(i)) kick(t);
     if (d.s.includes(i)) snare(t, 0.08);
-    if (d.h.includes(i)) hat(t);
+    if (d.h.includes(i) || (level === 1 && hot >= 10 && (i & 1))) hat(t);
     if (sec.fill && bar === 3 && i >= 12) snare(t, 0.03 + (i - 12) * 0.02);
   }
   function schedule() {
     if (!ctx || ctx.state !== 'running') return;
     if (nextT < ctx.currentTime) nextT = ctx.currentTime + 0.05; // after a suspended tab
     while (nextT < ctx.currentTime + 0.18) {
+      if (cut && (step & 15) === 0) { cut = false; step = 0; }
       if (step === 0) nextSection();
+      if ((step & 3) === 0) beat0 = nextT;
       if ((step & 15) === 0) barQ.push({ t: nextT, ch: sec.chords[(step >> 4) & 3] });
+      while (barQ.length > 4) curChord = barQ.shift().ch;
       if (musicOn) playStep(step, nextT);
-      nextT += 60 / TEMPO[level] / 4; step = (step + 1) & 63;
+      nextT += stepLen(); step = (step + 1) & 63;
     }
   }
 
@@ -316,13 +337,30 @@ window.BBAudio = (() => {
     init, sfx,
     // 0 = ambient (menu, bazaar, pause), 1 = playing, 2 = fever or boss
     music(l) {
-      level = l;
+      level = l; if (l === 0) rush = 1;
       if (!ctx) return;
       for (const n in chan) chan[n].gain.setTargetAtTime(MIX[l][n], ctx.currentTime, 0.6);
       musicFilter.frequency.setTargetAtTime(MIX[l].cutoff, ctx.currentTime, 0.5);
+      delay.delayTime.setTargetAtTime(echoTime(), ctx.currentTime, 0.1);
+    },
+    // A fever lifts the song by two semitones from the next bar. on = false puts it back.
+    fever(on) { lift = on ? 2 : 0; wantKey = baseKey + lift; cut = true; },
+    // The streak count. A long streak makes the arpeggio faster, adds hats and opens the filter.
+    streak(n) {
+      const was = hot; hot = n;
+      if (!ctx || level !== 1 || (was >= 20) === (n >= 20)) return;
+      musicFilter.frequency.setTargetAtTime(n >= 20 ? 6000 : MIX[1].cutoff, ctx.currentTime, 0.4);
+    },
+    // Seconds left on the level clock. The tempo rises in the last 10 seconds. Call with a big number to reset.
+    rush(left) { rush = left < 10 ? 1 + 0.015 * (10 - left) : 1; },
+    // 1 on a beat of the music, then down to 0. For visuals that move with the music.
+    beat() {
+      if (!ctx || !musicOn || ctx.state !== 'running') return 0;
+      const len = stepLen() * 4, ph = (((ctx.currentTime - beat0) / len) % 1 + 1) % 1;
+      return (1 - ph) * (1 - ph);
     },
     // A new key from the next section on. Called with the level number.
-    tune(n) { wantKey = KEYS[n % KEYS.length]; },
+    tune(n) { baseKey = KEYS[n % KEYS.length]; wantKey = baseKey + lift; },
     // 'off' before the first tap, then the AudioContext state
     state() { return ctx ? ctx.state : 'off'; },
     setSfx(on) { sfxOn = on; },
