@@ -4,7 +4,7 @@
    Sound is in audio.js, the campaign maps are in levels.js. */
 (() => {
   const W = 480, H = 800;
-  const HUD_H = 58;
+  const HUD_H = 64;
   const PADDLE_Y = H - 115, PADDLE_H = 14;
   const GOALIE_Y = H - 62, NET_Y = H - 26;
   const COLS = 10, BW = 44, BH = 20, GAP = 2;
@@ -87,11 +87,12 @@
     const t = GUN_TEXT[g];
     if (!l) return t[0] + ' Fires and reloads by itself.';
     const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : '';
-    return `${t[0]} Each level: faster and stronger.${next}`;
+    return `${t[0]} Each level: faster and stronger.${next}${l >= 5 && l < gunMax() ? ' The Gun Workshop allows this level.' : ''}`;
   }
   const CATS = [
     { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
-    { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Economy' }, { id: 'wild', name: '🎲 Wild' },
+    { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Coins' }, { id: 'blimp', name: '🎈 Blimps' },
+    { id: 'wild', name: '🎲 Wild' }, { id: 'dark', name: '🌶️ Spicy' },
   ];
   // at = the level from which the shop stocks the item. A new player sees three items; two or three more arrive per level.
   // Normal items are upgrades: level lv(id), cost base * grow^level, up to max.
@@ -112,6 +113,10 @@
       desc: (l) => `Reloads are ${Math.round((1 - Math.pow(RELOAD_CUT, l + 1)) * 100)}% shorter.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
     { id: 'recycler', at: 14, cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
       desc: (l) => `${(l + 1) * 12}% chance a shot uses no ammo.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'echo', at: 22, cat: 'weap', icon: '📣', name: 'Echo Chamber', max: 4, base: 320, grow: 1.9,
+      desc: (l) => `${(l + 1) * 12}% chance that a gun fires twice.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'workshop', at: 32, cat: 'weap', icon: '🛠️', name: 'Gun Workshop', max: 2, base: 1500, grow: 3,
+      desc: (l) => `Every gun can go one level higher. Now: up to level ${5 + l}.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
 
     { id: 'd_orbit', at: 6, cat: 'drone', icon: '🛰️', name: 'Orbiter', max: 3, base: 100, grow: 1.8,
       desc: (l) => `Circles your paddle and fires free shots. Owned: ${l}/3.` },
@@ -122,7 +127,9 @@
     { id: 'd_goalie', at: 12, cat: 'drone', icon: '🧤', name: 'Goalie', max: 3, base: 140, grow: 1.8,
       desc: (l) => l ? `Saves a missed ball. Recharge: ${goalieRecharge(l)}s → ${goalieRecharge(l + 1)}s.` : `Patrols below the paddle and saves a missed ball every ${goalieRecharge(1)}s.` },
     { id: 'd_over', at: 18, cat: 'drone', icon: '⚙️', name: 'Overclock', max: 3, base: 120, grow: 1.8,
-      desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => lv('d_orbit') + lv('d_hunter') + lv('d_collect') + lv('d_goalie') > 0, reqText: 'Needs a drone' },
+      desc: (l) => `All drones work ${(l + 1) * 25}% faster.`, req: () => DRONE_IDS.some((d) => lv(d) > 0), reqText: 'Needs a drone' },
+    { id: 'd_ufo', at: 34, cat: 'drone', icon: '🛸', name: 'Abductor', max: 2, base: 900, grow: 2.5,
+      desc: (l) => `A saucer that beams up a whole brick every few seconds. Owned: ${l}/2.` },
 
     { id: 'width', at: 2, cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
       desc: () => 'Paddle +12% wider.' },
@@ -142,6 +149,8 @@
       desc: (l) => `Bomb bricks blast a wider area and deal ${l + 3} damage.` },
     { id: 'puluck', at: 6, cat: 'gear', icon: '🎁', name: 'Lucky Capsules', max: 4, base: 50, grow: 1.6,
       desc: () => 'More power-up capsules, and they last 15% longer.' },
+    { id: 'sand', at: 13, cat: 'gear', icon: '⏳', name: 'Sand Timer', max: 3, base: 90, grow: 1.9,
+      desc: (l) => `The clock runs ${(l + 1) * SAND_S} seconds longer on every level.` },
 
     { id: 'dmg', at: 2, cat: 'ball', icon: '🔩', name: 'Heavy Core', max: 6, base: 90, grow: 1.9,
       desc: (l) => `Ball deals ${l + 2} damage per hit.` },
@@ -151,8 +160,8 @@
       desc: (l) => `After each paddle bounce the ball smashes through ${l + 1} brick${l ? 's' : ''} without bouncing.` },
     { id: 'twin', at: 8, cat: 'ball', icon: '⚪', name: 'Twin Serve', max: 3, base: 100, grow: 2.2,
       desc: (l) => `Every serve launches ${l + 2} balls.` },
-    { id: 'bigball', at: 6, cat: 'ball', icon: '🟠', name: 'Big Ball', max: 3, base: 85, grow: 1.8,
-      desc: () => 'A bigger ball that is easier to hit and clips more bricks.' },
+    { id: 'momentum', at: 17, cat: 'ball', icon: '☄️', name: 'Momentum', max: 4, base: 140, grow: 1.9,
+      desc: (l) => `Each brick in a streak adds ${(l + 1) * 4}% ball damage, up to +${(l + 1) * 100}%. A paddle bounce resets it.` },
     { id: 'splash', at: 11, cat: 'ball', icon: '💥', name: 'Shatter Core', max: 4, base: 95, grow: 1.7,
       desc: (l) => `${(l + 1) * 15}% chance a ball hit also chips every brick around it.` },
     { id: 'chill', at: 13, cat: 'ball', icon: '❄️', name: 'Chill Field', max: 3, base: 60, grow: 1.7,
@@ -161,19 +170,37 @@
     { id: 'luck', at: 2, cat: 'eco', icon: '🍀', name: 'Lucky Bricks', max: 6, base: 45, grow: 1.7,
       desc: (l) => `Coin drop chance ${Math.round(coinChance(l) * 100)}% → ${Math.round(coinChance(l + 1) * 100)}%.` },
     { id: 'value', at: 5, cat: 'eco', icon: '🪙', name: 'Gold Plating', max: 5, base: 90, grow: 2.3,
-      desc: (l) => `Each coin is worth ${l + 2}.` },
+      desc: (l) => `Every coin is worth ${(l + 1) * 10}% more.` },
     { id: 'piggy', at: 7, cat: 'eco', icon: '🐷', name: 'Piggy Bank', max: 4, base: 80, grow: 1.7,
-      desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * 30}).` },
+      desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * piggyCap()}).` },
     { id: 'streak', at: 8, cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 70, grow: 2,
-      desc: (l) => `Streak payouts are ${(l + 1) * 50}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
+      desc: (l) => `Streak payouts are ${(l + 1) * 25}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
     { id: 'foebounty', at: 9, cat: 'eco', icon: '🎯', name: 'Monster Bounty', max: 3, base: 70, grow: 1.7,
       desc: (l) => `Enemies drop +${l + 1} coin${l ? 's' : ''}, bosses drop ${(l + 1) * 25}% more.` },
     { id: 'bounty', at: 4, cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
-      desc: (l) => `Level clear bonus +${(l + 1) * 25}%.` },
+      desc: (l) => `Level clear bonus +${(l + 1) * 15}%.` },
+    { id: 'bonds', at: 20, cat: 'eco', icon: '📜', name: 'Bazaar Bonds', max: 8, base: 220, grow: 1.45,
+      desc: (l) => `Pays ${bondPay(l + 1)} coins after every level, for the rest of the run.${l ? ` Now: ${bondPay(l)}.` : ''}` },
+    { id: 'goldage', at: 28, cat: 'eco', icon: '🏺', name: 'Golden Age', max: 99, base: 500, grow: 1.7,
+      desc: (l) => `Every coin is worth 10% more. Now +${l * 10}%. No limit.` },
+
+    { id: 'bait', at: 9, cat: 'blimp', icon: '🪱', name: 'Blimp Bait', max: 2, base: 90, grow: 2.5,
+      desc: (l) => `${l + 2} blimps visit every level.` },
+    { id: 'cargo', at: 12, cat: 'blimp', icon: '📦', name: 'Fat Cargo', max: 3, base: 110, grow: 2.2,
+      desc: (l) => `Each hit on a blimp shakes out ${l + 3} coins.` },
+    { id: 'safari', at: 14, cat: 'blimp', icon: '🎪', name: 'Safari Ticket', price: () => safariPrice(), full: () => run.safariAt === run.level,
+      desc: () => `A bonus round, right now: ${SAFARI_S} seconds of blimps and no bricks. The price follows your best haul. One ticket per visit.`,
+      use: () => { run.safariAt = run.level; run.pendingSafari = true; } },
+    { id: 'hull', at: 15, cat: 'blimp', icon: '🧵', name: 'Patched Hulls', max: 2, base: 160, grow: 2.4,
+      desc: (l) => `Blimps survive ${l + 1} more hit${l ? 's' : ''}. More hits, more loot.` },
+    { id: 'goldtix', at: 19, cat: 'blimp', icon: '🎫', name: 'Golden Ticket', max: 3, base: 200, grow: 2.2,
+      desc: (l) => `Golden blimps come ${l + 2} times as often. They are fast and full of coins.` },
+    { id: 'd_blimp', at: 24, cat: 'blimp', icon: '🎈', name: 'War Blimp', max: 3, base: 420, grow: 2.1,
+      desc: (l) => `Your own blimp. It floats over the bricks and drops bombs. Owned: ${l}/3.` },
 
     { id: 'power', at: 11, cat: 'wild', icon: '🔥', name: 'Overcharge', max: 99, base: 150, grow: 1.35,
       desc: (l) => `All damage +10%. Now +${l * 10}%. No limit.` },
-    { id: 'box', at: 10, cat: 'wild', icon: '🎁', name: 'Mystery Box', price: () => 30 + 12 * run.level, full: () => upgradePool().length === 0,
+    { id: 'box', at: 10, cat: 'wild', icon: '🎁', name: 'Mystery Box', price: () => boxPrice(), full: () => upgradePool().length === 0,
       desc: () => 'One level of a random upgrade. Often worth more than it costs.',
       use: () => { const it = pick(upgradePool()); run.up[it.id] = lv(it.id) + 1; return `🎁 ${it.icon} ${it.name} level ${lv(it.id)}!`; } },
     { id: 'reroll', at: 12, cat: 'wild', icon: '🏷️', name: 'New Sales', price: () => 20 * (1 + shopRerolls),
@@ -185,6 +212,25 @@
     { id: 'life', at: 4, cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => Math.round(60 * Math.pow(1.45, run.lifeBought)), full: () => run.lives >= 6,
       desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.`,
       use: () => { run.lives++; run.lifeBought++; } },
+    { id: 'parbet', at: 10, cat: 'wild', icon: '🎟️', name: 'Speed Bet', price: () => betStake(), full: () => run.bet > 0,
+      desc: () => (run.bet ? `You bet ${run.bet} coins on the next level.` : `Bet that you clear the next level in the first half of the clock. Win: ${BET_PAYS} times your stake.`),
+      use: () => { run.bet = betStake(); return '🎟️ The bet is on!'; } },
+    { id: 'order', at: 17, cat: 'wild', icon: '📅', name: 'Special Order', price: () => 40 + 8 * run.level, full: () => !run.offer || !!run.nextSpecial || !!levelDef(run.level).boss,
+      desc: () => (run.nextSpecial ? `Booked for the next level: ${specialById(run.nextSpecial).name}.` : levelDef(run.level).boss || !run.offer ? 'Book a special for the next level. Not for boss levels.'
+        : `Book ${specialById(run.offer).name} for the next level: ${specialById(run.offer).text.toLowerCase()}.`),
+      use: () => { run.nextSpecial = run.offer; return `📅 ${specialById(run.offer).name} is booked!`; } },
+
+    { id: 'chili', at: 23, cat: 'dark', icon: '🌶️', name: 'Ghost Pepper', price: () => 150 + 30 * run.level,
+      desc: () => `Heat +1, right now: tougher bricks, bigger bonuses. Heat is ${run.heat}.`,
+      use: () => { run.heat++; return '🌶️ It burns!'; } },
+    { id: 'icecream', at: 23, cat: 'dark', icon: '🍦', name: 'Ice Cream', price: () => 40 + 10 * run.level, full: () => run.heat <= HEAT_MIN,
+      desc: () => `Heat −1, right now: softer bricks, smaller bonuses. Heat is ${run.heat}.`,
+      use: () => { run.heat--; return '🍦 Ahh. Cooler.'; } },
+    { id: 'devil', at: 25, cat: 'dark', icon: '😈', name: "Devil's Bargain", price: () => 0, full: () => run.lives <= 1 || relicChoices().length === 0,
+      desc: () => 'Give one life. Pick a relic.', verb: 'Trade a life',
+      use: () => { run.lives--; run.pendingRelic = true; } },
+    { id: 'edge', at: 30, cat: 'dark', icon: '🗡️', name: 'Double Edge', max: 3, base: 500, grow: 2.2,
+      desc: (l) => `All damage +25%, but the clock is ${EDGE_S} seconds shorter.${l ? ` Now +${l * 25}%, −${l * EDGE_S} s.` : ''}` },
   ];
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
   for (const it of ITEMS) {
@@ -192,18 +238,39 @@
     it.icon = GUNS[it.gun].icon; it.name = GUNS[it.gun].name; it.gunItem = true; it.desc = (l) => gunDesc(it.gun, l);
   }
 
-  const coinChance = (l) => 0.16 + 0.05 * l;
+  const coinChance = (l) => 0.16 + 0.04 * l;
+  const piggyCap = () => 20 + 2 * run.level;
+  // The value of a coin rises with the level, so that the income follows the prices. Upgrades add to it.
+  const levelVal = () => 1 + run.level / 20;
+  const coinVal = () => levelVal() * (1 + 0.1 * lv('value')) * (1 + 0.1 * lv('goldage'));
+  // A ticket costs 70% of the best safari haul of the run, so that it stays a gamble.
+  const safariPrice = () => Math.max(Math.round(80 * coinVal()), Math.round(0.7 * (run.safariBest || 0)));
+  const betStake = () => Math.round((15 + 4 * run.level) * COIN_MULT);
+  // The Mystery Box costs three quarters of the average price in its pool.
+  function boxPrice() { const pool = upgradePool(); return pool.length ? Math.round(0.75 * pool.reduce((a, it) => a + itemCost(it), 0) / pool.length) : 0; }
+  // The cheaper half of the upgrade pool: prizes come from it.
+  function cheapPool() { const pool = upgradePool().sort((a, b) => itemCost(a) - itemCost(b)); return pool.slice(0, Math.ceil(pool.length / 2)); }
   const goalieRecharge = (l) => [0, 12, 9, 6, 6][Math.min(l, 4)];
   const lv = (id) => (run && run.up[id]) || 0;
   const ownsAnyGun = () => Object.keys(GUNS).some((g) => lv('gun_' + g) > 0);
   const RELOAD_CUT = 0.82; // reload time factor per Quick Hands level
+  const DRONE_IDS = ['d_orbit', 'd_hunter', 'd_collect', 'd_goalie', 'd_blimp', 'd_ufo'];
+  const gunMax = () => 5 + lv('workshop');
+  const maxOf = (it) => (it.gunItem ? gunMax() : it.max);
+  const bondPay = (l) => 10 * l + 4 * l * (l - 1);
+  const SAND_S = 8, EDGE_S = 8, BET_PAYS = 2.5, SAFARI_S = 20;
+  // Heat: the game adapts to the player. A fast clear adds heat, a slow clear removes heat.
+  // Each point makes bricks, monsters and bosses 25% tougher, and the level bonuses 6% bigger.
+  const HEAT_MIN = -6, HEAT_HP = 1.25, HEAT_PAY = 0.06;
+  const heatMult = () => Math.pow(HEAT_HP, run.heat);
+  const heatPay = () => 1 + HEAT_PAY * Math.max(0, run.heat);
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
-  const FROM = { capsules: 2, spin: 3, fever: 5, sales: 6, streak: 7, blimp: 8, specials: 13 };
+  const FROM = { capsules: 2, spin: 3, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, heat: 12, specials: 13 };
   // The first level on which each capsule can drop.
-  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, x2: 11, storm: 14, gold: 17, nuke: 20 };
+  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, storm: 14, gold: 17, nuke: 20 };
   const unlocked = (it) => run.level >= it.at || lv(it.id) > 0;
   // upgrades that can still go up: the pool for sales and the Mystery Box
-  const upgradePool = () => ITEMS.filter((it) => it.base && it.id !== 'power' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < it.max);
+  const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
 
   function itemCost(it) {
     if (it.price) return it.price();
@@ -214,7 +281,7 @@
   const onSale = (it) => run.deals.includes(it.id);
   function itemState(it) {
     if (!unlocked(it) || (it.req && !it.req())) return 'locked';
-    if (it.full ? it.full() : lv(it.id) >= it.max) return 'max';
+    if (it.use ? it.full && it.full() : lv(it.id) >= maxOf(it)) return 'max';
     return run.coins >= itemCost(it) ? 'ok' : 'poor';
   }
   let shopMsg = '', shopRerolls = 0;
@@ -231,9 +298,10 @@
   let run = null;
   function newRun() {
     return { level: 1, coins: 0, lives: 3, up: {}, lifeBought: 0, relicsBought: 0, score: 0,
-      relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats() };
+      relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats(),
+      heat: 0, bet: 0, offer: null, nextSpecial: null, safariAt: 0, pendingSafari: false };
   }
-  const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0 });
+  const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0, blimps: 0 });
   function saveRun() { if (run) store.set(SAVE_KEY, run); }
   function loadRun() {
     const r = store.get(SAVE_KEY, null);
@@ -243,6 +311,10 @@
     r.relics = r.relics || {}; r.fever = r.fever || 0; r.deals = r.deals || [];
     r.lifeBought = r.lifeBought || 0; r.relicsBought = r.relicsBought || 0; r.bonusStart = r.bonusStart || 0;
     r.stats = Object.assign(newStats(), r.stats || {});
+    r.heat = r.heat || 0; r.bet = r.bet || 0; r.pendingSafari = false;
+    // The Big Ball upgrade is gone. A save that has it gets the coins back.
+    for (let i = 0; i < (r.up.bigball || 0); i++) r.coins += Math.round(85 * Math.pow(1.8, i));
+    delete r.up.bigball;
     return r;
   }
   let best = store.get(BEST_KEY, { level: 0, score: 0 });
@@ -264,15 +336,16 @@
       punch: 0, delay: r * 0.045 + c * 0.022, loot: 8 };
   }
   // Brick toughness by level: [level, factor], linear between the points. It follows the arsenal that a player
-  // can afford at that level. The first five levels have soft bricks. After level 50 it grows 5% per level.
-  const HP_CURVE = [[1, 0.6], [5, 0.6], [6, 1], [8, 1], [16, 2.2], [24, 6], [30, 22], [35, 60], [40, 110], [50, 230]];
+  // can afford at that level, with average play. Heat corrects it for each player. The first five levels have soft
+  // bricks. After level 50 it grows 5% per level.
+  const HP_CURVE = [[1, 0.6], [5, 0.6], [6, 1], [8, 1], [12, 1.6], [16, 3.5], [20, 8], [24, 16], [30, 45], [35, 100], [40, 180], [45, 300], [50, 420]];
   function hpMult(n) {
-    if (n >= 50) return 230 * Math.pow(1.05, n - 50);
+    if (n >= 50) return 420 * Math.pow(1.05, n - 50);
     const i = HP_CURVE.findIndex(([l]) => l > n), [l0, h0] = HP_CURVE[i - 1], [l1, h1] = HP_CURVE[i];
     return h0 + ((h1 - h0) * (n - l0)) / (l1 - l0);
   }
   function brickFor(ch, r, c, n) {
-    const m = hpMult(n);
+    const m = hpMult(n) * heatMult();
     if (ch >= '1' && ch <= '9') return makeBrick(r, c, 'normal', Math.round(+ch * m));
     if (ch === 'S') return makeBrick(r, c, 'steel', Math.round((4 + Math.floor(Math.min(n, 50) / 6)) * m));
     if (ch === 'B') return makeBrick(r, c, 'bomb', 1);
@@ -326,21 +399,26 @@
     { id: 'gold', name: 'GOLD RUSH', text: 'Extra gold bricks' },
     { id: 'tnt', name: 'DEMOLITION DAY', text: 'Extra bomb bricks' },
     { id: 'capsules', name: 'CAPSULE RAIN', text: 'Three times the capsules' },
-    { id: 'big', name: 'BIG BALL DAY', text: 'Giant balls all level' },
+    { id: 'big', name: 'BIG BALL DAY', text: 'Giant balls all level', open: true },
     { id: 'storm', name: 'THUNDERSTORM', text: 'Lightning helps all level' },
     { id: 'blimps', name: 'BLIMP PARADE', text: 'Loot blimps keep coming' },
     { id: 'party', name: 'FEVER PARTY', text: 'Fever fills twice as fast' },
     { id: 'twins', name: 'DOUBLE TROUBLE', text: 'Two more balls on every serve' },
   ];
   function rollSpecial(def, bricks) {
-    if (def.boss || run.level < FROM.specials || (run.level > FROM.specials && Math.random() > 0.35)) return null;
-    const sp = pick(SPECIALS);
+    if (def.boss) return null;
+    const booked = run.nextSpecial; run.nextSpecial = null;
+    if (!booked && (run.level < FROM.specials || (run.level > FROM.specials && Math.random() > 0.35))) return null;
+    // giant balls do not fit through the gaps of a stone map
+    const stone = def.map.some((row) => row.includes('X'));
+    const sp = booked ? specialById(booked) : pick(SPECIALS.filter((x) => !(x.open && stone)));
     const swap = (type, share) => { for (const b of bricks) if (b.type === 'normal' && Math.random() < share) { b.type = type; if (type === 'bomb') b.hp = b.maxhp = 1; } };
     if (sp.id === 'gold') swap('gold', 0.14);
     if (sp.id === 'tnt') swap('bomb', 0.1);
     return sp;
   }
   const special = (id) => !!G.special && G.special.id === id;
+  const specialById = (id) => SPECIALS.find((x) => x.id === id);
 
   // ---------- game state ----------
   let mode = 'menu'; // menu | play | pause | shop | over
@@ -349,13 +427,16 @@
   let lastSummary = null;
 
   // Generous on the first levels (more so on the first three), then it grows slowly: late levels must not drag.
-  const parTime = (n) => Math.min(110, Math.round((n <= 3 ? 15 : 0) + 45 + 6 * Math.min(n, 8) + 2.5 * clamp(n - 8, 0, 8) + 1.5 * Math.max(0, n - 16)));
+  const parTime = (n) => Math.min(100, Math.round((n <= 3 ? 15 : 0) + 45 + 6 * Math.min(n, 8) + 2.5 * clamp(n - 8, 0, 8) + 1.5 * Math.max(0, n - 16)));
   function basePaddleW() { return 84 * (1 + 0.12 * lv('width')); }
   function puDur(base) { return base * (1 + 0.15 * lv('puluck')); }
 
-  function startLevel() {
+  const SAFARI_DEF = { name: 'Blimp Safari', map: [], tip: 'BONUS ROUND! Pop the blimps with your ball. You cannot lose a ball here' };
+  function startSafari() { run.pendingSafari = false; startLevel(true); }
+  function startLevel(safari = false) {
     G = {
-      bricks: genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
+      safari, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
+      bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
       flash: 0, flashC: '#ffffff', flawless: true, paddleHits: 0, coinChain: 0, coinChainT: 0, celebT: 0, blimpT: -1,
@@ -363,12 +444,13 @@
       levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7, saw: 1, duck: 1.2 },
       shake: 0, banner: 3.2, started: false,
       foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
-      def: levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
+      def: safari ? SAFARI_DEF : levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
-    G.par = parTime(run.level);
-    G.special = rollSpecial(G.def, G.bricks);
-    if (G.def.boss) G.boss = makeBoss(G.def.boss);
-    else if (run.level >= FROM.blimp) G.blimpT = special('blimps') ? 4 : rand(7, 18);
+    G.par = safari ? SAFARI_S : Math.max(30, parTime(run.level) + (G.def.boss ? BOSS_CLOCK_S : 0) + SAND_S * lv('sand') - EDGE_S * lv('edge'));
+    G.special = safari ? null : rollSpecial(G.def, G.bricks);
+    if (safari) { G.net = 999; G.blimpT = 0.6; }
+    else if (G.def.boss) G.boss = makeBoss(G.def.boss);
+    else if (run.level >= FROM.blimp) { G.blimpsLeft = 1 + lv('bait'); G.blimpT = special('blimps') ? 4 : rand(6, 14); }
     const q = [];
     for (const [k, n] of Object.entries(G.def.foes || {})) for (let i = 0; i < n; i++) q.push(k);
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
@@ -388,18 +470,20 @@
     for (let i = 0; i < lv('d_hunter'); i++) G.drones.push({ type: 'hunter', x: rand(80, 400), y: 420, vx: 0, vy: 0, cd: 0, target: null });
     for (let i = 0; i < lv('d_collect'); i++) G.drones.push({ type: 'collect', x: W / 2 + (i ? 40 : -40), y: PADDLE_Y - 60, target: null });
     if (lv('d_goalie')) G.drones.push({ type: 'goalie', x: W / 2 });
+    for (let i = 0; i < lv('d_blimp'); i++) G.drones.push({ type: 'war', x: 80 + i * 150, y: TOP + 30 + i * 34, dir: i % 2 ? -1 : 1, cd: 2 + i, t: i * 2 });
+    for (let i = 0; i < lv('d_ufo'); i++) G.drones.push({ type: 'ufo', x: W / 2 + (i ? 90 : -90), y: PADDLE_Y - 150, target: null, beam: 0, cd: 2 + i * 1.5 });
     mode = 'play';
     hideOverlay();
     pauseBtn.style.display = 'block';
     hud.coins = run.coins;
-    A.tune(run.level); A.music(G.boss ? 2 : 1);
+    A.tune(run.level); A.music(G.boss || safari ? 2 : 1);
     if (G.boss) sfx.warn();
   }
   const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0 });
 
   const MAX_BALLS = 8;
   function makeBall(x, y, vx, vy) {
-    const r0 = 7 + 1.5 * lv('bigball');
+    const r0 = 7;
     return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, inside: new Set(), trail: [], serve: false };
   }
   function serve() {
@@ -421,7 +505,7 @@
       b.pierce = lv('pierce');
       if (b.serve) {
         b.serve = false;
-        for (let i = 0; i < lv('twin') + (special('twins') ? 2 : 0); i++) {
+        for (let i = 0; i < lv('twin') + (special('twins') || G.safari ? 2 : 0); i++) {
           const a2 = a + (i % 2 ? -1 : 1) * (0.32 + 0.15 * Math.floor(i / 2));
           const nb = makeBall(b.x, b.y, Math.sin(a2) * s, -Math.cos(a2) * s); nb.pierce = lv('pierce');
           G.balls.push(nb);
@@ -445,13 +529,14 @@
     life: { c: '#ff5c8a', l: '♥', w: 0.45 }, cash: { c: '#ffd700', l: '$', w: 1.8 }, net: { c: '#6ee7ff', l: 'N', w: 1 },
     mega: { c: '#ff7ad9', l: 'B', w: 1.6 }, storm: { c: '#fff27a', l: '⚡', w: 1.4 }, x2: { c: '#ffb02e', l: '×2', w: 1.4 },
     freeze: { c: '#a8e6ff', l: '❄', w: 1.3 }, gold: { c: '#ffd23f', l: '★', w: 1.1 }, nuke: { c: '#ff5c5c', l: '☢', w: 0.5 },
+    blimp: { c: '#ffb0e6', l: '🎈', w: 1 },
   };
   const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
-    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!' };
+    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!' };
   function rollPU() {
     const foes = G.foes.length > 0 || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
-      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]);
+      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
@@ -461,8 +546,11 @@
   const COIN_MULT = 1.5;
   function dropCoin(x, y, n = 1, exact = false) {
     if (!exact) { const raw = n * COIN_MULT; n = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
-    const val = (1 + lv('value')) * coinMult();
-    for (let i = 0; i < n; i++) G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val });
+    const raw = coinVal() * coinMult();
+    for (let i = 0; i < n; i++) {
+      const val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0);
+      G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val });
+    }
   }
   function collectCoin(c) {
     run.coins += c.val; G.levelCoins += c.val; run.stats.coins += c.val;
@@ -500,6 +588,7 @@
     else if (k === 'ammo') { for (const g in GUNS) { G.clip[g] = clipSize(g); G.reload[g] = 0; } setFx('over', puDur(6)); sfx.overdrive(); }
     else if (k === 'gold') setFx('gold', puDur(8));
     else if (k === 'nuke') nuke();
+    else if (k === 'blimp') spawnBlimp();
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
       const src = G.balls.slice();
@@ -546,6 +635,7 @@
     run.stats.bricks++; run.stats.streak = Math.max(run.stats.streak, G.combo);
     sfx.pop(G.combo);
     addFever(special('party') ? 0.08 : 0.04);
+    if (G.noLoot) return;
     if (b.type === 'gold') { dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5)); if (relic('bombardier')) explode(cx, cy, 44, Math.round(2 * power()), '#ffd23f', true); }
     else if (b.type === 'chest') dropCoin(cx, cy, 6);
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
@@ -565,13 +655,13 @@
   const STREAK_STEP = 5;
   function streakCoins(combo) {
     const tier = Math.floor(combo / STREAK_STEP); // 5 -> 1, 10 -> 2, 15 -> 3 ...
-    return Math.round(Math.min(tier, 8) * COIN_MULT * (1 + 0.5 * lv('streak')));
+    return Math.round(Math.min(tier, 5) * (1 + 0.25 * lv('streak')));
   }
   function streakPayout(x, y) {
     const n = streakCoins(G.combo);
     if (n <= 0 || G.level < FROM.streak) return;
     dropCoin(x, y, n, true);
-    G.streakCoins += n * (1 + lv('value'));
+    G.streakCoins += Math.round(n * coinVal() * coinMult());
     say(clamp(x, 80, W - 80), y + 24, `${G.combo} STREAK! +${n} coins`, '#ffe680', 1.1);
     sfx.streak(G.combo / STREAK_STEP);
   }
@@ -642,13 +732,17 @@
     if (G.slowmo > 0) { G.slowmo -= dt; dt *= 0.3; }
 
     G.time += dt;
+    if (G.started && G.clearT < 0 && !(relic('stopwatch') && feverOn())) G.clock += dt;
     if (G.banner > 0) G.banner -= dt;
     for (const k in G.fx) if (G.fx[k] > 0) G.fx[k] = Math.max(0, G.fx[k] - dt);
     if (G.coinChainT > 0) G.coinChainT -= dt;
     runTimers(dt);
     updateFever(dt);
     if ((G.fx.storm > 0 || (special('storm') && G.started)) && G.clearT < 0 && (G.stormT -= dt) <= 0) { G.stormT = G.fx.storm > 0 ? 0.28 : 2; stormStrike(); }
-    if (G.blimpT > 0 && G.started && G.clearT < 0 && (G.blimpT -= dt) <= 0) spawnBlimp();
+    if (G.blimpT > 0 && G.started && G.clearT < 0 && (G.blimpT -= dt) <= 0) {
+      spawnBlimp();
+      G.blimpT = G.safari ? rand(0.6, 1) : special('blimps') ? 6 : --G.blimpsLeft > 0 ? rand(8, 13) : -1;
+    }
 
     // paddle (slime stun shrinks and slows it)
     if (G.stun > 0) G.stun -= dt;
@@ -732,7 +826,7 @@
         const dmgE = dmg;
         for (const f of G.foes) {
           if (f.dead || !ballVsCircle(b, f.x, f.y, f.r)) continue;
-          if (f.hitCd <= 0) { damageFoe(f, dmgE); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
+          if (f.hitCd <= 0) { damageFoe(f, dmgE, true); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
         }
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
@@ -772,7 +866,8 @@
     if (before && G.balls.length === 0 && G.clearT < 0) loseLife();
   }
   const mega = () => G.fx.mega > 0 || special('big');
-  const ballDmg = () => Math.round(((1 + lv('dmg')) * (G.fx.fire > 0 ? 3 : 1) * (feverOn() ? 2 : 1) + (mega() ? 2 : 0)) * power());
+  const momentum = () => 1 + Math.min(G.combo * 0.04, 1) * lv('momentum');
+  const ballDmg = () => Math.round(((1 + lv('dmg')) * (G.fx.fire > 0 ? 3 : 1) * (feverOn() ? 2 : 1) + (mega() ? 2 : 0)) * power() * momentum());
   function paddles() {
     return relic('mirror') ? [paddle, { x: W - paddle.x, w: paddle.w * 0.7 }] : [paddle];
   }
@@ -807,23 +902,30 @@
     serve();
   }
 
-  // ---------- keeping levels from dragging ----------
-  // After the level's par time the bricks start crumbling; when only a few bricks are left, balls home in on them.
-  // On the first three levels the balls home in sooner.
+  // ---------- the clock ----------
+  // From level FROM.clock each level has a clock. A level that is not clear when the clock runs out pays no bonus,
+  // and the bricks crumble fast, without loot. Before that level the bricks crumble slowly, as a quiet helping hand.
+  // When only a few bricks are left, balls home in on them. On the first three levels they home in sooner.
+  const clockOn = () => G.safari || G.level >= FROM.clock;
+  const timeLeft = () => Math.max(0, G.par - G.clock);
   function updateOvertime(dt) {
-    if (G.clearT >= 0 || !G.started) return;
-    if (G.time > G.par) {
+    if (G.clearT >= 0 || !G.started || G.safari) return;
+    const left = timeLeft();
+    if (clockOn() && left > 0 && left <= 10 && Math.ceil(left) < G.lastTick) { G.lastTick = Math.ceil(left); sfx.tick(); }
+    if (left <= 0) {
       if (!G.crumbling) {
-      G.crumbling = true;
-      // on the first levels this is a quiet helping hand, not an alarm
-      if (G.level <= 5) say(W / 2, H * 0.5, 'The bricks start to crumble', '#ffd6a0', 2.2);
-      else { say(W / 2, H * 0.5, 'Overtime! Bricks are crumbling', '#ffa94d', 2.2, true); sfx.warn(); }
-    }
+        G.crumbling = true; G.timeUp = clockOn();
+        if (G.timeUp) { say(W / 2, H * 0.5, "TIME'S UP! No bonus pay", '#ff6b3d', 2.4, true); sfx.warn(); flashScreen('#ff2a4d', 0.3); shake(8); buzz([60, 40, 60]); }
+        else say(W / 2, H * 0.5, 'The bricks start to crumble', '#ffd6a0', 2.2);
+      }
       G.crumbleT -= dt;
       if (G.crumbleT <= 0) {
-        G.crumbleT = 2;
-        for (const b of G.bricks) if (b.alive && b.type !== 'stone') { b.hp -= Math.max(1, Math.ceil(b.maxhp * 0.12)); b.flash = 0.1; if (b.hp <= 0) destroyBrick(b); }
-        if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * 0.05));
+        G.crumbleT = G.timeUp ? 0.8 : 2;
+        const share = G.timeUp ? 0.25 : 0.12;
+        G.noLoot = G.timeUp;
+        for (const b of G.bricks) if (b.alive && b.type !== 'stone') { b.hp -= Math.max(1, Math.ceil(b.maxhp * share)); b.flash = 0.1; if (b.hp <= 0) destroyBrick(b); }
+        G.noLoot = false;
+        if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * (G.timeUp ? 0.1 : 0.05)));
         G.shake = Math.max(G.shake, 3);
       }
     }
@@ -844,7 +946,7 @@
   function overclock() { return 1 + 0.25 * lv('d_over'); }
   function brickAbove(x, slack = 0) {
     for (const k of G.bricks) if (k.alive && k.type !== 'stone' && x >= k.x - slack && x <= k.x + k.w + slack) return true;
-    for (const f of G.foes) if (Math.abs(f.x - x) <= f.r + slack) return true;
+    for (const f of G.foes) if (f.type !== 'blimp' && Math.abs(f.x - x) <= f.r + slack) return true;
     if (G.boss && !G.boss.dead && Math.abs(G.boss.x - x) <= G.boss.w / 2 + slack) return true;
     return false;
   }
@@ -854,7 +956,7 @@
   const targetLive = (o) => (o.r || o.kind ? !o.dead : o.alive);
   function allTargets() {
     const out = G.bricks.filter((k) => k.alive && k.type !== 'stone');
-    for (const f of G.foes) if (!f.dead) out.push(f);
+    for (const f of G.foes) if (!f.dead && f.type !== 'blimp') out.push(f);
     if (G.boss && !G.boss.dead) out.push(G.boss);
     return out;
   }
@@ -865,7 +967,7 @@
   }
   function hitTarget(o, dmg) { if (o.r) damageFoe(o, dmg); else if (o.kind) damageBoss(dmg); else hitBrick(o, dmg, false); }
 
-  const power = () => 1 + 0.1 * lv('power');
+  const power = () => (1 + 0.1 * lv('power')) * (1 + 0.25 * lv('edge'));
   // Base damage, scaled by the gun level (30% per level), Hardened Rounds (35% per level) and Overcharge.
   const gunDmg = (d, gl = 1) => Math.max(1, Math.round(d * (1 + 0.3 * (gl - 1)) * (1 + 0.35 * lv('rounds')) * power()));
   const clipSize = (g) => Math.round(GUNS[g].clip * (1 + 0.25 * lv('belt')));
@@ -885,6 +987,7 @@
       if (!active || G.gunCd[g] > 0 || !fireGun(g, l, px, py)) continue;
       if (!overdrive() && Math.random() >= lv('recycler') * 0.12 && --G.clip[g] <= 0) G.reload[g] = reloadTime(g);
       G.gunCd[g] = GUNS[g].rate * Math.pow(0.9, l - 1) * (overdrive() ? 0.5 : 1);
+      if (Math.random() < 0.12 * lv('echo')) after(0.14, () => { if (G.clearT < 0) fireGun(g, l, paddle.x, PADDLE_Y - 4); });
       burst(px, py, GUNS[g].color, 2, 70);
     }
   }
@@ -1094,6 +1197,39 @@
           if (d.target.k) collectPU(d.target); else collectCoin(d.target);
           d.target = null;
         }
+      } else if (d.type === 'war') {
+        d.t += dt; d.x += d.dir * 38 * oc * dt; d.cd -= dt;
+        if (d.x < 40) d.dir = 1; else if (d.x > W - 40) d.dir = -1;
+        if (!active || d.cd > 0) continue;
+        let best = null, bd = 95;
+        for (const k of G.bricks) {
+          if (!k.alive || k.type === 'stone') continue;
+          const dd = Math.abs(k.x + k.w / 2 - d.x) + Math.abs(k.y + k.h / 2 - d.y) * 0.3;
+          if (dd < bd) { bd = dd; best = k; }
+        }
+        if (!best) continue;
+        d.cd = 3.4 / oc;
+        const bx = best.x + best.w / 2, by = best.y + best.h / 2;
+        G.bolts.push({ pts: [[d.x, d.y + 10], [bx, by]], t: 0.2, T: 0.2, c: '#7cf2ff' });
+        explode(bx, by, 46, gunDmg(3), '#7cf2ff', true);
+      } else if (d.type === 'ufo') {
+        if (d.target && !d.target.alive) { d.target = null; d.beam = 0; }
+        if (!d.target && active && (d.cd -= dt) <= 0) {
+          const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && !k.taken);
+          d.target = opts.length ? pick(opts) : null;
+          if (d.target) d.target.taken = true;
+        }
+        const side = G.drones.indexOf(d) % 2 ? 80 : -80;
+        const tx = d.target ? d.target.x + d.target.w / 2 : paddle.x + side, ty = d.target ? d.target.y + d.target.h + 28 : PADDLE_Y - 150;
+        const dx = tx - d.x, dy = ty - d.y, dist = Math.hypot(dx, dy) || 1, sp = Math.min(dist / dt, 260 * oc);
+        d.x += (dx / dist) * sp * dt; d.y += (dy / dist) * sp * dt;
+        if (!d.target || dist > 6) continue;
+        d.beam += dt * oc;
+        if (d.beam < 1) continue;
+        const k = d.target;
+        d.target = null; d.beam = 0; d.cd = 4 / oc;
+        say(k.x + k.w / 2, k.y, 'ZOOP!', '#7ee0ff', 0.7); sfx.teleport(); ring(k.x + k.w / 2, k.y + k.h / 2, 40, '#7ee0ff', 0.4);
+        hitBrick(k, k.hp, false);
       } else if (d.type === 'goalie') {
         let tx = paddle.x, lowest = -1;
         for (const b of G.balls) if (!b.stuck && b.vy > 0 && b.y > lowest) { lowest = b.y; tx = b.x; }
@@ -1173,16 +1309,61 @@
     splitter: { r: 20, hp: 9, color: '#8f5cff', coins: 4 },
     bomber: { r: 11, hp: 2, color: '#ff5c5c', coins: 3 },
   };
-  // Loot Blimp: a bonus target that crosses the field once per level. Every hit shakes coins loose.
-  function spawnBlimp() {
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    const f = spawnFoe('blimp', dir > 0 ? -20 : W + 20, clamp(brickBottom() + 60, TOP + 70, PADDLE_Y - 230));
-    f.dir = dir; f.baseY = f.y; f.hp = f.maxhp = FOE.blimp.hp;
-    say(W / 2, f.y - 30, 'LOOT BLIMP!', '#ffd23f', 1.4); sfx.blimp();
-    if (G.level === FROM.blimp) say(W / 2, f.y - 8, 'Hit it for coins!', '#ffffff', 2.2);
-    if (special('blimps')) G.blimpT = 9;
+  // Blimps: bonus targets that cross the field. Only a ball can hurt a blimp, and each hit shakes loot out.
+  // hits = ball hits to pop it, coins = coins on the pop, w = how often it comes, from = first level.
+  const BLIMPS = {
+    loot: { hits: 3, r: 17, speed: 62, coins: 8, w: 10, from: 8, body: '#ffd23f', band: '#ff7ad9', mark: '$', call: 'LOOT BLIMP!' },
+    gift: { hits: 2, r: 16, speed: 72, coins: 2, w: 4, from: 12, body: '#ff7ad9', band: '#ffffff', mark: '?', call: 'GIFT BLIMP!' },
+    gold: { hits: 1, r: 12, speed: 150, coins: 30, w: 1, from: 16, body: '#fff3a0', band: '#ffb02e', mark: '★', call: 'GOLDEN BLIMP! Quick!' },
+    bomb: { hits: 2, r: 18, speed: 52, coins: 4, w: 3, from: 20, body: '#ff5c5c', band: '#2b0b10', mark: '!', call: 'BOMBER BLIMP! Pop it!' },
+    mother: { hits: 6, r: 28, speed: 34, coins: 16, w: 2, from: 24, body: '#ffb02e', band: '#c08cff', mark: '$$', call: 'MOTHER SHIP!' },
+  };
+  function rollBlimp() {
+    if (G.level === FROM.blimp && !G.safari) return 'loot';
+    const opts = Object.entries(BLIMPS).filter(([k, d]) => (G.safari ? k === 'loot' || k === 'gift' || k === 'gold' || G.level >= d.from : G.level >= d.from) && !(G.safari && k === 'bomb'));
+    const wt = (k, d) => d.w * (k === 'gold' ? 1 + lv('goldtix') : 1);
+    let r = Math.random() * opts.reduce((a, [k, d]) => a + wt(k, d), 0);
+    for (const [k, d] of opts) { r -= wt(k, d); if (r <= 0) return k; }
+    return 'loot';
   }
-  function foeScale() { return 1 + (run.level - 1) / 14; }
+  // With x and y: a small blimp that comes out of a mother ship.
+  function spawnBlimp(kind = rollBlimp(), x, y, dir = Math.random() < 0.5 ? 1 : -1) {
+    const d = BLIMPS[kind];
+    const lane = G.safari ? rand(HUD_H + 70, PADDLE_Y - 190) : clamp(brickBottom() + 50 + rand(0, 50), TOP + 70, PADDLE_Y - 230);
+    const f = spawnFoe('blimp', x != null ? x : dir > 0 ? -d.r - 6 : W + d.r + 6, y != null ? y : lane);
+    f.kind = kind; f.dir = dir; f.baseY = f.y; f.r = d.r; f.speed = d.speed * (G.safari ? 1.4 : 1);
+    f.hp = f.maxhp = d.hits + (kind === 'gold' || G.safari ? 0 : lv('hull'));
+    if (x != null) { f.hitCd = 0.5; return f; }
+    if (G.safari) return f;
+    say(W / 2, f.y - 34, d.call, d.body, 1.4); sfx.blimp();
+    if (G.level === FROM.blimp) say(W / 2, f.y - 12, 'Hit it with the ball for coins!', '#ffffff', 2.4);
+    return f;
+  }
+  function blimpHit(f) {
+    const n = 2 + lv('cargo');
+    shake(3);
+    if (f.kind === 'gift') G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
+    else if (f.kind !== 'gold') dropCoin(f.x, f.y, f.kind === 'mother' ? n + 2 : n, true);
+  }
+  function popBlimp(f) {
+    G.popped++; run.stats.blimps++; shake(6);
+    say(f.x, f.y - 20, f.kind === 'gold' ? 'GOLDEN JACKPOT!' : 'JACKPOT!', '#ffd23f', 1.2, f.kind === 'gold');
+    if (f.kind === 'gold') { G.slowmo = Math.max(G.slowmo, 0.5); flashScreen('#ffd23f', 0.25); sfx.jackpot(); }
+    if (f.kind === 'loot' || f.kind === 'gift') G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
+    if (f.kind === 'bomb') airStrike(4, 54, 4);
+    if (f.kind === 'mother') [-26, 0, 26].forEach((dy, i) => spawnBlimp('loot', f.x, f.y + dy, i % 2 ? -1 : 1));
+    if (relic('pirate')) airStrike(6, 40, 3);
+  }
+  // Bombs on random bricks.
+  function airStrike(n, rad, dmg) {
+    const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone');
+    for (let i = 0; i < n && opts.length; i++) {
+      const k = opts.splice((Math.random() * opts.length) | 0, 1)[0];
+      after(0.15 + i * 0.12, () => explode(k.x + k.w / 2, k.y + k.h / 2, rad, gunDmg(dmg), '#ff5c5c', i > 0));
+    }
+  }
+  // Monsters get tougher with the bricks, but more slowly.
+  function foeScale() { return (1 + (run.level - 1) / 14) * Math.max(1, Math.sqrt(hpMult(run.level) * heatMult())); }
   function brickBottom() { let y = TOP; for (const b of G.bricks) if (b.alive && b.y + b.h > y) y = b.y + b.h; return y; }
   function foeZone() {
     const top = Math.max(G.boss ? 190 : TOP, brickBottom() + 24);
@@ -1196,19 +1377,25 @@
     G.foes.push(f); burst(f.x, f.y, d.color, 10, 120);
     return f;
   }
-  function damageFoe(f, dmg) {
+  // ball = the hit comes from a ball. A blimp takes one hit per ball hit, whatever the damage.
+  function damageFoe(f, dmg, ball = false) {
     if (f.dead) return;
-    // a blimp takes three hits whatever the damage; the level-clear sweep still pops it
-    if (f.type === 'blimp' && G.clearT < 0) { dmg = Math.min(dmg, 1); dropCoin(f.x, f.y, 2); }
+    if (f.type === 'blimp') {
+      // at the end of a level the blimps fly off
+      if (G.clearT >= 0) { f.dead = true; burst(f.x, f.y, BLIMPS[f.kind].body, 10, 160); return; }
+      if (!ball) return;
+      dmg = 1; blimpHit(f);
+    }
     f.hp -= dmg; f.flash = 0.12; sfx.foeHit();
     if (f.hp > 0) return;
     f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
     run.score += 50; run.stats.foes++; addFever(0.06);
-    dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
+    if (f.type === 'blimp') dropCoin(f.x, f.y, BLIMPS[f.kind].coins, true);
+    else dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
     if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
     if (G.clearT >= 0) return;
-    if (f.type === 'blimp') { G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() }); say(f.x, f.y - 20, 'JACKPOT!', '#ffd23f', 1.2); shake(6); }
-    if (f.type === 'splitter') for (const s of [-1, 1]) spawnFoe('drifter', f.x + s * 14, f.y).vx = s * 55;
+    if (f.type === 'blimp') popBlimp(f);
+    if (f.type === 'splitter') for (const sd of [-1, 1]) spawnFoe('drifter', f.x + sd * 14, f.y).vx = sd * 55;
   }
   // circle-vs-ball bounce; returns true on contact
   function ballVsCircle(b, cx, cy, r) {
@@ -1265,8 +1452,8 @@
       if (frozen || f.frozenT > 0) continue;
       f.t += dt;
       if (f.type === 'blimp') {
-        f.x += f.dir * 62 * dt; f.y = f.baseY + Math.sin(f.t * 2) * 8;
-        if (f.x < -40 || f.x > W + 40) f.dead = true;
+        f.x += f.dir * f.speed * dt; f.y = f.baseY + Math.sin(f.t * 2) * 8;
+        if (f.x < -60 || f.x > W + 60) f.dead = true;
       } else if (f.type === 'drifter' || f.type === 'splitter') {
         f.vx += Math.sin(f.t * 0.9) * 12 * dt; f.vy += Math.cos(f.t * 0.7) * 10 * dt;
         const sp = Math.hypot(f.vx, f.vy) || 1, want = f.type === 'splitter' ? 36 : 55; f.vx *= want / sp; f.vy *= want / sp;
@@ -1372,11 +1559,13 @@
     { name: 'The Auditor', w: 170, h: 50, says: ['Receipts, please.', 'That is not deductible.', 'You owe 3 coins. And interest.', 'Audit time!'], dies: 'Filing... for... bankruptcy...' },
   ];
   const BOSS_Y = 94, STOMP_Y = 420;
-  // Health of the five campaign bosses. A boss that returns in endless mode grows with the brick toughness.
-  const BOSS_HP = [0, 95, 600, 1900, 8500, 20000];
-  const bossHp = (n) => (n <= 50 ? BOSS_HP[Math.round(n / 10)] : Math.round((20000 * hpMult(n)) / hpMult(50)));
+  // The health of a boss follows the brick toughness of its level, and the heat at a lower rate: area damage
+  // does not help against one target. Boss levels get a longer clock.
+  const BOSS_K = [0, 75, 55, 50, 35, 35];
+  const bossHp = (n, kind) => Math.round(BOSS_K[kind] * hpMult(n));
+  const BOSS_CLOCK_S = 20;
   function makeBoss(kind) {
-    const d = BOSSES[kind], hp = bossHp(run.level);
+    const d = BOSSES[kind], hp = Math.round(bossHp(run.level, kind) * Math.pow(heatMult(), 0.6));
     return { kind, x: W / 2, y: BOSS_Y, w: d.w, h: d.h, hp, maxhp: hp, t: 0, phase: 1, atkT: 3, moveT: 4, talkT: 5, flash: 0, dead: false,
       coinAcc: 0, talk: null, state: 'idle', stateT: 0, vx: 95, vy: 40 };
   }
@@ -1412,7 +1601,7 @@
     for (let r = 4; r <= 8; r++) for (let c = 0; c < COLS; c++) if (!G.bricks.some((b) => b.alive && b.row === r && b.col === c)) free.push([r, c]);
     for (let i = 0; i < n && free.length; i++) {
       const [r, c] = free.splice((Math.random() * free.length) | 0, 1)[0];
-      const b = makeBrick(r, c, type, Math.max(1, Math.round(hp * hpMult(run.level))));
+      const b = makeBrick(r, c, type, Math.max(1, Math.round(hp * hpMult(run.level) * heatMult())));
       b.delay = G.time; G.bricks.push(b);
     }
     sfx.stone();
@@ -1530,29 +1719,31 @@
   const tractorOn = (c) => G.boss && !G.boss.dead && G.boss.state === 'tractor' && Math.abs(c.x - G.boss.x) < 70 && c.y > G.boss.y;
 
   function foeAt(x, y, pad = 0) {
-    for (const f of G.foes) if (!f.dead && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
+    for (const f of G.foes) if (!f.dead && f.type !== 'blimp' && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
     return null;
   }
   function bossAt(x, y, pad = 0) {
     const B = G.boss; if (!B || B.dead) return false;
     return x >= B.x - B.w / 2 - pad && x <= B.x + B.w / 2 + pad && y >= B.y - pad && y <= B.y + B.h + pad;
   }
-  function levelDone() { return G.boss ? G.boss.dead : destructibleLeft() === 0; }
+  function levelDone() { return G.safari ? G.clock >= G.par : G.boss ? G.boss.dead : destructibleLeft() === 0; }
 
   // ---------- drawing: enemies and bosses ----------
-  function drawBlimp(f) {
-    const w = 26, h = 15, y = f.y;
-    ctx.fillStyle = '#7a4a1e'; rr(f.x - 7, y + h - 1, 14, 7, 2); ctx.fill();
-    ctx.fillStyle = f.flash > 0 ? '#ffffff' : '#ffd23f'; ctx.beginPath(); ctx.ellipse(f.x, y, w, h, 0, 0, 7); ctx.fill();
-    if (f.flash <= 0) {
-      ctx.fillStyle = '#ff7ad9'; ctx.beginPath(); ctx.ellipse(f.x, y, w * 0.45, h, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(f.x, y, w * 0.16, h, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(f.x - 6, y - 6, 12, 3.5, 0, 0, 7); ctx.fill();
+  // d = a row of BLIMPS, or the colours of the player's War Blimp.
+  function drawBlimp(x, y, r, dir, d, flash, pips) {
+    const w = r * 1.53, h = r * 0.88;
+    ctx.fillStyle = '#7a4a1e'; rr(x - w * 0.27, y + h - 1, w * 0.54, h * 0.47, 2); ctx.fill();
+    ctx.fillStyle = flash ? '#ffffff' : d.body; ctx.beginPath(); ctx.ellipse(x, y, w, h, 0, 0, 7); ctx.fill();
+    if (!flash) {
+      ctx.fillStyle = d.band; ctx.beginPath(); ctx.ellipse(x, y, w * 0.45, h, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = d.body; ctx.beginPath(); ctx.ellipse(x, y, w * 0.16, h, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(x - w * 0.23, y - h * 0.4, w * 0.46, h * 0.23, 0, 0, 7); ctx.fill();
     }
-    ctx.fillStyle = '#ff9a3d'; ctx.beginPath(); ctx.moveTo(f.x - f.dir * w, y); ctx.lineTo(f.x - f.dir * (w + 9), y - 8); ctx.lineTo(f.x - f.dir * (w + 9), y + 8); ctx.fill();
-    ctx.fillStyle = '#5a3b00'; ctx.font = 'bold 13px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', f.x, y + 1);
-    for (let i = 0; i < f.hp; i++) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(f.x - 6 + i * 6, y - h - 6, 2, 0, 7); ctx.fill(); }
+    ctx.fillStyle = d.band === '#ffffff' ? '#ff9a3d' : d.band; ctx.beginPath(); ctx.moveTo(x - dir * w, y); ctx.lineTo(x - dir * (w + 9), y - 8); ctx.lineTo(x - dir * (w + 9), y + 8); ctx.fill();
+    ctx.fillStyle = '#3a2600'; ctx.font = `bold ${Math.round(r * 0.76)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(d.mark, x, y + 1);
+    for (let i = 0; i < pips; i++) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - (pips - 1) * 3 + i * 6, y - h - 6, 2, 0, 7); ctx.fill(); }
   }
+  const WAR_BLIMP = { body: '#7cf2ff', band: '#2f8cff', mark: '✦' };
   function eyes(x, y, gap, r, look, pupil = '#1b1f33') {
     ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - gap, y, r, 0, 7); ctx.arc(x + gap, y, r, 0, 7); ctx.fill();
     ctx.fillStyle = pupil; ctx.beginPath(); ctx.arc(x - gap + look, y + r * 0.3, r * 0.5, 0, 7); ctx.arc(x + gap + look, y + r * 0.3, r * 0.5, 0, 7); ctx.fill();
@@ -1561,7 +1752,7 @@
     for (const f of G.foes) {
       const d = FOE[f.type], wob = Math.sin(f.t * 4) * 1.5;
       ctx.fillStyle = f.flash > 0 ? '#ffffff' : d.color;
-      if (f.type === 'blimp') { drawBlimp(f); continue; }
+      if (f.type === 'blimp') { drawBlimp(f.x, f.y, f.r, f.dir, BLIMPS[f.kind], f.flash > 0, f.hp); continue; }
       if (f.type === 'drifter' || f.type === 'splitter') {
         ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r + wob, f.r - wob, 0, 0, 7); ctx.fill();
         if (f.type === 'splitter') { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(f.x, f.y - f.r + 3); ctx.lineTo(f.x, f.y + f.r - 3); ctx.stroke(); ctx.setLineDash([]); }
@@ -1689,17 +1880,38 @@
   function finishLevel() {
     for (const c of G.coins) collectCoin(c);
     G.coins = [];
-    const lvl = run.level;
-    // one star each for: clearing, beating the par time, losing no ball
-    const stars = 1 + (G.time <= G.par ? 1 : 0) + (G.flawless ? 1 : 0);
-    const bonus = Math.round((15 + lvl * 4) * COIN_MULT * (1 + 0.25 * lv('bounty')));
-    const starBonus = stars * (3 + lvl);
-    run.coins += bonus + starBonus;
+    if (G.safari) {
+      const record = G.levelCoins > (run.safariBest || 0);
+      if (record) run.safariBest = G.levelCoins;
+      lastSummary = { safari: true, picked: G.levelCoins, popped: G.popped, record };
+      saveRun(); showTally(); return;
+    }
+    const lvl = run.level, late = G.timeUp, timed = clockOn();
+    // one star each for: clearing, beating the clock, losing no ball
+    const stars = 1 + (G.clock <= G.par ? 1 : 0) + (G.flawless ? 1 : 0);
+    const clear = Math.round((15 + lvl * 4) * COIN_MULT * levelVal() * (1 + 0.15 * lv('bounty')));
+    const speed = timed ? Math.round(clear * clamp(1 - G.clock / G.par, 0, 1)) : 0;
+    const starPay = Math.round(stars * (3 + lvl) * levelVal());
+    const heatBonus = Math.round((clear + speed + starPay) * (heatPay() - 1));
+    // a level that ends after the clock pays no bonus
+    const pay = late ? { bonus: 0, speed: 0, starBonus: 0, heatBonus: 0 } : { bonus: clear, speed, starBonus: starPay, heatBonus };
+    run.coins += pay.bonus + pay.speed + pay.starBonus + pay.heatBonus;
     const pl = lv('piggy');
-    const interest = pl ? Math.min(Math.floor(run.coins * 0.05 * pl), 30 * pl) : 0;
-    run.coins += interest;
+    const interest = pl && !late ? Math.min(Math.floor(run.coins * 0.05 * pl), piggyCap() * pl) : 0;
+    const bonds = bondPay(lv('bonds'));
+    const betWon = run.bet && !late && G.clock <= G.par / 2 ? Math.round(run.bet * BET_PAYS) : 0;
+    run.coins += interest + bonds + betWon;
     run.stats.stars += stars;
-    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, bonus, starBonus, interest, combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.time), par: G.par, flawless: G.flawless };
+    // heat follows the pace of the player; boss fights do not change it
+    let heat = 0;
+    if (lvl >= FROM.heat && !G.def.boss) {
+      const r = G.clock / G.par, was = run.heat;
+      run.heat = clamp(run.heat + (late ? -2 : r < 0.15 ? 2 : r < 0.3 ? 1 : r > 0.6 ? -1 : 0), HEAT_MIN, 99);
+      heat = run.heat - was;
+    }
+    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat,
+      combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.clock), par: G.par, flawless: G.flawless, late, timed, boss: !!G.def.boss };
+    run.bet = 0;
     run.score += 100 * lvl * stars;
     run.level++;
     run.pendingRelic = lvl % 5 === 0 && relicChoices().length > 0;
@@ -1754,7 +1966,7 @@
     const owned = RELICS.filter((r) => run.relics[r.id]);
     showOverlay(`<div class="center">
       <h2>Paused</h2>
-      <div class="stat">Level <b>${run.level}</b> · <b>${run.coins}</b> 🪙 · ${'❤️'.repeat(run.lives)}</div>
+      <div class="stat">Level <b>${run.level}</b> · <b>${run.coins}</b> 🪙 · ${'❤️'.repeat(run.lives)}${run.heat ? ` · ${heatTag()}` : ''}</div>
       ${owned.length ? `<div class="owned">${owned.map((r) => `<div><span>${r.icon}</span> <b>${r.name}</b> ${r.desc}</div>`).join('')}</div>` : ''}
       <div style="height:1em"></div>
       <button class="big" data-act="unpause">Resume</button>
@@ -1764,6 +1976,7 @@
     </div>`);
   }
 
+  const heatTag = () => (run.heat > 0 ? '🌶️ Heat ' : '🧊 Heat ') + run.heat;
   let shopCat = 'weap';
   function openShop() {
     mode = 'shop'; pauseBtn.style.display = 'none'; A.music(0);
@@ -1782,7 +1995,8 @@
     const cards = stock.filter((it) => !useTabs || it.cat === shopCat).map((it) => {
       const state = itemState(it);
       const l = it.use ? 0 : lv(it.id);
-      const pips = it.max > 8 ? `<div class="lvl">Level ${l}</div>` : it.max > 1 ? `<div class="pips">${Array.from({ length: it.max }, (_, i) => `<span class="pip ${i < l ? 'on' : ''}"></span>`).join('')}</div>` : '';
+      const max = maxOf(it);
+      const pips = max > 8 ? `<div class="lvl">Level ${l}</div>` : max > 1 ? `<div class="pips">${Array.from({ length: max }, (_, i) => `<span class="pip ${i < l ? 'on' : ''}"></span>`).join('')}</div>` : '';
       const desc = it.desc(l);
       const sale = onSale(it) && open(it);
       let btn;
@@ -1790,7 +2004,7 @@
       else if (state === 'max') btn = `<button class="buy max" disabled>${it.id === 'life' ? 'Full' : it.use ? 'Sold out' : 'Maxed'}</button>`;
       else {
         const verb = l ? 'Upgrade' : 'Buy';
-        btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${verb} · ${itemCost(it)} 🪙</button>`;
+        btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${it.verb || `${verb} · ${itemCost(it)} 🪙`}</button>`;
       }
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
         ${sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
@@ -1806,7 +2020,7 @@
     const teaser = later.length ? `<div class="teaser">🔒 More stock arrives after level ${Math.min(...later) - 1}</div>` : '';
     const relics = relicIcons();
     showOverlay(`<div class="shop">
-      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
+      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}</div></div><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div></div>
       ${relics ? `<div class="relicbar">Relics ${relics}</div>` : ''}
       ${shopMsg ? `<div class="shopmsg">${shopMsg}</div>` : ''}
       ${useTabs ? `<div class="tabs">${tabs}</div>` : '<div class="notabs">Spend your coins on upgrades. They last for the whole run.</div>'}
@@ -1824,7 +2038,11 @@
     audio();
     const t = e.target.closest('button'); if (!t) return;
     if (t.dataset.cat) { shopCat = t.dataset.cat; sfx.tab(); renderShop(false); return; }
-    if (t.dataset.buy) { const it = ITEM_BY_ID[t.dataset.buy]; const ok = buy(it); if (ok && run.pendingRelic) showRelics(); else renderShop(true, ok ? it.id : null); return; }
+    if (t.dataset.buy) {
+      const it = ITEM_BY_ID[t.dataset.buy], ok = buy(it);
+      if (ok && run.pendingSafari) startSafari(); else if (ok && run.pendingRelic) showRelics(); else renderShop(true, ok ? it.id : null);
+      return;
+    }
     if (t.dataset.relic) { takeRelic(t.dataset.relic); return; }
     const act = t.dataset.act;
     if (act === 'newrun') { run = newRun(); lastSummary = null; store.del(SAVE_KEY); saveRun(); startLevel(); }
@@ -1919,7 +2137,7 @@
   function stormStrike() {
     const cands = [];
     for (const k of G.bricks) if (k.alive && k.type !== 'stone') cands.push({ x: k.x + k.w / 2, y: k.y + k.h / 2, hit: () => hitBrick(k, gunDmg(2), false) });
-    for (const f of G.foes) if (!f.dead) cands.push({ x: f.x, y: f.y, hit: () => damageFoe(f, gunDmg(2)) });
+    for (const f of G.foes) if (!f.dead && f.type !== 'blimp') cands.push({ x: f.x, y: f.y, hit: () => damageFoe(f, gunDmg(2)) });
     if (G.boss && !G.boss.dead) cands.push({ x: G.boss.x + rand(-50, 50), y: G.boss.y + G.boss.h, hit: () => damageBoss(gunDmg(2)) });
     if (!cands.length) return;
     const c = pick(cands);
@@ -1988,10 +2206,13 @@
     { id: 'overload', icon: '🌩️', name: 'Coin Storm', desc: 'Every 30 coins you grab call down 3 lightning strikes.' },
     { id: 'frost', icon: '🧊', name: 'Frostbite', desc: 'A ball hit freezes a monster for 2 seconds.' },
     { id: 'seismic', icon: '🥁', name: 'Seismic Paddle', desc: 'Every 6th paddle bounce cracks every brick.' },
+    { id: 'pirate', at: 10, icon: '🏴‍☠️', name: 'Sky Pirates', desc: 'Popping a blimp calls an air strike of 6 bombs.' },
+    { id: 'balloons', at: 10, icon: '🎈', name: 'Balloon Party', desc: 'Every 40 bricks you break call a blimp.' },
+    { id: 'stopwatch', at: 10, icon: '⏱️', name: 'Stopwatch', desc: 'The clock stops during a fever.' },
   ];
   const relic = (id) => !!(run && run.relics[id]);
   function relicChoices() {
-    const pool = RELICS.filter((r) => !run.relics[r.id]);
+    const pool = RELICS.filter((r) => !run.relics[r.id] && (r.at || 0) <= run.level);
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     return pool.slice(0, 3);
   }
@@ -2012,6 +2233,7 @@
       const opts = G.bricks.filter((o) => o.alive && o.type === 'normal');
       if (opts.length) { const o = pick(opts); o.type = 'gold'; o.flash = 0.3; o.punch = 1; ring(o.x + o.w / 2, o.y + o.h / 2, 40, '#ffd23f', 0.4); say(o.x + o.w / 2, o.y - 6, 'MIDAS!', '#ffd23f', 0.9); }
     }
+    if (relic('balloons') && run.stats.bricks % 40 === 0 && !G.boss) spawnBlimp();
     if (relic('leech') && run.stats.bricks % 60 === 0) {
       if (run.lives < 6) { run.lives++; sfx.life(); say(cx, cy, '+1 LIFE', '#ff5c8a', 1.2); } else dropCoin(cx, cy, 15, true);
     }
@@ -2020,6 +2242,7 @@
   // ---------- shop deals ----------
   function rollDeals() {
     run.deals = [];
+    run.offer = pick(SPECIALS).id;
     if (run.level < FROM.sales) return;
     const pool = upgradePool();
     for (let i = 0; i < 2 && pool.length; i++) run.deals.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
@@ -2029,22 +2252,41 @@
   function showTally() {
     mode = 'tally'; pauseBtn.style.display = 'none'; A.music(0);
     const s = lastSummary;
-    const fresh = run.level > 2 ? ITEMS.filter((it) => it.at === run.level) : [];
     const row = (label, v) => (v ? `<div class="trow"><span>${label}</span><b data-count="${v}">0</b></div>` : '');
+    const lost = (label, v) => (v ? `<div class="trow lost"><span>${label}</span><b>−${v}</b></div>` : '');
+    const purse = `<div class="trow total"><span>Purse</span><b id="purse" data-count="${run.coins}">0</b></div>`;
+    if (s.safari) {
+      showOverlay(`<div class="center tally">
+        <div class="tally-sub">BONUS ROUND</div>
+        <div class="tally-title">SAFARI OVER!</div>
+        ${s.record ? '<div class="newbest">★ BEST HAUL ★</div>' : ''}
+        <div class="trows">${row('Blimps popped 🎈', s.popped)}${row('Coins grabbed', s.picked)}${purse}</div>
+        <button class="big gold" data-act="tallynext">${run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
+      </div>`, 'see');
+      countUp();
+      return;
+    }
+    const fresh = run.level > 2 ? ITEMS.filter((it) => it.at === run.level) : [];
     const note = (ok, text) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '✔' : '✖'} ${text}</span>`;
+    const heat = !s.heat ? '' : s.heat > 0
+      ? `<div class="heatnote up">🌶️ HEAT UP! Heat ${run.heat}: tougher bricks, bonuses +${Math.round((heatPay() - 1) * 100)}%</div>`
+      : `<div class="heatnote">🧊 Heat cools to ${run.heat}: softer bricks</div>`;
     showOverlay(`<div class="center tally">
       <div class="tally-sub">LEVEL ${s.level} · ${s.name.toUpperCase()}</div>
-      <div class="tally-title">CLEARED!</div>
+      <div class="tally-title ${s.late ? 'late' : ''}">${s.late ? "TIME'S UP!" : 'CLEARED!'}</div>
       <div class="stars">${[0, 1, 2].map((i) => `<span class="star ${i < s.stars ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.3}s">★</span>`).join('')}</div>
-      <div class="starnotes">${note(true, 'Cleared')}${note(s.time <= s.par, `Par ${s.time}s / ${s.par}s`)}${note(s.flawless, 'No ball lost')}</div>
+      <div class="starnotes">${note(true, 'Cleared')}${note(s.time <= s.par, `${s.timed ? 'Clock' : 'Par'} ${s.time}s / ${s.par}s`)}${note(s.flawless, 'No ball lost')}</div>
       <div class="trows">
-        ${row('Coins grabbed', s.picked)}${row('Clear bonus', s.bonus)}${row('Star bonus', s.starBonus)}${row('Piggy interest', s.interest)}
-        <div class="trow total"><span>Purse</span><b id="purse" data-count="${run.coins}">0</b></div>
+        ${row('Coins grabbed', s.picked)}${row('Clear bonus', s.bonus)}${row('Speed bonus', s.speed)}${row('Star bonus', s.starBonus)}${row('Heat bonus 🌶️', s.heatBonus)}
+        ${row('Piggy interest', s.interest)}${row('Bond payout', s.bonds)}${row('Speed bet won 🎟️', s.betWon)}
+        ${lost('Bonus lost to the clock', s.lost)}${s.betWon ? '' : lost('Speed bet lost', s.bet)}
+        ${purse}
       </div>
       <div class="tally-streak">Best streak <b>${s.combo}</b>${s.streak ? ` · streak coins <b>${s.streak}</b>` : ''}</div>
+      ${heat}
       ${fresh.length ? `<div class="unlock">🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}</div>` : ''}
-      ${s.level >= FROM.spin ? '<div class="spin"><button class="big alt" data-act="spin">🎰 Free lucky spin</button></div>' : ''}
-      <button class="big gold" data-act="tallynext">${run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
+      ${s.late ? '<div class="nospin">No lucky spin after the clock runs out.</div>' : s.level >= FROM.spin ? '<div class="spin"><button class="big alt" data-act="spin">🎰 Free lucky spin</button></div>' : ''}
+      <button class="big gold" data-act="tallynext">${s.boss ? 'Bonus round: Blimp Safari 🎈' : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
     </div>`, 'see');
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
     countUp();
@@ -2068,14 +2310,14 @@
   const PRIZES = [
     { w: 34, icon: '🪙', get: () => { const n = 10 + 3 * lastSummary.level; run.coins += n; return `+${n} coins`; } },
     { w: 12, icon: '💰', get: () => { const n = 40 + 10 * lastSummary.level; run.coins += n; return `JACKPOT! +${n} coins`; } },
-    { w: 16, icon: '🎁', get: () => { const pool = upgradePool(); if (!pool.length) { run.coins += 50; return '+50 coins'; } const it = pick(pool); run.up[it.id] = lv(it.id) + 1; return `Free upgrade: ${it.name}!`; } },
+    { w: 16, icon: '🎁', get: () => { const pool = cheapPool(); if (!pool.length) { run.coins += 50; return '+50 coins'; } const it = pick(pool); run.up[it.id] = lv(it.id) + 1; return `Free upgrade: ${it.name}!`; } },
     { w: 14, icon: '🔥', get: () => { if (run.level < FROM.fever) { run.coins += 25; return '+25 coins'; } run.fever = 0.98; return 'Fever bar filled!'; } },
     { w: 16, icon: '🚦', get: () => { run.bonusStart = 3; return '3 power-ups for the next level!'; } },
     { w: 8, icon: '❤️', get: () => { if (run.lives >= 6) { run.coins += 60; return '+60 coins'; } run.lives++; return '+1 life!'; } },
   ];
   function luckySpin() {
     const box = ov.querySelector('.spin');
-    if (!box || lastSummary.spun) return;
+    if (!box || lastSummary.spun || lastSummary.late) return;
     lastSummary.spun = true;
     let roll = Math.random() * PRIZES.reduce((a, p) => a + p.w, 0), prize = PRIZES[0];
     for (const p of PRIZES) { roll -= p.w; if (roll <= 0) { prize = p; break; } }
@@ -2091,7 +2333,10 @@
     }, 80);
   }
   function afterTally() {
-    if (lastSummary && lastSummary.level === LEVELS.length && !run.champion) { run.champion = true; saveRun(); showVictory(); return; }
+    const s = lastSummary;
+    if (s && s.level === LEVELS.length && !run.champion) { run.champion = true; saveRun(); showVictory(); return; }
+    // every boss leaves a fleet of blimps behind
+    if (s && s.boss && !s.safariDone) { s.safariDone = true; startSafari(); return; }
     if (run.pendingRelic) { showRelics(); return; }
     openShop();
   }
@@ -2359,6 +2604,16 @@
         ctx.fillStyle = '#7cf2a8'; rr(d.x - 8, d.y - 7, 16, 14, 4); ctx.fill();
         ctx.fillStyle = '#0d2a1c'; ctx.fillRect(d.x - 5, d.y - 3, 3, 3); ctx.fillRect(d.x + 2, d.y - 3, 3, 3);
         ctx.strokeStyle = '#7cf2a8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(d.x, d.y - 7); ctx.lineTo(d.x, d.y - 12); ctx.stroke();
+      } else if (d.type === 'war') {
+        drawBlimp(d.x, d.y + Math.sin(d.t * 2) * 4, 13, d.dir, WAR_BLIMP, false, 0);
+      } else if (d.type === 'ufo') {
+        if (d.target && d.beam > 0) {
+          ctx.fillStyle = `rgba(126,224,255,${0.25 + 0.2 * Math.sin(t * 30)})`;
+          ctx.beginPath(); ctx.moveTo(d.x - 5, d.y - 4); ctx.lineTo(d.x + 5, d.y - 4); ctx.lineTo(d.target.x + d.target.w, d.target.y + d.target.h); ctx.lineTo(d.target.x, d.target.y + d.target.h); ctx.fill();
+        }
+        ctx.fillStyle = '#bfe9ff'; ctx.beginPath(); ctx.ellipse(d.x, d.y - 3, 7, 6, 0, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#9aa6c9'; ctx.beginPath(); ctx.ellipse(d.x, d.y, 14, 5, 0, 0, TAU); ctx.fill();
+        for (let i = 0; i < 3; i++) { ctx.fillStyle = Math.floor(t * 5 + i) % 2 ? '#ffd23f' : '#ff7ad9'; ctx.beginPath(); ctx.arc(d.x - 8 + i * 8, d.y + 1, 1.8, 0, TAU); ctx.fill(); }
       } else if (d.type === 'goalie') {
         const ready = G.goalieCd <= 0;
         ctx.globalAlpha = ready ? 1 : 0.35;
@@ -2421,7 +2676,7 @@
       for (let i = 0; i < n; i += 2) glow(b.trail[i], b.trail[i + 1], b.r * (0.8 + (i / n) * 1.4), c, (i / n) * 0.3);
       glow(b.x, b.y, b.r * 3.2, c, 0.55);
     }
-    const plain = 1 + lv('value');
+    const plain = Math.ceil(coinVal());
     for (const c of G.coins) if (c.val > plain) glow(c.x, c.y, 16, '#ffd84a', 0.5);
     for (const p of G.pus) glow(p.x, p.y, 26, PU[p.k].c, 0.35 + 0.15 * Math.sin(t * 8 + p.x));
     for (const s of G.shots) glow(s.x, s.y, s.k === 'rocket' ? 16 : 9, s.k === 'orbit' ? '#9ab8ff' : GUNS[s.k].color, 0.6);
@@ -2468,7 +2723,8 @@
     ctx.strokeStyle = '#6ee7ff'; ctx.globalAlpha = 0.5 + 0.2 * Math.sin(t * 4); ctx.lineWidth = 2;
     ctx.beginPath(); for (let x = 0; x <= W; x += 12) ctx.lineTo(x, NET_Y + Math.sin(x * 0.2 + t * 3) * 2); ctx.stroke();
     ctx.globalAlpha = 0.8; ctx.fillStyle = '#6ee7ff'; ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText('NET ×' + G.net, W - 8, NET_Y - 10); ctx.globalAlpha = 1;
+    if (!G.safari) ctx.fillText('NET ×' + G.net, W - 8, NET_Y - 10);
+    ctx.globalAlpha = 1;
   }
 
   const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A']];
@@ -2479,7 +2735,7 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, HUD_H);
     ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
     // level dial: the ring drains toward the par time
-    const lx = 28, ly = 32, left = clamp(1 - G.time / G.par, 0, 1);
+    const lx = 28, ly = 32, left = clockOn() ? 1 : clamp(1 - G.clock / G.par, 0, 1);
     ctx.fillStyle = '#9aa3d6'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.fillText('LEVEL', lx, 8);
     ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(lx, ly, 15, 0, TAU); ctx.stroke();
     ctx.strokeStyle = G.crumbling ? (Math.sin(t * 10) > 0 ? '#ffa94d' : '#ff6b3d') : left < 0.25 ? '#ffa94d' : '#5ef0ff';
@@ -2490,6 +2746,7 @@
     drawCoin({ x: 70, y: 19, spin: 0, val: 0 });
     ctx.fillStyle = '#ffd84a'; ctx.font = `bold ${Math.round(20 * (1 + hud.coinPop * 0.25))}px system-ui, sans-serif`; ctx.fillText(Math.round(hud.coins), 82, 20);
     ctx.font = '15px system-ui, sans-serif'; ctx.fillStyle = '#ff5c8a'; ctx.fillText('♥'.repeat(Math.max(0, run.lives)), 62, 41);
+    if (run.heat) { ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillStyle = run.heat > 0 ? '#ff9a3d' : '#a8e6ff'; ctx.fillText((run.heat > 0 ? '🌶' : '🧊') + run.heat, 158, 41); }
     // guns: the bar is the clip, or the reload progress in grey
     let ax = 176;
     ctx.font = '13px system-ui, sans-serif';
@@ -2503,7 +2760,7 @@
       ax += 33;
     }
     // active capsules: a dial per effect
-    let tx = 190;
+    let tx = 204;
     ctx.textAlign = 'center'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.lineWidth = 2.5;
     for (const [k, l] of FX_HUD) {
       if (G.fx[k] <= 0) continue;
@@ -2514,9 +2771,10 @@
     }
     ctx.textAlign = 'left'; ctx.font = 'bold 12px system-ui, sans-serif';
     if (G.shield > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('🛡×' + G.shield, tx - 6, 41); }
+    drawClock(t);
     // fever gauge
     if (G.level < FROM.fever) return;
-    const fy = HUD_H - 5;
+    const fy = HUD_H - 11;
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(0, fy, W, 5);
     if (feverOn()) {
       const fw = W * (G.feverT / G.feverMax), fg = ctx.createLinearGradient(0, 0, W, 0);
@@ -2527,6 +2785,22 @@
       ctx.fillStyle = '#ff9a3d'; ctx.fillRect(0, fy, fw, 5);
       ctx.fillStyle = '#fff3c0'; ctx.fillRect(Math.max(0, fw - 4), fy, 4, 5);
     }
+  }
+
+  // The clock: a bar that runs down along the bottom of the HUD, and the seconds beside the pause button.
+  function drawClock(t) {
+    if (!clockOn()) return;
+    const y = HUD_H - 6, left = timeLeft(), k = left / G.par, hurry = left <= 10 && G.started;
+    const col = G.timeUp ? '#ff2a4d' : k > 0.4 ? '#5ef0ff' : k > 0.2 ? '#ffd23f' : '#ff6b3d';
+    ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(0, y, W, 6);
+    ctx.globalAlpha = G.timeUp || hurry ? 0.6 + 0.4 * Math.sin(t * 14) : 1;
+    ctx.fillStyle = col; ctx.fillRect(0, y, G.timeUp ? W : W * k, 6);
+    ctx.globalAlpha = 1;
+    if (!G.timeUp && k > 0) { ctx.fillStyle = '#ffffff'; ctx.fillRect(W * k - 3, y - 1, 3, 8); }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = col;
+    ctx.font = `bold ${hurry && !G.timeUp ? 16 : 13}px system-ui, sans-serif`;
+    ctx.fillText(G.timeUp ? 'NO BONUS' : '⏱ ' + Math.ceil(left), 424, 42);
+    ctx.textAlign = 'left';
   }
 
   function wrapText(text, x, y, maxW, lh) {
@@ -2552,7 +2826,7 @@
       const s = 0.7 + 0.3 * easeOutBack(clamp((3.2 - G.banner) / 0.35, 0, 1));
       ctx.save(); ctx.translate(W / 2, H * 0.55); ctx.scale(s, s); ctx.globalAlpha = Math.min(1, G.banner);
       if (G.def.boss) { ctx.fillStyle = Math.sin(t * 14) > 0 ? '#ff2a4d' : '#ffd23f'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.fillText('⚠ WARNING ⚠', 0, -44); }
-      ctx.fillStyle = '#ffffff'; ctx.font = '900 42px system-ui, sans-serif'; ctx.fillText('LEVEL ' + G.level, 0, 0);
+      ctx.fillStyle = '#ffffff'; ctx.font = '900 42px system-ui, sans-serif'; ctx.fillText(G.safari ? '🎈 SAFARI 🎈' : 'LEVEL ' + G.level, 0, 0);
       ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.fillText(G.def.name, 0, 34);
       if (G.def.tip) {
         const isNew = G.def.tip.startsWith('NEW');
@@ -2563,6 +2837,10 @@
         ctx.fillStyle = '#ffd0f0'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(G.special.text, 0, -44);
       }
       ctx.restore(); ctx.globalAlpha = 1;
+    }
+    if (clockOn() && G.started && G.clearT < 0 && !G.timeUp && timeLeft() <= 5) {
+      ctx.globalAlpha = 0.22; ctx.fillStyle = G.safari ? '#ffd23f' : '#ff6b3d'; ctx.font = '900 190px system-ui, sans-serif';
+      ctx.fillText(Math.ceil(timeLeft()), W / 2, H * 0.5); ctx.globalAlpha = 1;
     }
     if (G.level === 1 && !G.started) {
       ctx.fillStyle = 'rgba(124,242,255,' + (0.6 + 0.3 * Math.sin(t * 4)) + ')'; ctx.font = 'bold 15px system-ui, sans-serif';
@@ -2639,6 +2917,10 @@
     next() { lastSummary = null; startLevel(); },
     skip() { if (mode === 'tally' || mode === 'victory') afterTally(); if (mode === 'relic') takeRelic(relicChoices()[0].id); },
     relic(id) { run.relics[id] = true; }, fever() { startFever(); }, capsule(k) { collectPU({ k, x: paddle.x, y: PADDLE_Y }); },
+    blimp(kind) { return spawnBlimp(kind); }, safari() { startSafari(); },
+    FROM, toughness(n) { return hpMult(n) * heatMult(); },
+    shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
+    get summary() { return lastSummary; },
   };
 
   showMenu();
