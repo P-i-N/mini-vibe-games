@@ -20,10 +20,10 @@ After a change to a game, increase the `?v=` number of its scripts and styleshee
 | --- | --- |
 | `game.js` | Game rules, shop, enemies, bosses, rendering |
 | `levels.js` | The 50 campaign maps and the map legend. Levels after 50 are generated in `game.js`. |
-| `audio.js` | Synthesised sound effects and generative music. Effects take their pitch from the chord that the music plays. The music has five channels; the menu and the shop fade to an ambient mix. The music follows the game through `fever(on)`, `streak(n)`, `rush(secondsLeft)` and `beat()`. |
+| `audio.js` | Synthesised sound effects and generative music. Effects take their pitch from the chord that the music plays. The music has five channels; the menu and the shop fade to an ambient mix. The music follows the game through `fever(on)`, `streak(n)`, `rush(secondsLeft)` and `beat()`. The effects that fire most often play the next note of a riff, on the grid of the music, each family with its own instrument; big moments end on the tonic. Each level has one of six styles (mode, tempo, swing). |
 | `style.css` | Menus, shop, results screens |
 
-`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`. To go to a level: `__bb.run.level = 40; __bb.next()`.
+`window.__bb` in the browser console is a debug hook: `step(dt)`, `draw()`, `clear()`, `give(coins)`, `buyId(id)`, `relic(id)`, `capsule(kind)`, `fever()`, `skip()`, `blimp(kind)`, `safari(kind)`, `panic()`, `shop()` (the stock with state and price), `summary` (the last level result), `toughness(level)`, `bandit(take)` (uses the free pulls without the animation). To go to a level: `__bb.run.level = 40; __bb.next()`.
 
 A new run reveals the game level by level. Three tables in `game.js` set the schedule: `at` on each entry of `ITEMS` (the level from which the shop stocks it), `FROM` (capsules, lucky spin, fever, sales, streaks, blimps, the clock, the sweet spot, heat, specials, the smash) and `PU_FROM` (the first level of each capsule). A level tip in `levels.js` that starts with `NEW:` is highlighted on the level banner.
 
@@ -42,6 +42,17 @@ Bonus rounds are in the `BONUS` table: Blimp Safari, Piñata Party and Bumper Ba
 Skill shots are in `paddleSkill`: the sweet spot (a mark on the paddle that moves after each bounce) and the smash (a tap just before the bounce). They are the answer to levels that play themselves; keep new damage sources tied to paddle play.
 
 A map in `levels.js` can move: `slide` makes a row a conveyor, `wheel` adds bricks that turn around a hub, `O` is a bumper and `(` `)` are a pair of portals (`genLevel`, `setupField`, `updateField`). The specials WINDY DAY and NIGHT MARKET change the whole field.
+
+Rules for a map, from play feedback:
+
+*   Stone is not in the three top rows, and no destructible brick sits behind a stone line with one-cell gaps. A conveyor row is the exception.
+*   A map lets the ball get between the bricks. Full rows with empty rows between them make a slow level, because the ball then breaks one brick for each trip to the paddle.
+*   Later maps are tall (up to 14 rows) and have a lower formation under an empty corridor.
+*   The last fifth of the bricks pulls the balls (`seekFrom`), so that the end of a level does not drag.
+
+A dev check for these rules is not in the repository; the level numbers of the `NEW:` tips and the boss maps (top five rows empty) must stay as they are.
+
+The results screen has a slot machine (`SLOT`, `rollReels`, `pull`, `settle`, `claim`). Three of a kind win a prize, and to take a prize costs a heart. `SLOT_PAIR` and `SLOT_TRIPLE` set how often the drums match.
 
 Data that outlives a run is in `meta` (`localStorage` key `brickbazaar.meta.v1`): the sticker album (`STICKERS`, `sticker(id)`) and the lifetime totals. Stickers open starting kits (`KITS`). To reset them, remove that key.
 
