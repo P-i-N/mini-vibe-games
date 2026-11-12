@@ -175,6 +175,13 @@ window.BBAudio = (() => {
     dice: [0, () => { for (let i = 0; i < 3; i++) tone(ct(2, ri(4)), 0.04, { vol: 0.04, at: i * 0.06 }); }],
     cheer: [0, (tier = 0) => { for (const f of climb(1, Math.min(tier, 4), 3)) tone(f, 0.28, { type: 'sawtooth', vol: 0.035 }); noise(0.1, { type: 'highpass', f: 4000, vol: 0.03 }); }],
     overdrive: [0, () => { const f = ct(0, 0); tone(f, 0.35, { type: 'sawtooth', vol: 0.05, to: f * 4 }); arp(climb(2, 0, 4), 0.05, { vol: 0.03, dur: 0.08 }); }],
+    ding: [0, (n = 0) => { const f = ct(2, Math.min(n, 6)); tone(f, 0.3, { type: 'sine', vol: 0.09 }); tone(f * 2, 0.2, { type: 'sine', vol: 0.04, at: 0.02 }); }],
+    squawk: [60, (n = 0) => { const f = ct(1, Math.min(n, 5)); tone(f * 1.5, 0.05, { type: 'square', vol: 0.035, to: f }); tone(f, 0.09, { type: 'sawtooth', vol: 0.04, to: f * 1.3, at: 0.05 }); }],
+    roar: [0, () => { noise(0.9, { type: 'bandpass', f: 900, q: 0.6, vol: 0.12 }); for (const f of climb(1, 0, 3)) tone(f, 0.7, { type: 'sawtooth', vol: 0.03 }); }],
+    raspberry: [120, () => { const f = root() / 2; for (let i = 0; i < 6; i++) tone(f * (1 + ri(3) * 0.06), 0.04, { type: 'sawtooth', vol: 0.06, at: i * 0.045 }); }],
+    ping: [40, (n = 0) => { tone(ct(3, n % 5), 0.12, { type: 'triangle', vol: 0.06 }); }],
+    eek: [90, () => { const f = ct(3, ri(4)); tone(f, 0.06, { type: 'sine', vol: 0.035, to: f * 1.4 }); }],
+    whack: [50, () => { noise(0.07, { f: 900, vol: 0.1 }); tone(ct(0, ri(3)), 0.08, { type: 'triangle', vol: 0.07, to: root() / 2 }); }],
   };
   const sfx = {};
   for (const k in defs) sfx[k] = fx(k, defs[k][0], defs[k][1]);
