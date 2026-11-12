@@ -206,3 +206,19 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .keeper .bubble::before { top: auto; bottom: 0.9em; }
 .hint b, .shopfoot .hint b { color: #251a00; background: #ffe680; border-radius: 0.4em; padding: 0 0.35em; margin-right: 0.35em; font-size: 0.85em; }
 .summary span { white-space: nowrap; }
+
+/* Dares, haggling, the lucky pot */
+.minis { display: flex; gap: 0.4em; margin-top: 0.4em; }
+.mini { flex: 1; padding: 0.45em 0.4em; border-radius: 0.7em; border: 1px solid #ffffff2a; background: #ffffff10; color: #e8ecff; font: inherit; font-size: 0.85em; font-weight: 700; cursor: pointer; }
+.mini:disabled { opacity: 0.4; cursor: default; }
+.mini.armed { background: #ffd84a; color: #2a2410; border-color: #ffd84a; }
+.dare { margin-top: 0.4em; padding: 0.4em 0.6em; border-radius: 0.7em; background: #3a1a12; border: 1px solid #ff9a3d88; color: #ffd9b0; font-size: 0.8em; line-height: 1.35; }
+.dare.on { background: #14263a; border-color: #7cf2a888; color: #cfeaff; }
+.dare b { color: #ffffff; white-space: nowrap; }
+.dare .mini { display: inline-block; flex: none; margin-left: 0.5em; padding: 0.2em 0.7em; background: #ffd84a; color: #2a2410; border-color: #ffd84a; }
+.pots { display: inline-flex; gap: 0.5em; margin-left: 0.6em; }
+.pots .mini { font-size: 1.5em; margin: 0; background: #22264a; border-color: #ffe68066; }
+.tricks { max-width: 21em; margin: 0.8em auto 0; text-align: left; font-size: 0.75em; color: #a3abd9; line-height: 1.4; }
+.tricks b { display: block; color: #ffe680; }
+.tricks span { display: block; padding-left: 0.9em; text-indent: -0.9em; }
+.tricks span::before { content: "· "; }

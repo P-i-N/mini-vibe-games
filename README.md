@@ -112,4 +112,6 @@ The view is a 2:1 isometric projection of a 9 x 9 map. All rules use world units
 
 The balance was tested with simple bots only. The main numbers are `hpMul`, `coinMul`, `genWaves`, `TOWERS` and `FOES`. For tests and tuning, `window.__ss` can start a level (`start(n, upgrades)`), run time (`step(seconds)`), and build, dig, stomp and merge.
 
+The first wave waits `FIRST_WAVE_S` seconds and the later ones `NEXT_WAVE_S`. The small rules live in tables: `TWISTS` (themed waves), `PALS` (pairs of towers that help each other when they stand side by side), `DARES` (the gnome's wagers), and `TRICKS` (the list of hidden moves on the pause screen; add a line there for every new one).
+
 A saved run of the first version of the game gets the gems for its upgrades back (`OLD_PRICES`).
