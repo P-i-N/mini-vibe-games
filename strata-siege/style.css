@@ -222,3 +222,31 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .tricks b { display: block; color: #ffe680; }
 .tricks span { display: block; padding-left: 0.9em; text-indent: -0.9em; }
 .tricks span::before { content: "· "; }
+
+/* ---------- lore: the Almanac, the Gazette ---------- */
+.fact { max-width: 22em; margin: 0.6em auto 0; font-size: 0.78em; color: #b8c0f0; font-style: italic; }
+.fact b { font-style: normal; color: #ffe680; margin-right: 0.3em; }
+.gazette { max-width: 21em; margin: 0.6em auto 0; padding: 0.4em 0.7em 0.5em; background: #f3ead2; color: #2a2416; border-radius: 0.3em; transform: rotate(-0.6deg); box-shadow: 0 0.2em 0.6em #0008; font-family: Georgia, 'Times New Roman', serif; }
+.gazette b { display: block; font-size: 0.62em; letter-spacing: 0.18em; text-transform: uppercase; border-bottom: 1px solid #2a241666; padding-bottom: 0.2em; margin-bottom: 0.25em; }
+.gazette span { display: block; font-size: 0.95em; font-weight: 700; line-height: 1.15; }
+.storyend { max-width: 21em; margin: 0.6em auto; font-size: 0.88em; line-height: 1.35; color: #fff1c9; }
+.tally-title.small { font-size: 1.7em; }
+.alm .tabs { display: flex; gap: 0.3em; justify-content: center; margin: 0.5em 0; flex-wrap: wrap; }
+.alm .tabb { font: inherit; font-size: 0.8em; font-weight: 700; padding: 0.5em 0.7em; border-radius: 0.8em; border: 1px solid #ffffff22; background: #14183a; color: #c9d0ff; }
+.alm .tabb.on { background: #ffe680; color: #2a1e00; border-color: #ffe680; }
+.almpage { text-align: left; max-width: 23em; margin: 0 auto; }
+.almpage h3 { margin: 0.9em 0 0.3em; font-size: 0.8em; letter-spacing: 0.12em; text-transform: uppercase; color: #9aa3d6; }
+.almpage .lead { margin: 0.45em 0; font-size: 0.88em; line-height: 1.35; color: #fff1c9; }
+.entry { margin: 0.4em 0; padding: 0.5em 0.7em; border-radius: 0.7em; background: #ffffff0d; font-size: 0.84em; line-height: 1.3; }
+.entry b { display: block; color: #ffe680; }
+.entry span { display: block; color: #dfe4ff; }
+.entry .sm { font-size: 0.88em; color: #9aa3d6; margin-top: 0.15em; }
+.entry .sm b { display: inline; color: #c9d0ff; }
+.entry.lock { background: #ffffff06; border: 1px dashed #ffffff22; }
+.entry.lock span { color: #7a82b8; font-style: italic; }
+.entry.foe { display: flex; gap: 0.7em; align-items: center; }
+.entry.foe img { width: 3.2em; height: 3.2em; object-fit: contain; flex-shrink: 0; image-rendering: auto; }
+.entry.foe i { width: 3.2em; text-align: center; font-size: 1.6em; font-style: normal; color: #5a628f; flex-shrink: 0; }
+.entry.letter { background: #f6e7c1; transform: rotate(-0.4deg); }
+.entry.letter span { color: #3a2a12; }
+.entry.letter .sm { color: #8a6a3a; text-align: right; font-style: italic; }
