@@ -239,6 +239,63 @@
     return targets.findIndex(t => Math.hypot(x - slingX(t, ms), y - t.y) < t.r);
   }
 
+  // Coin Stack: lengths in coin widths. A coin swings over the plate; it lands DROP_MS after the tap. Its offset from
+  // the top coin adds tilt, and each landing gives a random kick that grows with the height. The stack falls at a
+  // tilt of 1 and pays the last bank point (every third coin). A cash out pays STACK_PAY at the height.
+  const STACK_PAY = [0, 0.1, 0.2, 0.35, 0.45, 0.6, 0.8, 0.95, 1.1, 1.3, 1.6, 1.9, 2.3];
+  const STACK_MAX = STACK_PAY.length - 1;
+  const STACK_BANK = 3;
+  const STACK_THICK = 0.23;
+  const STACK_RANGE = 1.2;
+  const STACK_EDGE = 0.5;
+  const STACK_PLATE = 0.9;
+  const STACK_GAIN = 1.6;
+  const STACK_LEAN = 0.05;
+  const STACK_KICK = 0.016;
+  const STACK_ANGLE = 0.22;
+  const STACK_SWAY = 0.006;
+  const STACK_SWAY_MS = 1500;
+  const STACK_DROP_MS = 350;
+
+  // Speed in coin widths per ms.
+  const stackPlan = level => ({ speed: Math.min(0.0019, 0.0011 + level * 0.000008), wait: 6000 });
+
+  const stackBanked = n => STACK_PAY[n - n % STACK_BANK];
+  const stackSpeed = (plan, n) => plan.speed * (1 + 0.05 * n);
+
+  // Swing position after ms on the current coin. side 1 starts on the left, -1 on the right.
+  const stackSwing = (plan, n, side, ms) => side * (pingPong(ms, stackSpeed(plan, n) / (2 * STACK_RANGE)) * 2 - 1) * STACK_RANGE;
+
+  // st: { n, tilt, offs, jolt, joltAt }. Angle of the stack in radians at ms (game clock).
+  function stackAngle(st, ms) {
+    const sway = STACK_SWAY * st.n * Math.sin(ms * 2 * Math.PI / STACK_SWAY_MS);
+    const since = ms - st.joltAt;
+    const jolt = since < 0 ? 0 : st.jolt * Math.exp(-since / 350) * Math.sin(since / 45);
+    return st.tilt * STACK_ANGLE + sway + jolt;
+  }
+
+  // Centre of the landing spot (top of the stack) at ms.
+  function stackTop(st, ms) {
+    const a = stackAngle(st, ms);
+    const off = st.n ? st.offs[st.n - 1] : 0;
+    return off * Math.cos(a) + (st.n + 0.5) * STACK_THICK * Math.sin(a);
+  }
+
+  // Lands a coin dropped at x. Returns 'miss', 'fall' or 'ok' and updates st.
+  function stackLand(st, x, ms, rand) {
+    const d = x - stackTop(st, ms);
+    if (Math.abs(d) > (st.n ? STACK_EDGE : STACK_PLATE)) return 'miss';
+    // The plate is flat: the first coin adds no tilt.
+    const gain = st.n ? STACK_GAIN : 0;
+    st.offs.push((st.n ? st.offs[st.n - 1] : 0) + d);
+    st.n++;
+    const lean = st.tilt * (1 + STACK_LEAN * st.n);
+    st.tilt = lean + d * gain + gauss(rand) * STACK_KICK * st.n * st.n * (0.4 + Math.abs(lean));
+    st.jolt = Math.min(0.12, 0.02 + Math.abs(d) * 0.2);
+    st.joltAt = ms;
+    return Math.abs(st.tilt) >= 1 ? 'fall' : 'ok';
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   // Session: owns every timer and listener of one game, calls done once.
 
@@ -1310,6 +1367,203 @@
   }
 
   ////////////////////////////////////////////////////////////////////////////
+  // Coin Stack
+
+  // Coin width in em. Coin thickness, plate and swing heights follow it.
+  const STACK_EM = 3;
+  const STACK_TOWER = 14;
+  const STACK_FLOOR = 1.2;
+  const STACK_GOOD = ['Dead centre. Lovely.', 'Plink! Neat as my shell.', 'Right on top. You have done this before.'];
+  const STACK_OFF = ['Ooh, a bit off.', 'Wobble, wobble…', 'It leans. Like me after lunch.'];
+  const STACK_SAFE = ['Bank! Those coins are safe now.', 'Locked away. Nobody touches those.', 'Banked. My nerves thank you.'];
+  const STACK_TIPSY = ['It is leaning. Cash out, or be brave?', 'Hold your breath. I am holding mine.', 'That tower looks nervous.'];
+  const STACK_CRASH = ['CRASH! Coins under the counter!', 'Down it goes. I will sweep. Slowly.', 'Coins everywhere! One rolled into my shell.'];
+
+  const coinEl = parent => el('span', 'mg-coin', null, parent);
+
+  function prepStack(api) {
+    el('div', 'mg-tally', null, api.area);
+    const tower = el('div', 'mg-tower', null, api.area);
+    tower.style.height = STACK_TOWER + 'em';
+    el('div', 'mg-rail', null, tower);
+    el('div', 'mg-plate', null, tower);
+    const pile = el('div', 'mg-pile', null, tower);
+    pile.style.bottom = STACK_FLOOR + 'em';
+    coinEl(tower).classList.add('mg-swing');
+    const gauge = el('div', 'mg-level', null, api.area);
+    el('span', 'mg-bubble-mark', null, gauge);
+    const btns = el('div', 'mg-btns', null, api.area);
+    el('button', 'mg-big mg-drop', '⬇ Drop', btns).disabled = true;
+    el('button', 'mg-big mg-gold mg-cash', null, btns).hidden = true;
+  }
+
+  function runStack(api) {
+    const { s, rand, rules, area } = api;
+    const talk = keeper(api);
+    const plan = stackPlan(api.level);
+    const tally = area.querySelector('.mg-tally');
+    const tower = area.querySelector('.mg-tower');
+    const pile = area.querySelector('.mg-pile');
+    const coin = area.querySelector('.mg-swing');
+    const mark = area.querySelector('.mg-bubble-mark');
+    const drop = area.querySelector('.mg-drop');
+    const cash = area.querySelector('.mg-cash');
+    const thick = STACK_EM * STACK_THICK;
+    const st = { n: 0, tilt: 0, offs: [], jolt: 0, joltAt: 0 };
+    const start = Date.now();
+    let side = 1;
+    let t0 = 0;
+    let swinging = false;
+    let over = false;
+    let x = 0;
+
+    const clock = () => Date.now() - start;
+    const placeCoin = () => { coin.style.left = 'calc(50% + ' + (x * STACK_EM).toFixed(3) + 'em)'; };
+    const showTally = () => {
+      tally.textContent = '🪙 ' + st.n + '/' + STACK_MAX + ' · now ×' + STACK_PAY[st.n] + ' · 🔒 ×' + stackBanked(st.n);
+      cash.textContent = 'Cash out ' + api.coins(STACK_PAY[st.n]);
+      cash.hidden = !st.n || over || !swinging;
+    };
+
+    function spawn() {
+      side = rand() < 0.5 ? 1 : -1;
+      t0 = Date.now();
+      x = stackSwing(plan, st.n, side, 0);
+      placeCoin();
+      coin.className = 'mg-coin mg-swing';
+      coin.style.bottom = (STACK_TOWER - 1.4 - thick).toFixed(2) + 'em';
+      swinging = true;
+      drop.disabled = false;
+      area.classList.add('mg-pick');
+      rules.textContent = 'Tap to drop the coin on the stack.';
+      showTally();
+    }
+
+    s.every(() => {
+      if (swinging) {
+        const ms = Date.now() - t0;
+        x = stackSwing(plan, st.n, side, ms);
+        if (ms >= plan.wait) {
+          talk('Too slow. My feeler slipped.');
+          release();
+        }
+      }
+      placeCoin();
+      if (over) return;
+      pile.style.transform = 'rotate(' + stackAngle(st, clock()).toFixed(4) + 'rad)';
+      mark.style.left = (50 + Math.max(-1, Math.min(1, st.tilt)) * 50).toFixed(1) + '%';
+      mark.classList.toggle('mg-hot', Math.abs(st.tilt) > 0.6);
+    }, 30);
+
+    function release() {
+      if (!swinging || over) return;
+      swinging = false;
+      drop.disabled = true;
+      area.classList.remove('mg-pick');
+      x = stackSwing(plan, st.n, side, Date.now() - t0);
+      placeCoin();
+      coin.classList.add('mg-fall');
+      coin.style.bottom = (STACK_FLOOR + st.n * thick).toFixed(2) + 'em';
+      s.sfx('tick');
+      s.later(land, STACK_DROP_MS);
+    }
+
+    function land() {
+      const ms = clock();
+      const d = x - stackTop(st, ms);
+      const result = stackLand(st, x, ms, rand);
+      if (result === 'miss') {
+        coin.classList.add('mg-lost');
+        coin.style.bottom = '-3em';
+        talk('Missed the stack! It clipped the edge!');
+        topple(Math.sign(d) || 1, stackBanked(st.n));
+        return;
+      }
+
+      coin.className = 'mg-coin mg-swing mg-hide';
+      const placed = coinEl(pile);
+      placed.style.left = (st.offs[st.n - 1] * STACK_EM - STACK_EM / 2).toFixed(3) + 'em';
+      placed.style.bottom = ((st.n - 1) * thick).toFixed(3) + 'em';
+      placed.classList.add('mg-land');
+      // The coin that tips the stack does not reach its bank point.
+      if (result === 'fall') {
+        topple(Math.sign(st.tilt), stackBanked(st.n - 1));
+        return;
+      }
+
+      const banked = st.n % STACK_BANK === 0;
+      if (banked) {
+        placed.classList.add('mg-bank');
+        el('span', 'mg-lock', '🔒 ×' + STACK_PAY[st.n], placed);
+      }
+      showTally();
+      if (st.n === STACK_MAX) {
+        over = true;
+        cash.hidden = true;
+        talk('Twelve high! I need a ladder to see the top.');
+        s.sfx('jackpot');
+        s.later(() => api.finish(STACK_PAY[st.n], 'A full stack of ' + st.n + '!'), 1200);
+        return;
+      }
+
+      if (banked) talk(pick(STACK_SAFE, rand));
+      else if (Math.abs(st.tilt) > 0.6) talk(pick(STACK_TIPSY, rand));
+      else talk(pick(Math.abs(d) < 0.12 ? STACK_GOOD : STACK_OFF, rand));
+      s.sfx(banked ? 'coin' : 'ding');
+      s.later(spawn, 600);
+    }
+
+    // The stack tips over, then the coins scatter, top coin first.
+    function topple(dir, keep) {
+      over = true;
+      cash.hidden = true;
+      const coins = Array.from(pile.children);
+      const n = coins.length;
+      mark.style.left = dir > 0 ? '100%' : '0%';
+      mark.classList.add('mg-hot');
+      pile.classList.add('mg-tip');
+      pile.style.transform = 'rotate(' + (dir * 0.6).toFixed(2) + 'rad)';
+      tower.classList.add('mg-shake');
+      s.sfx('whack');
+      s.later(() => {
+        coins.forEach((c, i) => {
+          c.style.setProperty('--mg-fx', (dir * (1.5 + rand() * 3 + (i / n) * 3)).toFixed(2) + 'em');
+          c.style.setProperty('--mg-fy', (i * thick + 1 + rand()).toFixed(2) + 'em');
+          c.style.setProperty('--mg-fr', Math.round(dir * (90 + rand() * 400)) + 'deg');
+          c.style.transitionDelay = ((n - 1 - i) * 40) + 'ms';
+          c.classList.add('mg-tumble');
+        });
+        talk(pick(STACK_CRASH, rand));
+        s.sfx('nope');
+      }, 350);
+      s.later(() => api.finish(keep, keep ? 'It fell. The bank keeps ×' + keep + '.' : 'It fell before the first bank.'), 1900);
+    }
+
+    s.on(tower, 'pointerdown', e => {
+      e.preventDefault();
+      release();
+    });
+    s.on(drop, 'pointerdown', e => {
+      e.preventDefault();
+      release();
+    });
+    s.on(cash, 'click', () => {
+      if (over || !swinging || !st.n) return;
+      over = true;
+      swinging = false;
+      drop.disabled = true;
+      area.classList.remove('mg-pick');
+      coin.classList.add('mg-hide');
+      showTally();
+      talk('Wise. A tall stack is a nervous stack.');
+      api.finish(STACK_PAY[st.n], 'Cashed out at ' + st.n + ' coins.');
+    });
+
+    talk('My coins. Stack them high. Not too high.');
+    spawn();
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
   // Registry
 
   const GAMES = {
@@ -1345,6 +1599,10 @@
       icon: '🥬', name: 'Salad Sling', rules: 'Fling lettuce into hungry mouths. Far ones pay most.',
       win: coins => 'win up to ' + coins(SLING_ROWS[0].pay * SLING_SHOTS), prep: prepSling, run: runSling,
     },
+    stack: {
+      icon: '🪙', name: 'Coin Stack', rules: 'Stack coins. Every third is banked. A fall pays the bank.',
+      win: coins => 'win up to ' + coins(STACK_PAY[STACK_MAX]), prep: prepStack, run: runStack,
+    },
   };
 
   window.BBMini = {
@@ -1357,6 +1615,7 @@
       { id: 'curl', icon: '🥌', name: 'Snail Curling', blurb: 'Slide shells to the lettuce. Up to 2×.', at: 30 },
       { id: 'scratch', icon: '🧦', name: 'Scratch & Sniff', blurb: 'Rub a card. Mind the sock. Up to 3×.', at: 34 },
       { id: 'sling', icon: '🥬', name: 'Salad Sling', blurb: 'Feed the snails from afar. Up to 1.95×.', at: 38 },
+      { id: 'stack', icon: '🪙', name: 'Coin Stack', blurb: 'Stack coins. Bank every third. Up to 2.3×.', at: 42 },
     ],
 
     play(id, host, ctx) {
@@ -1378,6 +1637,7 @@
       SCRATCH_SYMBOLS, SCRATCH_SOCK, SCRATCH_MAX, scratchPlan, scratchNear, scratchPay,
       SLING_W, SLING_H, SLING_FROM, SLING_PULL, SLING_REACH, SLING_WIND, SLING_SHOTS, SLING_ROWS,
       slingPlan, slingX, slingPull, slingLand, slingFlight, slingHit,
+      STACK_PAY, STACK_MAX, STACK_BANK, STACK_DROP_MS, stackPlan, stackBanked, stackSwing, stackAngle, stackTop, stackLand,
     },
   };
 })();
