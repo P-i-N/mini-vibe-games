@@ -1,13 +1,26 @@
 'use strict';
-/* Strata Siege - a one-handed tower defense played on three layers.
-   Sky: move a weather cloud. Ground: build towers. Underground: send hamsters digging for loot.
-   Controls: tap / click only. Escape or right click pauses. */
+/* Strata Siege - a one-handed tower defense on three isometric layers. Only one layer is on screen at a time.
+   Sky: herd and merge clouds; their shadows are the weather below. Ground: towers, the Boot, Grandma at the door.
+   Mine: hamsters with backpacks dig for loot; numbers on dug tiles count the dangers around them.
+   Controls: tap and drag only. Escape or a right click pauses.
+   All game logic is in world units: one tile is 1 x 1, heights are in tile heights. Screen pixels appear only in drawing. */
 (() => {
-  const W = 480, H = 800;
-  const HUD_H = 48, CELL = 40, COLS = 12, GROWS = 7, UROWS = 7;
-  const GROUND_Y = 190, UG_Y = GROUND_Y + GROWS * CELL, BAR_Y = UG_Y + UROWS * CELL; // 470, 750
-  const CLOUD_Y = 88, FLY_Y = 146;
-  const SAVE_KEY = 'stratasiege.save.v1', BEST_KEY = 'stratasiege.best.v1', MUTE_KEY = 'stratasiege.mute';
+  // ---------- layout ----------
+  const W = 480, H = 800, HUD_H = 56, BAR_H = 76, VIEW_Y0 = HUD_H, VIEW_Y1 = H - BAR_H;
+  // The map is N x N diamonds of TW x TH. ZU is the height of one cube on screen. SLAB is the side of the map slab.
+  const N = 9, TW = 80, TH = 40, HW = 40, HH = 20, ZU = 49, SLAB = 26;
+  const MAP_W = N * TW, ORIGIN_X = MAP_W / 2, ORIGIN_Y = 90;
+  const CACHE_W = MAP_W, CACHE_H = ORIGIN_Y + N * TH + SLAB + 40;
+  // The world is drawn smaller than it is painted, so that nearly all of the map fits on a phone. World drawing and
+  // picking use "view units": the view is VW x VH of them, with (0, 0) in the corner under the HUD.
+  const ZOOM = 0.75, VW = W / ZOOM, VH = (VIEW_Y1 - VIEW_Y0) / ZOOM;
+  const MAP_Y = Math.round((VH - CACHE_H) / 2) + 16;
+  const PAN_MAX = (MAP_W - VW) / 2 + 24;
+  const FLY_Z = 2.3, CLOUD_Z = 0.4;
+  const SAVE_KEY = 'stratasiege.save.v1', BEST_KEY = 'stratasiege.best.v1', MUTE_KEY = 'stratasiege.mute',
+    MUSIC_KEY = 'stratasiege.musicoff', META_KEY = 'stratasiege.meta.v1';
+  const LAYERS = ['sky', 'ground', 'dig'];
+  const LAYER_NAME = { sky: 'SKY', ground: 'GROUND', dig: 'DIG' };
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
@@ -23,8 +36,23 @@
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
 
+  // ---------- modules ----------
+  // Art, creatures, audio, the keeper's lines and the maps live in their own files.
+  const ART = window.SSArt, FOE_ART = window.SSFoeArt, LV = window.SS_LEVELS, KEEPER = window.SS_KEEPER || { name: 'Gnorman', lines: {} };
+  const DIG_Z = ART.DIG_Z;
+  // A missing effect must never stop the game.
+  const A = window.SSAudio || {};
+  const quiet = () => 0;
+  for (const k of ['init', 'music', 'fever', 'streak', 'rush', 'tune', 'layer', 'setSfx', 'setMusic']) if (!A[k]) A[k] = quiet;
+  if (!A.beat) A.beat = quiet;
+  const sfx = new Proxy(A.sfx || {}, { get: (o, k) => (typeof o[k] === 'function' ? o[k] : quiet) });
+  let muted = store.get(MUTE_KEY, false), musicOff = store.get(MUSIC_KEY, false);
+  A.setSfx(!muted); A.setMusic(!musicOff);
+  function audio() { A.init(); }
+  function buzz(p) { try { if (!muted && navigator.vibrate) navigator.vibrate(p); } catch (e) { /* ignore */ } }
+
   // ---------- sizing ----------
-  let scale = 1, dpr = 1;
+  let scale = 1, dpr = 1, S = 1, SZ = 1; // S = device pixels for one logical pixel, SZ = for one view unit
   function resize() {
     const vw = window.innerWidth, vh = window.innerHeight;
     scale = Math.min(vw / W, vh / H);
@@ -34,236 +62,357 @@
     canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
     wrap.style.width = cw + 'px'; wrap.style.height = ch + 'px';
     wrap.style.fontSize = Math.max(11, 16 * scale) + 'px';
+    S = canvas.width / W; SZ = S * ZOOM;
+    sprites.clear();
+    for (const k of LAYERS) cacheDirty[k] = true;
     closePop();
   }
   window.addEventListener('resize', resize);
-
-  // ---------- audio ----------
-  let actx = null, muted = store.get(MUTE_KEY, false);
-  function audio() {
-    if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
-    if (actx && actx.state === 'suspended') actx.resume();
-  }
-  const lastSfx = {};
-  function beep(freq, dur = 0.06, type = 'square', vol = 0.05, slide = 0, key = null) {
-    if (muted || !actx) return;
-    if (key) { const t = performance.now(); if (lastSfx[key] && t - lastSfx[key] < 45) return; lastSfx[key] = t; }
-    const t0 = actx.currentTime;
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type; o.frequency.setValueAtTime(freq, t0);
-    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
-    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.02);
-  }
-  const sfx = {
-    shoot: () => beep(720, 0.03, 'square', 0.012, -200, 'sh'),
-    kill: () => beep(420, 0.06, 'triangle', 0.035, 260, 'kill'),
-    dig: () => beep(130, 0.04, 'square', 0.02, 0, 'dig'),
-    loot: () => { beep(660, 0.08, 'triangle', 0.06, 300); setTimeout(() => beep(990, 0.12, 'triangle', 0.06, 300), 80); },
-    bad: () => beep(170, 0.3, 'sawtooth', 0.06, -100),
-    zap: () => beep(1400, 0.09, 'sawtooth', 0.03, -1100, 'zap'),
-    boom: () => beep(120, 0.2, 'sawtooth', 0.045, -80, 'boom'),
-    build: () => beep(300, 0.08, 'triangle', 0.06, 250),
-    buy: () => { beep(700, 0.06, 'triangle', 0.06); setTimeout(() => beep(1100, 0.09, 'triangle', 0.06), 60); },
-    nope: () => beep(140, 0.12, 'square', 0.05),
-    leak: () => beep(260, 0.3, 'sawtooth', 0.07, -200),
-    wave: () => { beep(220, 0.18, 'sawtooth', 0.04, 110); setTimeout(() => beep(330, 0.25, 'sawtooth', 0.04, 0), 160); },
-    clear: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'triangle', 0.07), i * 90)),
-    tick: () => beep(900, 0.03, 'sine', 0.03),
-  };
 
   // ---------- utils ----------
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+  const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  const inMap = (i, j) => i >= 0 && j >= 0 && i < N && j < N;
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const easeOutBack = (t, s = 1.4) => 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2);
+  const easeInCubic = (t) => t * t * t;
   function rr(x, y, w, h, r) {
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
     ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
-  // Emoji are rendered once into small offscreen canvases, then blitted (fast on phones).
-  const sprCache = {};
-  const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-  function spr(e) {
-    let c = sprCache[e];
-    if (!c) {
-      c = document.createElement('canvas'); c.width = c.height = 96;
-      const g = c.getContext('2d'); g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = '72px ' + EMOJI_FONT; g.fillText(e, 48, 53);
-      sprCache[e] = c;
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  // ---------- sprites ----------
+  // Every piece of art is painted once into a small canvas at device scale and then copied. `white` is the hit flash.
+  const sprites = new Map();
+  function spr(X, kind, o, white) {
+    const key = kind + '|' + (o ? JSON.stringify(o) : '') + (white ? '|w' : '');
+    let s = sprites.get(key);
+    if (!s) {
+      let b = null;
+      try { b = X.box(kind, o); } catch (e) { b = null; }
+      if (!b || !isFinite(b.w) || !isFinite(b.h)) b = { w: 40, h: 40, ax: 20, ay: 34 };
+      const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.ceil(b.w * SZ)); cv.height = Math.max(1, Math.ceil(b.h * SZ));
+      const c = cv.getContext('2d'); c.setTransform(SZ, 0, 0, SZ, 0, 0); c.translate(b.ax, b.ay);
+      try { X.paint(kind, c, o); } catch (e) { c.fillStyle = '#ff00ff'; c.beginPath(); c.arc(0, -10, 10, 0, 7); c.fill(); }
+      if (white) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'source-atop'; c.fillStyle = '#ffffff'; c.fillRect(0, 0, cv.width, cv.height); }
+      s = { cv, w: b.w, h: b.h, ax: b.ax, ay: b.ay }; sprites.set(key, s);
     }
-    return c;
+    return s;
   }
-  function emo(e, x, y, s, flip) {
-    const c = spr(e);
-    if (flip) { ctx.save(); ctx.translate(x, y); ctx.scale(-1, 1); ctx.drawImage(c, -s / 2, -s / 2, s, s); ctx.restore(); }
-    else ctx.drawImage(c, x - s / 2, y - s / 2, s, s);
+  const art = (kind, o, white) => spr(ART, kind, o, white);
+  const foeSpr = (kind, o, white) => spr(FOE_ART, kind, o, white);
+  // Copies a sprite so that its anchor lands on (x, y). sx, sy squash and stretch around the anchor.
+  function blit(s, x, y, sx = 1, sy = 1, flip = false) {
+    x = Math.round(x * SZ) / SZ; y = Math.round(y * SZ) / SZ;
+    if (flip) { ctx.save(); ctx.translate(x, y); ctx.scale(-1, 1); ctx.drawImage(s.cv, -s.ax * sx, -s.ay * sy, s.w * sx, s.h * sy); ctx.restore(); }
+    else ctx.drawImage(s.cv, x - s.ax * sx, y - s.ay * sy, s.w * sx, s.h * sy);
   }
+  const icon = (k, x, y, size = 22) => { const s = art('icon', { k }); ctx.drawImage(s.cv, x - size / 2, y - size / 2, size, size); };
 
-  // ---------- catalogue ----------
+  // ---------- catalogue: towers ----------
+  // cost in coins; dmg per shot; rate = seconds between shots; range in tiles; `from` = the first level that has it.
+  // `cap` is the rule that level 3 adds.
   const TOWERS = {
-    pea: { name: 'Pea Pod', icon: '🌱', cost: 30, dmg: 8, rate: 0.55, range: 88, ground: true, air: false, color: '#9dff6b', desc: 'Spits peas at walkers' },
-    kite: { name: 'Kite Launcher', icon: '🪁', cost: 40, dmg: 16, rate: 0.8, range: 130, ground: false, air: true, color: '#ff8ad8', desc: 'Only hits flyers, hard' },
-    ice: { name: 'Brain Freeze', icon: '🍦', cost: 50, dmg: 3, rate: 1.0, range: 80, ground: true, air: true, slow: 0.45, splash: 34, color: '#bdf3ff', desc: 'Slows everything nearby' },
-    mortar: { name: 'Teapot Mortar', icon: '🫖', cost: 70, dmg: 24, rate: 1.9, range: 135, ground: true, air: false, splash: 42, color: '#d9a066', desc: 'Lobs boiling tea, splash' },
-    tesla: { name: 'Tesla Toaster', icon: '🍞', cost: 90, dmg: 13, rate: 1.1, range: 100, ground: true, air: true, chain: 3, color: '#cfe0ff', desc: 'Lightning that jumps' },
+    pea: { name: 'Pea Pod', icon: '🌱', cost: 30, dmg: 8, rate: 0.55, range: 2.1, ground: true, air: false, from: 1, color: '#9dff6b',
+      desc: 'Spits peas at walkers', cap: 'Big Pea: every fifth shot is a huge pea that knocks its target back.' },
+    kite: { name: 'Kite Launcher', icon: '🪁', cost: 40, dmg: 16, rate: 0.8, range: 3.0, ground: false, air: true, from: 2, color: '#ff8ad8',
+      desc: 'Only hits flyers, hard', cap: 'Tangle: the string also hits a second flyer.' },
+    ice: { name: 'Brain Freeze', icon: '🍦', cost: 50, dmg: 3, rate: 1.0, range: 1.9, ground: true, air: true, slow: 0.45, splash: 0.8, from: 4, color: '#bdf3ff',
+      desc: 'Slows everything nearby', cap: 'Deep Freeze: the third scoop freezes an enemy solid.' },
+    banana: { name: 'Banana Peeler', icon: '🍌', cost: 60, dmg: 10, rate: 3.2, range: 2.0, ground: true, air: false, from: 6, color: '#ffe680',
+      desc: 'Peels on the path: walkers slip back', cap: 'Slapstick: a slip knocks over the two behind as well.' },
+    mortar: { name: 'Teapot Mortar', icon: '🫖', cost: 70, dmg: 24, rate: 1.9, range: 3.2, ground: true, air: false, splash: 0.95, from: 8, color: '#d9a066',
+      desc: 'Lobs boiling tea, splash', cap: 'Hot Puddle: the tea keeps scalding where it lands.' },
+    tesla: { name: 'Tesla Toaster', icon: '🍞', cost: 90, dmg: 13, rate: 1.1, range: 2.4, ground: true, air: true, chain: 3, from: 11, color: '#cfe0ff',
+      desc: 'Lightning that jumps', cap: 'Overdone: two more jumps, and each one stuns.' },
   };
-  const TOWER_ORDER = ['pea', 'kite', 'ice', 'mortar', 'tesla'];
+  const TOWER_ORDER = ['pea', 'kite', 'ice', 'banana', 'mortar', 'tesla'];
+
+  // ---------- catalogue: enemies ----------
+  // hp at level 1; spd in tiles per second; coin = reward; cost = its share of a wave budget; gap = seconds after its spawn.
   const FOES = {
-    rat: { icon: '🐀', hp: 16, spd: 58, coin: 3, size: 26, cost: 1, gap: 0.55 },
-    snail: { icon: '🐌', hp: 38, spd: 27, coin: 4, size: 27, cost: 1.6, gap: 0.95 },
-    beetle: { icon: '🪲', hp: 46, spd: 34, coin: 6, armor: 3, size: 25, cost: 2.4, gap: 0.9 },
-    hedgehog: { icon: '🦔', hp: 75, spd: 40, coin: 8, armor: 2, size: 28, cost: 3.4, gap: 1 },
-    balloon: { icon: '🎈', hp: 28, spd: 30, coin: 5, fly: true, size: 30, cost: 2, gap: 1.1 },
-    duck: { icon: '🦆', hp: 22, spd: 60, coin: 5, fly: true, size: 28, cost: 2, gap: 0.6 },
-    worm: { icon: '🐛', hp: 30, spd: 38, coin: 4, size: 24, gap: 0.5 },
-    ogre: { icon: '👹', hp: 520, spd: 20, coin: 50, hearts: 5, size: 46, boss: true, gap: 2 },
-    dragon: { icon: '🐲', hp: 400, spd: 22, coin: 50, hearts: 5, size: 46, fly: true, boss: true, gap: 2 },
+    rat: { hp: 16, spd: 1.45, coin: 3, cost: 1, gap: 0.55, r: 0.2 },
+    snail: { hp: 38, spd: 0.68, coin: 4, cost: 1.6, gap: 0.95, r: 0.22 },
+    beetle: { hp: 46, spd: 0.85, coin: 6, armor: 3, cost: 2.4, gap: 0.9, r: 0.22 },
+    hedgehog: { hp: 75, spd: 1.0, coin: 8, armor: 2, cost: 3.4, gap: 1, r: 0.22 },
+    frog: { hp: 30, spd: 1.3, coin: 5, cost: 1.8, gap: 0.7, r: 0.2 },
+    sapper: { hp: 44, spd: 0.9, coin: 9, cost: 3, gap: 1.2, r: 0.22 },
+    balloon: { hp: 28, spd: 0.75, coin: 5, fly: true, cost: 2, gap: 1.1, r: 0.25 },
+    duck: { hp: 22, spd: 1.5, coin: 5, fly: true, cost: 2, gap: 0.6, r: 0.22 },
+    worm: { hp: 30, spd: 0.95, coin: 4, gap: 0.5, r: 0.18 },
+    chick: { hp: 10, spd: 1.6, coin: 1, gap: 0.3, r: 0.15 },
+    hen: { hp: 520, spd: 0.5, coin: 60, hearts: 5, boss: true, gap: 2, r: 0.4 },
+    tyrant: { hp: 760, spd: 0.46, coin: 80, hearts: 5, boss: true, armor: 2, gap: 2, r: 0.4 },
+    goose: { hp: 640, spd: 0.4, coin: 100, hearts: 5, boss: true, fly: true, gap: 2, r: 0.4 },
   };
+  const BOSS_AT = { 10: 'hen', 20: 'tyrant', 30: 'goose' };
+  const BOSS_NAMES = { hen: 'Mama Hen', tyrant: 'The Tunnel Tyrant', goose: 'The Thunder Goose' };
+
+  // ---------- catalogue: the mine ----------
+  // w = weight; far = the smallest distance from the shaft (tiles); carry = a hamster must bring it home.
   const LOOT = {
-    gem: { icon: '💎', w: 40 }, coins: { icon: '💰', w: 22 }, fossil: { icon: '🦴', w: 8, minRow: 2 },
-    spring: { icon: '💧', w: 9 }, heart: { icon: '❤️', w: 5 }, mushroom: { icon: '🍄', w: 6 },
-    relic: { icon: '🏺', w: 8, minRow: 3 }, blueprint: { icon: '📜', w: 5, minRow: 3 },
+    gem: { w: 40, carry: true, name: 'Gem' }, coins: { w: 22, carry: true, name: 'Coin pouch' },
+    fossil: { w: 8, far: 3, carry: true, name: 'Fossil' }, spring: { w: 8, name: 'Spring' },
+    heart: { w: 5, carry: true, name: 'Heart stone' }, mushroom: { w: 6, name: 'Zoomy mushroom' },
+    relic: { w: 7, far: 3, name: 'Old urn' }, blueprint: { w: 4, far: 4, carry: true, name: 'Blueprint' },
+    dynamite: { w: 6, far: 2, name: 'Dynamite' },
   };
-  const HAZ = { gas: { icon: '🤢' }, cave: { icon: '🪨' }, nest: { icon: '🐛' } };
-  const WEATHER = {
-    off: { icon: '💤', label: 'rest', cloud: '#ffffff' },
-    rain: { icon: '🌧️', label: 'rain', cloud: '#aab6cc', tint: '80,150,255', drain: 5 },
-    storm: { icon: '⛈️', label: 'storm', cloud: '#5b6079', tint: '190,140,255', drain: 0 },
-    sun: { icon: '☀️', label: 'sun', cloud: '#fff3c4', tint: '255,220,90', drain: 5 },
-    wind: { icon: '🌬️', label: 'wind', cloud: '#d8f1ff', tint: '220,240,255', drain: 8 },
-  };
-  // Paths are lists of [column, row] corners on the 12x7 ground grid. Column -1 is off-screen.
-  const LAYOUTS = [
-    { name: 'Meadow Switchback', pts: [[-1, 1], [9, 1], [9, 3], [2, 3], [2, 5], [11, 5]] },
-    { name: 'Turnip Hills', pts: [[-1, 5], [2, 5], [2, 1], [6, 1], [6, 5], [9, 5], [9, 2], [11, 2]] },
-    { name: 'Crooked Creek', pts: [[-1, 1], [4, 1], [4, 5], [8, 5], [8, 1], [11, 1]] },
-    { name: 'Goat Pass', pts: [[-1, 6], [4, 6], [4, 1], [8, 1], [8, 5], [11, 5]] },
-    { name: 'Long Lane', pts: [[-1, 3], [2, 3], [2, 0], [6, 0], [6, 6], [10, 6], [10, 3], [11, 3]] },
-  ];
-  const TIPS = {
-    1: 'Tap grass to build towers. Tap the dirt below to dig for loot.',
-    2: 'Balloons fly over the path. Kite Launchers and storms stop them.',
-    3: 'Tap the sky to move your cloud. Pick its weather at the bottom.',
-    4: 'Rain softens the soil: hamsters dig twice as fast under it.',
-    5: 'BOSS! Something big is coming in the last wave.',
-  };
+  const HAZARDS = { gas: 'Stink pocket', cave: 'Cave-in', nest: 'Worm nest' };
+  const HARD_NAMES = ['', 'Soft dirt', 'Packed clay', 'Stone', 'Hard rock'];
+  const NUM_COL = ['', '#7cc8ff', '#7cf28a', '#ffd84a', '#ff8a5c', '#ff5a7a', '#ff5a7a', '#ff5a7a', '#ff5a7a'];
+  const PACK_CAP = 3;          // items in a backpack before the hamster walks home
+  const FUSE_S = 3;            // seconds from a placed stick to the blast
+  const GEM_ROLL_S = 6;        // a loose gem waits this long for a tap
+  const PIT_S = 9, PIT_COST = 15;
+  const SAPPER_TAPS = 3, TYRANT_TAPS = 5;
 
-  const CATS = [{ id: 'tow', name: '🗼 Towers' }, { id: 'mine', name: '⛏️ Mining' }, { id: 'sky', name: '☁️ Sky' }, { id: 'keep', name: '🏰 Castle' }];
+  // ---------- catalogue: the sky ----------
+  // r = the radius of the shadow in tiles (a big cloud: x1.5); life in seconds, or bolts for a storm.
+  const CLOUDS = {
+    puff: { name: 'Puff', r: 0.9, raw: true }, gold: { name: 'Golden puff', r: 0.9, raw: true }, frost: { name: 'Frosty puff', r: 0.9, raw: true },
+    rain: { name: 'Rain', r: 1.15, life: 45, tint: '80,150,255', text: 'slows enemies, doubles digging' },
+    storm: { name: 'Storm', r: 1.15, bolts: 16, tint: '170,120,255', text: 'zaps the toughest enemy in its shadow' },
+    sun: { name: 'Sunbeam', r: 1.15, life: 40, tint: '255,220,90', text: 'towers in its light fire faster' },
+    rainbow: { name: 'Rainbow', r: 1.15, life: 40, tint: '255,150,220', text: 'walkers stop to dance, and it pays coins' },
+    snow: { name: 'Snow', r: 1.15, life: 35, tint: '200,240,255', text: 'slows enemies to a crawl' },
+    super: { name: 'Supercell', r: 1.5, bolts: 34, tint: '150,90,255', text: 'a storm with twice the temper' },
+  };
+  // a + b -> result. The order does not matter. Two equal finished clouds make one big cloud.
+  const RECIPES = [
+    ['puff', 'puff', 'rain'], ['rain', 'puff', 'storm'], ['rain', 'rain', 'storm'], ['storm', 'storm', 'super'], ['storm', 'puff', 'storm'],
+    ['gold', 'puff', 'sun'], ['gold', 'gold', 'sun'], ['gold', 'rain', 'rainbow'], ['frost', 'puff', 'snow'], ['frost', 'rain', 'snow'], ['frost', 'frost', 'snow'],
+  ];
+  const PUFF_S = 8, PUFF_MAX = 9;   // a new puff every PUFF_S seconds, up to PUFF_MAX clouds
+  const DRIFT = 1 / 7;              // tiles per second that an unwatched, unanchored cloud drifts
+
+  // ---------- reveal schedule ----------
+  // The first level of each feature. A new run meets the game one piece at a time.
+  const FROM = { boot: 1, bell: 1, dig: 3, sky: 5, crystal: 6, heat: 6, gold: 7, combo: 7, dynamite: 8, sapper: 9, pit: 11, frost: 12, lode: 5 };
+  const CAMPAIGN = 30;
+
+  // ---------- the Boot, Grandma, streaks, the combo ----------
+  const BOOT_DELAY = 0.6, BOOT_R = 0.75, BOOT_CHARGES = 3, BOOT_S = 6;
+  const RING_S = 3;          // an enemy at the door waits this long before it gets in
+  const SWAT_S = 4;          // Grandma's breather between swats
+  const STREAK_GAP = 1.6;    // kills closer than this make a splat streak
+  const COMBO_WINDOW = 10, COMBO_S = 12;   // act on all three layers within the window: double coins for COMBO_S
+  const EYES_TOWER = 1.15, EYES_DIG = 1.3; // the layer on screen works harder
+
+  // ---------- shop ----------
+  // base and grow give the price in gems; `at` is the level from which the shop stocks it.
+  // Every upgrade gains a rule at its top level (CAPS). An upgrade with one level is a rule already.
+  const CATS = [{ id: 'tow', name: '🗼 Towers' }, { id: 'boot', name: '🥾 Castle' }, { id: 'mine', name: '⛏️ Mine' }, { id: 'sky', name: '☁️ Sky' }];
   const ITEMS = [
-    { id: 't_ice', cat: 'tow', icon: '🍦', name: 'Brain Freeze', max: 1, base: 10, grow: 1, desc: () => 'New tower: splashes ice cream that slows walkers and flyers.' },
-    { id: 't_mortar', cat: 'tow', icon: '🫖', name: 'Teapot Mortar', max: 1, base: 16, grow: 1, desc: () => 'New tower: long-range splash damage. Ground only.' },
-    { id: 't_tesla', cat: 'tow', icon: '🍞', name: 'Tesla Toaster', max: 1, base: 24, grow: 1, desc: () => 'New tower: chain lightning that hits ground and air.' },
-    { id: 'spicy', cat: 'tow', icon: '🌶️', name: 'Spicy Ammo', max: 5, base: 8, grow: 1.6, desc: (l) => `All towers deal +${(l + 1) * 15}% damage.` },
-    { id: 'stilts', cat: 'tow', icon: '🦒', name: 'Tower Stilts', max: 4, base: 8, grow: 1.6, desc: (l) => `All towers see ${(l + 1) * 8}% further.` },
-    { id: 'espresso', cat: 'tow', icon: '☕', name: 'Espresso Drip', max: 4, base: 9, grow: 1.6, desc: (l) => `All towers fire ${(l + 1) * 10}% faster. Jittery.` },
-    { id: 'bulk', cat: 'tow', icon: '🧱', name: 'Bulk Bricks', max: 3, base: 10, grow: 1.7, desc: (l) => `Building and upgrading towers costs ${(l + 1) * 8}% less.` },
-    { id: 'refund', cat: 'tow', icon: '🧾', name: 'Kept the Receipt', max: 1, base: 7, grow: 1, desc: () => 'Selling a tower refunds 100% instead of 70%.' },
+    { id: 'spicy', cat: 'tow', icon: '🌶️', name: 'Spicy Ammo', max: 5, base: 6, grow: 1.55, at: 2, desc: (l) => `All towers deal +${(l + 1) * 12}% damage.` },
+    { id: 'espresso', cat: 'tow', icon: '☕', name: 'Espresso Drip', max: 5, base: 7, grow: 1.55, at: 3, desc: (l) => `All towers fire ${(l + 1) * 8}% faster.` },
+    { id: 'stilts', cat: 'tow', icon: '🦒', name: 'Tower Stilts', max: 4, base: 7, grow: 1.6, at: 4, desc: (l) => `All towers see ${(l + 1) * 7}% further.` },
+    { id: 'bulk', cat: 'tow', icon: '🧱', name: 'Bulk Bricks', max: 3, base: 9, grow: 1.7, at: 5, desc: (l) => `Building and upgrading costs ${(l + 1) * 7}% less.` },
+    { id: 'plans', cat: 'tow', icon: '📐', name: 'Early Plans', max: 3, base: 10, grow: 1.8, at: 3, desc: (l) => `The next ${l + 1} tower type${l ? 's arrive' : ' arrives'} before its time.` },
 
-    { id: 'mole', cat: 'mine', icon: '🐹', name: 'Hire a Hamster', max: 3, base: 12, grow: 1.8, desc: (l) => `One more digger. You have ${l + 1}.` },
-    { id: 'pick', cat: 'mine', icon: '⛏️', name: 'Diamond Picks', max: 4, base: 7, grow: 1.6, desc: (l) => `Digging is ${(l + 1) * 25}% faster.` },
-    { id: 'union', cat: 'mine', icon: '🤝', name: 'Union Discount', max: 3, base: 8, grow: 1.7, desc: (l) => `Digging costs ${(l + 1) * 15}% less.` },
-    { id: 'detector', cat: 'mine', icon: '📡', name: 'Metal Detector', max: 1, base: 9, grow: 1, desc: () => 'Glints turn gold for treasure and red for danger.' },
-    { id: 'helmet', cat: 'mine', icon: '⛑️', name: 'Gas Mask', max: 1, base: 10, grow: 1, desc: () => 'Stink pockets no longer knock out your hamsters.' },
-    { id: 'supports', cat: 'mine', icon: '🪵', name: 'Wooden Props', max: 1, base: 10, grow: 1, desc: () => 'No more cave-ins.' },
-    { id: 'socks', cat: 'mine', icon: '🧦', name: 'Lucky Socks', max: 3, base: 9, grow: 1.7, desc: (l) => `${(l + 1) * 5}% more tiles hide treasure.` },
-    { id: 'bait', cat: 'mine', icon: '🧀', name: 'Worm Repellent', max: 2, base: 9, grow: 1.8, desc: (l) => `Worm nests release ${l ? 'far fewer' : 'fewer'} worms.` },
+    { id: 'boots', cat: 'boot', icon: '🥾', name: 'Bigger Boots', max: 5, base: 5, grow: 1.5, at: 2, desc: (l) => `The Boot hits ${(l + 1) * 20}% harder and a little wider.` },
+    { id: 'laces', cat: 'boot', icon: '🎀', name: 'Quick Laces', max: 4, base: 6, grow: 1.6, at: 3, desc: (l) => `A stomp comes back ${((l + 1) * 0.7).toFixed(1)} s sooner.` },
+    { id: 'pin', cat: 'boot', icon: '🥖', name: 'Rolling Pin', max: 4, base: 6, grow: 1.6, at: 3, desc: (l) => `Grandma needs ${((l + 1) * 0.6).toFixed(1)} s less between swats.` },
+    { id: 'walls', cat: 'boot', icon: '🏰', name: 'Thicker Walls', max: 4, base: 6, grow: 1.6, at: 2, desc: (l) => `The castle starts with ${10 + (l + 1) * 2} hearts.` },
+    { id: 'piggy', cat: 'boot', icon: '🐷', name: 'Piggy Bank', max: 5, base: 5, grow: 1.5, at: 2, desc: (l) => `Start each level with ${(l + 1) * 20} more coins.` },
+    { id: 'bounty', cat: 'boot', icon: '🎯', name: 'Pest Bounty', max: 4, base: 8, grow: 1.6, at: 4, desc: (l) => `Enemies drop ${(l + 1) * 12}% more coins.` },
 
-    { id: 'wind', cat: 'sky', icon: '🌬️', name: 'Bottled Wind', max: 1, base: 14, grow: 1, desc: () => 'New weather: blows flyers backwards and slows walkers everywhere.' },
-    { id: 'spyglass', cat: 'sky', icon: '🔭', name: 'Spy Cloud', max: 1, base: 12, grow: 1, desc: () => 'Your cloud spies straight through the soil: everything buried under it is revealed.' },
-    { id: 'fluffy', cat: 'sky', icon: '☁️', name: 'Fluffier Cloud', max: 3, base: 7, grow: 1.6, desc: (l) => `Cloud is ${(l + 1) * 20}% wider.` },
-    { id: 'puddle', cat: 'sky', icon: '🪣', name: 'Bigger Bucket', max: 3, base: 7, grow: 1.6, desc: (l) => `Cloud holds ${(l + 1) * 30}% more water.` },
-    { id: 'thunder', cat: 'sky', icon: '⚡', name: 'Thunder Juice', max: 4, base: 9, grow: 1.6, desc: (l) => `Lightning deals +${(l + 1) * 30}% damage.` },
-    { id: 'sticky', cat: 'sky', icon: '🍯', name: 'Sticky Rain', max: 3, base: 8, grow: 1.6, desc: (l) => `Rain slows enemies by ${30 + (l + 1) * 10}%.` },
-    { id: 'tan', cat: 'sky', icon: '🕶️', name: 'Magnifying Glass', max: 2, base: 9, grow: 1.7, desc: (l) => `Sunbeam speeds towers up by ${60 + (l + 1) * 25}%.` },
+    { id: 'hire', cat: 'mine', icon: '🐹', name: 'Hire a Hamster', max: 3, base: 9, grow: 1.8, at: 4, desc: (l) => `One more digger. You have ${l + 1}.` },
+    { id: 'pick', cat: 'mine', icon: '⛏️', name: 'Sharper Picks', max: 5, base: 6, grow: 1.55, at: 4, desc: (l) => `Digging is ${(l + 1) * 20}% faster.` },
+    { id: 'union', cat: 'mine', icon: '🤝', name: 'Union Discount', max: 4, base: 7, grow: 1.6, at: 5, desc: (l) => `Digging costs ${(l + 1) * 12}% less.` },
+    { id: 'socks', cat: 'mine', icon: '🧦', name: 'Lucky Socks', max: 4, base: 8, grow: 1.6, at: 5, desc: (l) => `${(l + 1) * 4}% more tiles hide treasure.` },
+    { id: 'helmet', cat: 'mine', icon: '⛑️', name: 'Gas Mask', max: 1, base: 9, grow: 1, at: 6, desc: () => 'Stink pockets no longer knock out your hamsters.' },
+    { id: 'props', cat: 'mine', icon: '🪵', name: 'Wooden Props', max: 1, base: 10, grow: 1, at: 7, desc: () => 'No more cave-ins.' },
+    { id: 'fuse', cat: 'mine', icon: '🧨', name: 'Spare Sticks', max: 3, base: 8, grow: 1.7, at: 9, desc: (l) => `Start each level with ${2 + l + 1} sticks of dynamite.` },
 
-    { id: 'walls', cat: 'keep', icon: '🏰', name: 'Thicker Walls', max: 3, base: 7, grow: 1.6, desc: (l) => `Castle starts with ${10 + (l + 1) * 3} hearts.` },
-    { id: 'piggy', cat: 'keep', icon: '🐷', name: 'Piggy Bank', max: 5, base: 6, grow: 1.5, desc: (l) => `Start each level with ${90 + (l + 1) * 25} coins.` },
-    { id: 'bounty', cat: 'keep', icon: '🎯', name: 'Pest Bounty', max: 4, base: 9, grow: 1.6, desc: (l) => `Enemies drop ${(l + 1) * 15}% more coins.` },
-    { id: 'polisher', cat: 'keep', icon: '✨', name: 'Gem Polisher', max: 2, base: 11, grow: 1.8, desc: (l) => `Leftover coins turn into gems at ${[12, 10][l] || 10} per gem (now ${[15, 12, 10][l]}).` },
-    { id: 'hurry', cat: 'keep', icon: '⏩', name: 'Impatience Pays', max: 2, base: 6, grow: 1.7, desc: (l) => `Calling a wave early pays ${(l + 1) * 50}% more.` },
-    { id: 'moat', cat: 'keep', icon: '🦆', name: 'Rubber Duck Moat', max: 2, base: 12, grow: 1.7, desc: (l) => `Walkers near the castle are ${(l + 1) * 20}% slower. Squeak.` },
+    { id: 'anchors', cat: 'sky', icon: '⚓', name: 'More Anchors', max: 3, base: 6, grow: 1.6, at: 6, desc: (l) => `Anchor ${2 + l + 1} clouds at once.` },
+    { id: 'nursery', cat: 'sky', icon: '🐑', name: 'Cloud Nursery', max: 4, base: 7, grow: 1.6, at: 6, desc: (l) => `Puffs arrive ${(l + 1) * 12}% sooner.` },
+    { id: 'thunder', cat: 'sky', icon: '⚡', name: 'Thunder Juice', max: 5, base: 7, grow: 1.55, at: 7, desc: (l) => `Lightning deals +${(l + 1) * 25}% damage.` },
+    { id: 'sticky', cat: 'sky', icon: '🍯', name: 'Sticky Rain', max: 4, base: 7, grow: 1.6, at: 7, desc: (l) => `Rain slows enemies by ${35 + (l + 1) * 7}%.` },
+    { id: 'fluffy', cat: 'sky', icon: '☁️', name: 'Fluffier Clouds', max: 3, base: 8, grow: 1.7, at: 8, desc: (l) => `Every shadow is ${(l + 1) * 10}% wider.` },
+    { id: 'spy', cat: 'sky', icon: '🔭', name: 'Spy Cloud', max: 1, base: 12, grow: 1, at: 8, desc: () => 'Clouds see through the soil: the tiles under a shadow show what they hide.' },
   ];
+  const CAPS = {
+    spicy: ['Ghost Pepper', 'A kill bursts and burns the enemies next to it.'],
+    espresso: ['Jitters', 'One shot in eight fires twice.'],
+    stilts: ['Lookout', 'A tower on a hill sees half as far again.'],
+    bulk: ['Return Policy', 'Selling a tower refunds all of it.'],
+    plans: ['Master Builder', 'New towers are built at level 2.'],
+    boots: ['Steel Toecaps', 'A stomp also stuns for a second and a half.'],
+    laces: ['Double Knot', 'The Boot holds a fourth stomp.'],
+    pin: ['Grandma\'s Revenge', 'A swat hits everyone on the doorstep.'],
+    walls: ['Welcome Mat', 'The doorbell waits two seconds longer.'],
+    piggy: ['Pork Belly', 'Each wave pays 5% interest on your coins, up to 25.'],
+    bounty: ['Tax Collector', 'A boss or a sapper drops a gem.'],
+    hire: ['Night Shift', 'Hamsters dig at full speed while you look elsewhere.'],
+    pick: ['Diamond Tips', 'Hard rock digs like stone.'],
+    union: ['Loyalty Card', 'Every fifth dig is free.'],
+    socks: ['Four-Leaf Sock', 'A loose gem is worth double and waits twice as long.'],
+    fuse: ['Rubber Chicken Fuse', 'A blast leaves all the loot whole.'],
+    anchors: ['Clothes Pegs', 'An anchored cloud lasts half as long again.'],
+    nursery: ['Golden Fleece', 'Every fourth puff is golden.'],
+    thunder: ['Fork Lightning', 'Each bolt jumps to a second enemy.'],
+    sticky: ['Treacle', 'The slow lingers for two seconds after the rain.'],
+    fluffy: ['Cumulonimbus', 'A merged cloud is born big.'],
+  };
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
+  for (const it of ITEMS) if (CAPS[it.id]) it.cap = CAPS[it.id];
+  // Items of the first version that are gone or have a new price: a saved run gets all its gems back once.
+  const OLD_PRICES = { t_ice: [10, 1], t_mortar: [16, 1], t_tesla: [24, 1], spicy: [8, 1.6], stilts: [8, 1.6], espresso: [9, 1.6], bulk: [10, 1.7], refund: [7, 1],
+    mole: [12, 1.8], pick: [7, 1.6], union: [8, 1.7], detector: [9, 1], helmet: [10, 1], supports: [10, 1], socks: [9, 1.7], bait: [9, 1.8], wind: [14, 1],
+    spyglass: [12, 1], fluffy: [7, 1.6], puddle: [7, 1.6], thunder: [9, 1.6], sticky: [8, 1.6], tan: [9, 1.7], walls: [7, 1.6], piggy: [6, 1.5], bounty: [9, 1.6],
+    polisher: [11, 1.8], hurry: [6, 1.7], moat: [12, 1.7] };
+
+  // ---------- relics ----------
+  // A relic changes a rule for the rest of the run. One of three after each boss, and one for the Mother Lode.
+  const RELICS = [
+    { id: 'crown', icon: '👑', name: 'Tiny Crown', desc: 'At most five towers, and each one deals double damage.' },
+    { id: 'horseshoe', icon: '🧲', name: 'Lucky Horseshoe', desc: 'Every seventh kill pays seven times its coins.' },
+    { id: 'acid', icon: '🧪', name: 'Acid Rain', desc: 'Rain burns enemies but no longer slows them.' },
+    { id: 'shovel', icon: '🥄', name: 'Golden Shovel', desc: 'The first three digs of a level are free and instant.' },
+    { id: 'cuckoo', icon: '🕰️', name: 'Cuckoo Clock', desc: 'Calling a wave early pays three times as much.' },
+    { id: 'rod', icon: '📡', name: 'Lightning Rod', desc: 'Every bolt strikes twice.' },
+    { id: 'pouch', icon: '👝', name: 'Bottomless Pouch', desc: 'Loot counts the moment it is dug. No carrying.' },
+    { id: 'bigboot', icon: '👢', name: 'Clown Shoe', desc: 'The Boot is half as wide again, but holds one stomp fewer.' },
+    { id: 'vane', icon: '🐓', name: 'Weather Vane', desc: 'Clouds never drift.' },
+  ];
+  const RELIC_BY_ID = Object.fromEntries(RELICS.map((r) => [r.id, r]));
 
   // ---------- run / save ----------
   let run = null;
   const lv = (id) => (run && run.up[id]) || 0;
-  function newRun() { return { level: 1, gems: 0, up: {}, score: 0 }; }
+  const capped = (id) => lv(id) >= ITEM_BY_ID[id].max;
+  const has = (id) => !!run && run.relics.includes(id);
+  function newRun() { return { v: 2, level: 1, gems: 0, up: {}, relics: [], bp: 0, heat: 0, stars: 0, score: 0 }; }
   function saveRun() { if (run) store.set(SAVE_KEY, run); }
   function loadRun() {
     const r = store.get(SAVE_KEY, null);
     if (!r || typeof r.level !== 'number') return null;
     r.up = r.up || {}; r.gems = r.gems || 0; r.score = r.score || 0;
+    // older saves do not have these fields
+    r.relics = r.relics || []; r.bp = r.bp || 0; r.heat = r.heat || 0; r.stars = r.stars || 0;
+    if (r.v !== 2) { // a run of the first version: its upgrades are sold back at the price that was paid
+      for (const [id, n] of Object.entries(r.up)) { const p = OLD_PRICES[id]; if (p) for (let l = 0; l < n; l++) r.gems += Math.round(p[0] * Math.pow(p[1], l)); }
+      r.up = {}; r.v = 2; r.refunded = true;
+    }
     return r;
   }
   let best = store.get(BEST_KEY, { level: 0 });
   function recordBest() { if (run.level > best.level) { best = { level: run.level }; store.set(BEST_KEY, best); } }
+  // meta outlives a run: the recipes that the player has found, and totals
+  const meta = Object.assign({ recipes: {}, runs: 0, kills: 0, seen: {} }, store.get(META_KEY, {}));
+  const saveMeta = () => store.set(META_KEY, meta);
 
+  const unlocked = (it) => (run ? run.level : 1) >= it.at;
   function itemCost(it) { return Math.round(it.base * Math.pow(it.grow, lv(it.id))); }
   function itemState(it) {
     if (lv(it.id) >= it.max) return 'max';
     return run.gems >= itemCost(it) ? 'ok' : 'poor';
   }
   function buy(it) {
-    if (itemState(it) !== 'ok') { sfx.nope(); return false; }
+    if (itemState(it) !== 'ok') { sfx.nope(); quip(lv(it.id) >= it.max ? 'maxed' : 'nope'); return false; }
     run.gems -= itemCost(it); run.up[it.id] = lv(it.id) + 1;
-    sfx.buy(); saveRun(); return true;
+    sfx.buy(); saveRun();
+    if (it.cap && lv(it.id) >= it.max) { shopMsg = `★ ${it.cap[0]}! ${it.cap[1]}`; quip('buyCap'); } else { shopMsg = ''; quip('buy'); }
+    return true;
   }
-  const towerUnlocked = (k) => k === 'pea' || k === 'kite' || lv('t_' + k) > 0;
+  // towers arrive by level; Early Plans and blueprints bring the next ones forward
+  function towerUnlocked(k) {
+    const level = run ? run.level : 1;
+    if (level >= TOWERS[k].from) return true;
+    const early = TOWER_ORDER.filter((t) => TOWERS[t].from > level).slice(0, lv('plans') + (run ? run.bp : 0));
+    return early.includes(k);
+  }
+
+  // ---------- the keeper ----------
+  const QUIPS = { open: ['Welcome to Gnome Depot. I have not moved. You cannot prove otherwise.'], buy: ['Sold. No refunds. I do not bend at the waist.'],
+    nope: ['You cannot afford that. I checked. Without moving.'], maxed: ['That is as good as it gets. Like me.'], over: ['The castle fell. I saw nothing. I was facing the hedge.'] };
+  function keeperLine(key, n) {
+    const list = (KEEPER.lines && KEEPER.lines[key]) || QUIPS[key];
+    if (!list || !list.length) return '';
+    return pick(list).replace('{n}', n == null ? '' : n);
+  }
+  let shopQuip = '', shopMsg = '';
+  function quip(key, n) { const s = keeperLine(key, n); if (s) shopQuip = s; }
+  let gnomeUrl = [];
+  function gnomeImg(mood = 0) { // the gnome as an image for the HTML screens
+    if (!gnomeUrl[mood]) { try { gnomeUrl[mood] = art('gnome', { mood }).cv.toDataURL(); } catch (e) { gnomeUrl[mood] = ''; } }
+    return gnomeUrl[mood] ? `<img class="gnome" src="${gnomeUrl[mood]}" alt="">` : '<span class="snail">🧙</span>';
+  }
+  const keeperBubble = (text, mood) => (text ? `<div class="keeper">${gnomeImg(mood)}<div class="bubble">${text}</div></div>` : '');
 
   // ---------- derived numbers ----------
-  const hpMul = (n) => 1 + 0.18 * (n - 1) + 0.012 * (n - 1) * (n - 1);
-  const coinMul = () => (1 + 0.1 * (run.level - 1)) * (1 + 0.15 * lv('bounty'));
-  const cloudHalf = () => 46 * (1 + 0.2 * lv('fluffy'));
-  const inCol = (x) => Math.abs(x - G.cloud.x) <= cloudHalf();
-  const towerCostMul = () => 1 - 0.08 * lv('bulk');
-  const buildCost = (k) => Math.round(TOWERS[k].cost * towerCostMul());
-  const upgradeCost = (t) => Math.round(TOWERS[t.k].cost * 0.9 * t.lvl * towerCostMul());
-  const sellValue = (t) => Math.round(t.spent * (lv('refund') ? 1 : 0.7));
-  const towerDmg = (t) => TOWERS[t.k].dmg * Math.pow(1.6, t.lvl - 1) * (1 + 0.15 * lv('spicy')) * (1 + G.relicDmg);
-  const towerRange = (t) => TOWERS[t.k].range * (1 + 0.12 * (t.lvl - 1)) * (1 + 0.08 * lv('stilts'));
-  const digCost = (r) => (G.freeDigs > 0 ? 0 : Math.round((8 + 4 * r) * (1 - 0.15 * lv('union'))));
-  const digTime = (tile) => tile.hard * 2.6 / (1 + 0.25 * lv('pick'));
-  const gemRate = () => [15, 12, 10][lv('polisher')];
+  const hpMul = (n) => (1 + 0.12 * (n - 1) + 0.008 * (n - 1) * (n - 1)) * Math.pow(1.08, run.level >= FROM.heat ? run.heat : 0);
+  const coinMul = () => (1 + 0.03 * (run.level - 1)) * (1 + 0.12 * lv('bounty'));
+  const costMul = () => 1 - 0.07 * lv('bulk');
+  const buildCost = (k) => Math.round(TOWERS[k].cost * costMul());
+  const upgradeCost = (t) => Math.round(TOWERS[t.k].cost * 0.9 * t.lvl * costMul());
+  const sellValue = (t) => Math.round(t.spent * (capped('bulk') ? 1 : 0.7));
+  const towerDmg = (t) => TOWERS[t.k].dmg * Math.pow(1.6, t.lvl - 1) * (1 + 0.12 * lv('spicy')) * (1 + G.urnDmg) * (t.crystal ? 1.25 : 1) * (has('crown') ? 2 : 1);
+  const towerRange = (t) => TOWERS[t.k].range * (1 + 0.12 * (t.lvl - 1)) * (1 + 0.07 * lv('stilts')) * (t.hill ? (capped('stilts') ? 1.5 : 1.15) : 1);
+  const bootDmg = () => (26 + 5 * G.n) * (1 + 0.2 * lv('boots'));
+  const bootR = () => BOOT_R * (1 + 0.05 * lv('boots')) * (has('bigboot') ? 1.5 : 1);
+  const bootMax = () => BOOT_CHARGES + (capped('laces') ? 1 : 0) - (has('bigboot') ? 1 : 0);
+  const bootS = () => BOOT_S - 0.7 * lv('laces');
+  const swatS = () => SWAT_S - 0.6 * lv('pin');
+  const ringS = () => RING_S + (capped('walls') ? 2 : 0);
+  const digCost = (t) => (G.freeDigs > 0 || (capped('union') && G.digOrders % 5 === 4) ? 0 : Math.round((8 + 3 * t.far) * (1 - 0.12 * lv('union'))));
+  const digTime = (t) => (capped('pick') && t.hard === 4 ? 3 : t.hard) * 2.4 / (1 + 0.2 * lv('pick'));
+  const boltDmg = () => (22 + 4 * G.n) * (1 + 0.25 * lv('thunder'));
+  const rainSlow = () => 0.35 + 0.07 * lv('sticky');
+  const cloudR = (c) => CLOUDS[c.t].r * (c.big ? 1.5 : 1) * (1 + 0.1 * lv('fluffy'));
+  const anchorMax = () => 2 + lv('anchors');
+  const puffS = () => PUFF_S / (1 + 0.12 * lv('nursery'));
+  const GEM_RATE = 25, GEM_CAP = 8; // leftover coins for one gem, and the most gems that they can become
 
   // ---------- geometry ----------
-  const gCenter = (c, r) => ({ x: c * CELL + CELL / 2, y: GROUND_Y + r * CELL + CELL / 2 });
-  const uCenter = (c, r) => ({ x: c * CELL + CELL / 2, y: UG_Y + r * CELL + CELL / 2 });
-  function buildPath(ptsCR) {
-    const pts = ptsCR.map(([c, r]) => gCenter(c, r));
-    const cum = [0];
-    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
-    const cells = new Set();
-    for (let i = 1; i < ptsCR.length; i++) {
-      let [c0, r0] = ptsCR[i - 1]; const [c1, r1] = ptsCR[i];
-      const dc = Math.sign(c1 - c0), dr = Math.sign(r1 - r0);
-      for (;;) { if (c0 >= 0 && c0 < COLS) cells.add(r0 * COLS + c0); if (c0 === c1 && r0 === r1) break; c0 += dc; r0 += dr; }
-    }
-    return { pts, cum, len: cum[cum.length - 1], cells };
+  // world -> view units. cam.x is the pan; view.dy is the slide of a layer during a switch.
+  const cam = { x: 0, vx: 0 };
+  const view = { dy: 0 };
+  const mapLeft = () => VW / 2 - MAP_W / 2 - cam.x;
+  function toScreen(wx, wy, z = 0) {
+    return { x: mapLeft() + ORIGIN_X + (wx - wy) * HW, y: MAP_Y + ORIGIN_Y + (wx + wy) * HH - z * ZU + view.dy };
   }
-  function posAt(d) {
-    const P = G.path; d = clamp(d, 0, P.len);
-    let i = 1; while (i < P.cum.length - 1 && P.cum[i] < d) i++;
-    const a = P.pts[i - 1], b = P.pts[i], seg = P.cum[i] - P.cum[i - 1];
-    const t = seg ? (d - P.cum[i - 1]) / seg : 0;
-    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, dx: b.x - a.x };
+  function toWorld(sx, sy, z = 0) {
+    const a = (sx - mapLeft() - ORIGIN_X) / HW, b = (sy - MAP_Y - ORIGIN_Y + z * ZU) / HH;
+    return { wx: (b + a) / 2, wy: (b - a) / 2 };
   }
+  // projection inside a layer cache
+  const PC = (wx, wy, z = 0) => ({ x: ORIGIN_X + (wx - wy) * HW, y: ORIGIN_Y + (wx + wy) * HH - z * ZU });
 
-  // ---------- level generation ----------
+  // ---------- game state ----------
+  let mode = 'menu'; // menu | play | pause | shop | tally | relic | over | victory
+  let G = null;
+  let speed = 1;
+  let summary = null;          // the result of the last level, for the results screen and the shop
+  const cacheDirty = { sky: true, ground: true, dig: true };
+  const groundAt = (i, j) => (inMap(i, j) ? G.map[j * N + i] : null);
+  const tileAt = (i, j) => (inMap(i, j) ? G.ug[j * N + i] : null);
+
+  // ---------- level setup ----------
+  function levelMap(n) {
+    const base = LV.maps[(n - 1) % LV.maps.length], flip = Math.floor((n - 1) / LV.maps.length) % 2 === 1;
+    const f = ([i, j]) => (flip ? [j, i] : [i, j]);
+    const m = { path: base.path.map(f), hut: f(base.hut) };
+    for (const k of ['water', 'rock', 'hill', 'tree']) m[k] = (base[k] || []).map(f);
+    return m;
+  }
   function genWaves(n) {
     const nw = Math.min(3 + Math.floor(n / 2), 8);
     const waves = [];
     for (let w = 0; w < nw; w++) {
       const pool = ['rat', 'snail'];
-      if (n >= 3) pool.push('beetle');
-      if (n >= 7) pool.push('hedgehog');
+      if (n >= 4) pool.push('beetle');
+      if (n >= 6) pool.push('frog');
+      if (n >= 13) pool.push('hedgehog');
       const air = [];
-      if (n >= 2 && (w >= nw - 1 || n >= 3)) air.push('balloon');
-      if (n >= 5) air.push('duck');
-      let budget = 5 + n * 2.6 + w * 3.5 + w * n * 0.5;
+      if (n >= 2 && (w >= nw - 1 || (n >= 3 && w >= 1))) air.push('balloon');
+      if (n >= 7) air.push('duck');
+      let budget = 5 + n * 2.5 + w * 3.5 + w * n * 0.45;
       const main = pick(pool);
-      const airShare = air.length ? Math.min(0.32, 0.14 + n * 0.015) : 0;
+      const airShare = air.length ? Math.min(0.3, 0.08 + n * 0.014) : 0;
       const list = [];
       while (budget > 0) {
         const r = Math.random();
@@ -271,376 +420,514 @@
         list.push(t); budget -= FOES[t].cost;
       }
       if (n === 2 && w === nw - 1 && !list.includes('balloon')) list.push('balloon', 'balloon');
-      if (n % 5 === 0 && w === nw - 1) list.push(Math.floor(n / 5) % 2 ? 'ogre' : 'dragon');
+      if (n >= FROM.sapper && w > 0 && (w % 2 === 1 || n >= 16)) for (let k = 0; k < 1 + Math.floor((n - FROM.sapper) / 8); k++) list.splice(1 + ((Math.random() * list.length) | 0), 0, 'sapper');
+      const boss = BOSS_AT[n] || (n > CAMPAIGN && n % 5 === 0 ? ['hen', 'tyrant', 'goose'][(n / 5) % 3] : null);
+      if (boss && w === nw - 1) list.push(boss);
       waves.push(list);
     }
     return waves;
   }
-  function weighted(table, row) {
-    const opts = Object.entries(table).filter(([, v]) => !(v.minRow > row));
+  function weighted(far) {
+    const opts = Object.entries(LOOT).filter(([k, v]) => !(v.far > far) && !(k === 'dynamite' && G.n < FROM.dynamite));
     let total = 0; for (const [, v] of opts) total += v.w;
     let r = Math.random() * total;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
     return opts[0][0];
   }
-  function genUnderground(shaftCol) {
-    const ug = [];
-    for (let r = 0; r < UROWS; r++) {
-      const row = [];
-      for (let c = 0; c < COLS; c++) {
-        const depth = r + Math.random() * 1.6;
-        const hard = depth < 2.2 ? 1 : depth < 4.4 ? 2 : depth < 6.4 ? 3 : 4;
-        let content = null;
-        const roll = Math.random(), hazP = 0.06 + 0.025 * r, treP = 0.24 + 0.025 * r + 0.05 * lv('socks');
-        if (roll < hazP) { const h = Math.random(); content = h < 0.36 ? 'gas' : h < 0.7 ? 'cave' : 'nest'; }
-        else if (roll < hazP + treP) content = weighted(LOOT, r);
-        row.push({ c, r, hard, content, dug: false, known: false, queued: false, prog: 0, seed: Math.random() });
-      }
-      ug.push(row);
+  function genMine() {
+    const hi = G.hut.i, hj = G.hut.j, ug = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const far = Math.max(Math.abs(i - hi), Math.abs(j - hj)), depth = far + Math.random() * 1.4;
+      const hard = depth < 2.4 ? 1 : depth < 4.2 ? 2 : depth < 6 ? 3 : 4;
+      let content = null;
+      const roll = Math.random(), hazP = far < 2 ? 0 : 0.07 + 0.02 * far, treP = 0.2 + 0.02 * far + 0.04 * lv('socks');
+      if (roll < hazP) { const h = Math.random(); content = h < 0.36 ? 'gas' : h < 0.7 ? 'cave' : 'nest'; }
+      else if (roll < hazP + treP) content = weighted(far);
+      ug.push({ i, j, far, hard, content, dug: false, known: false, queued: false, prog: 0, seed: ART.hash(i * 13 + j * 101 + G.n * 7), drop: null });
     }
-    const s = ug[0][shaftCol]; s.dug = true; s.content = null;
-    for (const [dc, dr] of DIRS) { const t = ug[dr] && ug[dr][shaftCol + dc]; if (t) { t.known = true; if (HAZ[t.content]) t.content = null; } }
-    return ug;
+    G.ug = ug;
+    const s = tileAt(hi, hj); s.dug = true; s.content = null;
+    // the Mother Lode: a chest in the corner that is farthest from the shaft, in hard rock
+    if (G.n >= FROM.lode) {
+      let bestT = null;
+      for (const t of ug) if (!bestT || t.far + t.seed > bestT.far + bestT.seed) bestT = t;
+      bestT.content = 'lode'; bestT.hard = 4; G.lode = bestT;
+    }
+    // resonance crystals: under grass tiles, a few steps from the shaft
+    if (G.n >= FROM.crystal) {
+      const spots = shuffle(ug.filter((t) => t.far >= 2 && t.far <= 5 && !t.content && groundAt(t.i, t.j).t === 'grass' && !groundAt(t.i, t.j).obj));
+      for (const t of spots.slice(0, 2 + (G.n > 15 ? 1 : 0))) t.content = 'crystal';
+    }
+    revealAround(s);
+  }
+  const isHazard = (t) => !!t && !t.dug && !!HAZARDS[t.content];
+  // the number on a dug tile: the dangers in the eight tiles around it
+  function dangerCount(t) {
+    let n = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) if ((di || dj) && isHazard(tileAt(t.i + di, t.j + dj))) n++;
+    return n;
   }
 
-  // ---------- game state ----------
-  let mode = 'menu'; // menu | play | pause | shop | over
-  let G = null;
-  let lastSummary = null;
-  let speed = 1;
-
   function startLevel() {
-    const n = run.level;
-    const L = LAYOUTS[(n - 1) % LAYOUTS.length];
-    const mirror = Math.floor((n - 1) / LAYOUTS.length) % 2 === 1;
-    const ptsCR = L.pts.map(([c, r]) => [mirror ? COLS - 1 - c : c, r]);
-    const path = buildPath(ptsCR);
-    const [cc, cr] = ptsCR[ptsCR.length - 1];
-    const grid = new Array(COLS * GROWS).fill(0); // 0 grass, 1 path, 3 castle, 4 mine hut, tower object otherwise
-    for (const k of path.cells) grid[k] = 1;
-    grid[cr * COLS + cc] = 3;
-    let shaftCol = 5;
-    for (const c of [5, 6, 4, 7, 3, 8, 2, 9]) if (grid[(GROWS - 1) * COLS + c] === 0) { shaftCol = c; break; }
-    grid[(GROWS - 1) * COLS + shaftCol] = 4;
-    const maxHearts = 10 + 3 * lv('walls');
-    const maxCharge = 100 * (1 + 0.3 * lv('puddle'));
-    G = {
-      n, name: L.name, path, grid, castle: Object.assign({ c: cc, r: cr }, gCenter(cc, cr)), shaftCol, hut: gCenter(shaftCol, GROWS - 1),
-      ug: null, towers: [], enemies: [], shots: [], parts: [], texts: [], bolts: [], miners: [], orders: [],
-      coins: 90 + 25 * lv('piggy'), hearts: maxHearts, loot: 0, kills: 0, leaks: 0, digs: 0,
-      waves: genWaves(n), waveIdx: 0, spawnQ: [], spawnT: 0, countdown: 20,
-      cloud: { x: W / 2, tx: W / 2, charge: maxCharge, max: maxCharge }, weather: 'off', stormT: 0, freeWeather: 0,
-      relicDmg: 0, freeDigs: 0, mush: false,
-      time: 0, banner: 4.5, clearT: -1, shake: 0, sel: null, minerT: 0, digSfx: 0,
-    };
-    G.ug = genUnderground(shaftCol);
-    // where worms from below join the path: the path point closest to the mine hut
-    let bestD = 0, bestDist = 1e9;
-    for (let d = 0; d <= path.len; d += 4) { const p = posAt(d); const q = Math.hypot(p.x - G.hut.x, p.y - G.hut.y); if (q < bestDist) { bestDist = q; bestD = d; } }
-    G.joinD = bestD;
-    for (let i = 0; i < 1 + lv('mole'); i++) {
-      const p = uCenter(shaftCol, 0);
-      G.miners.push({ c: shaftCol, r: 0, x: p.x + (i - lv('mole') / 2) * 7, y: p.y, state: 'idle', route: [], order: null, t: 0, daze: 0 });
+    const n = run.level, m = levelMap(n);
+    const map = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) map.push({ i, j, t: 'grass', z: 0, seed: ART.hash(i * 31 + j * 7 + n * 3), obj: null, hill: false });
+    G = { n, name: LV.names[(n - 1) % LV.names.length], map };
+    for (const [i, j] of m.water) { const g = groundAt(i, j); g.t = 'water'; g.z = -0.18; }
+    for (const [i, j] of m.rock) { const g = groundAt(i, j); g.t = 'rock'; g.z = 0.32; }
+    for (const [i, j] of m.hill) { const g = groundAt(i, j); g.z = 0.16; g.hill = true; }
+    for (const [i, j] of m.tree) groundAt(i, j).obj = 'tree';
+    // the path: corners -> cells and a route of tile centres
+    const route = m.path.map(([i, j]) => ({ x: i + 0.5, y: j + 0.5 }));
+    for (let k = 1; k < m.path.length; k++) {
+      let [i0, j0] = m.path[k - 1]; const [i1, j1] = m.path[k];
+      const di = Math.sign(i1 - i0), dj = Math.sign(j1 - j0);
+      for (;;) { const g = groundAt(i0, j0); if (g) { g.t = 'path'; g.z = 0; g.hill = false; g.obj = null; } if (i0 === i1 && j0 === j1) break; i0 += di; j0 += dj; }
     }
+    const cum = [0];
+    for (let k = 1; k < route.length; k++) cum.push(cum[k - 1] + dist(route[k].x, route[k].y, route[k - 1].x, route[k - 1].y));
+    const [ci, cj] = m.path[m.path.length - 1], [hi, hj] = m.hut;
+    groundAt(ci, cj).obj = 'castle'; groundAt(hi, hj).obj = 'hut'; groundAt(hi, hj).z = 0; groundAt(hi, hj).hill = false;
+    const maxHearts = 10 + 2 * lv('walls');
+    Object.assign(G, {
+      route, cum, len: cum[cum.length - 1], castle: { i: ci, j: cj, x: ci + 0.5, y: cj + 0.5 }, hut: { i: hi, j: hj, x: hi + 0.5, y: hj + 0.5 },
+      start: route[0], ug: null, lode: null,
+      towers: [], enemies: [], shots: [], parts: [], texts: [], bolts: [], peels: [], puddles: [], eggs: [], pits: [], stomps: [],
+      hamsters: [], orders: [], gems: [], sticks: [], clouds: [],
+      coins: 90 + 15 * (n - 1) + 20 * lv('piggy'), hearts: maxHearts, maxHearts, loot: 0, kills: 0, leaks: 0, digs: 0, digOrders: 0, lodeFound: false,
+      waves: genWaves(n), waveIdx: 0, spawnQ: [], spawnT: 0, countdown: n === 1 ? 25 : 20, early: 0,
+      boot: { n: 0, t: 0 }, swatT: 0, doorT: 0, bellT: 0,
+      streak: { n: 0, t: 0 }, act: { sky: -99, ground: -99, dig: -99 }, combo: 0, combos: 0, killCount: 0,
+      urnDmg: 0, freeDigs: has('shovel') ? 3 : 0, mush: false, dyn: n >= FROM.dynamite ? 2 + lv('fuse') : 0, armed: false,
+      wind: pick(DIRS), puffT: 3, puffN: 0, anchors: 0,
+      layer: 'ground', trans: null, visited: { sky: 0, ground: 0, dig: 0 }, used: { sky: false, dig: false },
+      time: 0, banner: 5, clearT: -1, shake: 0, flash: 0, sel: null, heckled: {}, heckle: null, idleT: 0, thinkT: 0, digSfx: 0, toast: null,
+      geysers: [], banner2: null, barNote: null, bossDown: null, sapperSeen: false, fxLayer: null, drag: null, spyT: 0,
+    });
+    G.boot.n = bootMax();
+    { const a = route[route.length - 2], b = route[route.length - 1]; G.castle.flip = a.y === b.y && a.x > b.x ? true : false; G.castle.back = a.x < b.x || a.y < b.y; }
+    genMine();
+    // worms from below join the path at the point that is closest to the mine hut
+    let bestD = 0, bestDist = 1e9;
+    for (let d = 0; d <= G.len; d += 0.1) { const p = routeAt(d); const q = dist(p.x, p.y, G.hut.x, G.hut.y); if (q < bestDist) { bestDist = q; bestD = d; } }
+    G.joinD = bestD;
+    for (let k = 0; k < 1 + lv('hire'); k++) G.hamsters.push({ i: hi, j: hj, x: G.hut.x + (k - lv('hire') / 2) * 0.16, y: G.hut.y + 0.1, state: 'idle', route: [], order: null, pack: [], daze: 0, cheer: 0, fx: 1, fy: 0, seed: k });
+    cam.x = 0; cam.vx = 0; view.dy = 0;
+    for (const k of LAYERS) cacheDirty[k] = true;
     mode = 'play'; hideOverlay(); closePop(); pauseBtn.style.display = 'block';
+    A.fever(false); A.rush(99); A.streak(0); A.tune(n); A.layer('ground'); A.music(BOSS_AT[n] ? 2 : 1);
+  }
+  function routeAt(d) {
+    d = clamp(d, 0, G.len);
+    let k = 1; while (k < G.cum.length - 1 && G.cum[k] < d) k++;
+    const a = G.route[k - 1], b = G.route[k], seg = G.cum[k] - G.cum[k - 1], f = seg ? (d - G.cum[k - 1]) / seg : 0;
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, fx: Math.sign(b.x - a.x), fy: Math.sign(b.y - a.y) };
+  }
+  // the route distance that is closest to a world point
+  function nearestD(x, y) {
+    let bd = 0, bq = 1e9;
+    for (let d = 0; d <= G.len; d += 0.25) { const p = routeAt(d), q = dist(p.x, p.y, x, y); if (q < bq) { bq = q; bd = d; } }
+    return bd;
   }
 
   // ---------- effects ----------
-  function burst(x, y, color, n = 8, sp = 120) {
-    for (let i = 0; i < n; i++) { const a = rand(0, 6.28), v = rand(sp * 0.3, sp); G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: rand(0.25, 0.55), c: color, s: rand(2, 4) }); }
+  function burst(x, y, z, color, n = 8, sp = 2.2) {
+    for (let k = 0; k < n && G.parts.length < 220; k++) { const a = rand(0, 6.28), v = rand(sp * 0.3, sp); G.parts.push({ x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: rand(1, 3.2), t: rand(0.3, 0.6), c: color, s: rand(2, 4), layer: G.fxLayer || 'ground' }); }
   }
-  function ring(x, y, r, color) { G.parts.push({ x, y, ring: r, t: 0.3, T: 0.3, c: color }); }
-  function say(x, y, s, c = '#ffffff', big = false) { G.texts.push({ x: clamp(x, 50, W - 50), y, s, c, t: big ? 2.2 : 1.3, big }); }
+  function ring(x, y, z, r, color) { G.parts.push({ x, y, z, ring: r, t: 0.35, T: 0.35, c: color, layer: G.fxLayer || 'ground' }); }
+  // floating text at a world point of a layer; `big` is for moments
+  function say(x, y, z, s, c = '#ffffff', big = false) { if (G.texts.length > 14) G.texts.shift(); G.texts.push({ x, y, z, s, c, t: big ? 2.2 : 1.4, T: big ? 2.2 : 1.4, big, layer: G.fxLayer || 'ground' }); }
+  function shake(v) { G.shake = Math.min(14, Math.max(G.shake, v)); }
+  // runs fn with effects sent to another layer than the ground
+  function onLayer(layer, fn) { const prev = G.fxLayer; G.fxLayer = layer; try { fn(); } finally { G.fxLayer = prev; } }
+  // the gnome's bubble during play: once per id and level
+  function heckle(id, n) {
+    if (G.heckled[id] || (G.heckle && G.heckle.t > 0)) return;
+    const s = keeperLine(id, n); if (!s) return;
+    G.heckled[id] = true; G.heckle = { text: s, t: 4.5 };
+  }
+  function toast(text) { G.toast = { text, t: 3.2 }; }
+  // an action on a layer; three layers within the window start the combo
+  function mark(layer) {
+    G.idleT = 0; G.act[layer] = G.time;
+    if (layer !== 'ground') G.used[layer] = true;
+    if (G.n < FROM.combo || G.combo > 0) return;
+    if (LAYERS.every((l) => G.time - G.act[l] <= COMBO_WINDOW)) {
+      G.combo = COMBO_S; G.combos++; A.fever(true); sfx.combo(Math.min(3, G.combos));
+      G.banner2 = { text: 'STRATA COMBO!', sub: 'double coins', t: 2 }; heckle('hCombo');
+      for (const l of LAYERS) G.act[l] = -99;
+    }
+  }
 
   // ---------- enemies ----------
   function spawnFoe(k, extra) {
-    const F = FOES[k], hp = F.hp * hpMul(G.n);
-    const start = G.path.pts[0];
+    // each wave of a level is a little tougher than the one before
+    const F = FOES[k], hp = F.hp * hpMul(G.n) * (1 + 0.12 * Math.max(0, G.waveIdx - 1)) * (F.boss && G.n > CAMPAIGN ? 1 + (G.n - CAMPAIGN) * 0.06 : 1);
     const e = Object.assign({
-      k, F, hp, maxhp: hp, spd: F.spd * rand(0.94, 1.06), armor: (F.armor || 0) * (1 + 0.12 * (G.n - 1)), fly: !!F.fly,
-      d: 0, x: start.x, y: F.fly ? FLY_Y + rand(-16, 16) : start.y, dx: 1, slowT: 0, slowA: 0, hearts: F.hearts || 1, flash: 0, wob: rand(0, 6), under: false, dead: false,
+      k, F, hp, maxhp: hp, spd: F.spd * rand(0.94, 1.06), armor: (F.armor || 0) * (1 + 0.04 * (G.n - 1)), fly: !!F.fly,
+      d: 0, x: G.start.x, y: G.start.y, z: F.fly ? FLY_Z + rand(-0.15, 0.15) : 0, fx: 1, fy: 0, state: 'walk',
+      slowT: 0, slowA: 0, stun: 0, flash: 0, hearts: F.hearts || 1, wob: rand(0, 6), dead: false, chill: 0, vuln: 0, flip: 0, curl: 0, wet: 0, taps: 0, t: 0,
     }, extra || {});
-    if (e.fly) e.dx = Math.sign(G.castle.x - e.x) || 1;
+    if (e.fly) e.len = G.len; // flyers follow the path, high above it
+    if (k === 'sapper') e.diveD = G.len * rand(0.22, 0.4);
+    if (k === 'hen') e.layT = 4;
+    if (k === 'goose') e.layT = 5;
+    if (k === 'tyrant') e.dives = 0;
     G.enemies.push(e);
-    if (F.boss) { say(W / 2, GROUND_Y - 30, 'BOSS!', '#ff6b6b', true); sfx.bad(); }
+    if (F.boss) { G.banner2 = { text: 'BOSS!', sub: BOSS_NAMES[k], t: 2.6 }; sfx.bossWarn(); heckle('hBoss'); A.music(2); }
+    if (k === 'sapper') G.sapperSeen = true;
     return e;
   }
+  const hidden = (e) => e.state === 'under' || e.state === 'tunnel' || e.state === 'fall';
   function remaining(e) {
-    if (e.fly) return Math.abs(G.castle.x - e.x) + Math.abs(G.castle.y - e.y);
-    if (e.route) return 2000 - e.ri;
-    return G.path.len - e.d;
+    if (e.fly) return e.len - e.d;
+    if (e.route) return 500 - e.ri;
+    return G.len - e.d;
   }
-  function hurt(e, dmg) {
+  // o.splash: area damage (a hedgehog curls up); o.bolt: lightning; o.quiet: no flash
+  function hurt(e, dmg, o) {
     if (e.dead) return;
-    dmg = Math.max(dmg * 0.25, dmg - e.armor);
-    e.hp -= dmg; e.flash = 0.1;
-    if (e.hp <= 0) {
-      e.dead = true; G.kills++;
-      const c = Math.max(1, Math.round(e.F.coin * coinMul()));
-      G.coins += c; sfx.kill();
-      burst(e.x, e.y, '#ffd84a', e.F.boss ? 30 : 6, e.F.boss ? 220 : 110);
-      if (e.F.boss) { G.shake = 10; say(e.x, e.y - 30, '+' + c + ' 🪙', '#ffd84a', true); sfx.boom(); }
+    if (e.k === 'hedgehog' && o && o.splash && e.stun <= 0) e.curl = 2.5;
+    if (e.curl > 0) dmg *= 0.3;
+    if (e.vuln > 0) dmg *= 1.5;
+    if (o && o.bolt && e.k === 'goose') dmg *= 3;
+    const armor = e.flip > 0 ? 0 : e.armor;
+    dmg = Math.max(dmg * 0.25, dmg - armor);
+    e.hp -= dmg; if (!(o && o.quiet)) e.flash = 0.1;
+    if (e.F.boss) sfx.bossHit(); else sfx.foeHit();
+    if (e.hp <= 0) kill(e, o);
+  }
+  function kill(e, o) {
+    e.dead = true; G.kills++; G.killCount++; meta.kills++;
+    let c = Math.max(1, Math.round(e.F.coin * coinMul()));
+    if (has('horseshoe') && G.killCount % 7 === 0) { c *= 7; say(e.x, e.y, e.z + 0.6, 'LUCKY 7!', '#ffe680'); }
+    if (G.combo > 0) c *= 2;
+    G.coins += c;
+    const s = G.streak; s.n = s.t > 0 ? s.n + 1 : 1; s.t = STREAK_GAP; A.streak(s.n);
+    sfx.foePop(s.n); sfx.coin(s.n);
+    if (s.n >= 5 && s.n % 5 === 0) { const bonus = Math.round(s.n * 0.6 * coinMul()); G.coins += bonus; say(e.x, e.y, e.z + 0.8, `SPLAT ×${s.n}  +${bonus}`, '#ffe680', true); }
+    const col = FOE_ART.color ? FOE_ART.color(e.k) : '#ffd84a';
+    burst(e.x, e.y, e.z + 0.2, col, e.F.boss ? 30 : 7, e.F.boss ? 4 : 2.2); burst(e.x, e.y, e.z + 0.2, '#ffd84a', 3, 1.6);
+    if (e.F.boss) { shake(12); G.flash = 0.5; sfx.bossDie(); say(e.x, e.y, e.z + 1, `+${c}`, '#ffd84a', true); G.bossDown = e.k; }
+    if ((e.F.boss || e.k === 'sapper') && capped('bounty')) { G.loot++; say(e.x, e.y, e.z + 0.5, '+1 gem', '#8fe6ff'); }
+    if (e.k === 'balloon') { const r = spawnFoe('rat', { d: e.d }); const p = routeAt(r.d); r.x = p.x; r.y = p.y; r.stun = 0.6; r.z = 0; r.drop = e.z; }
+    if (capped('spicy') && !(o && o.pepper) && !e.fly) {
+      ring(e.x, e.y, 0.1, 0.8, '#ff7a3d');
+      for (const q of G.enemies) if (!q.dead && !q.fly && !hidden(q) && q !== e && dist(q.x, q.y, e.x, e.y) < 0.85) hurt(q, e.maxhp * 0.2, { pepper: true });
     }
   }
   function leak(e) {
-    e.dead = true; G.hearts -= e.hearts; G.leaks++; G.shake = 8; sfx.leak();
-    say(G.castle.x, G.castle.y - 30, '-' + e.hearts + ' ❤️', '#ff6b6b');
-    burst(G.castle.x, G.castle.y, '#ff6b6b', 12, 150);
+    e.dead = true; G.hearts -= e.hearts; G.leaks += e.hearts; shake(9); G.flash = 0.35; sfx.leak(); buzz(60);
+    say(G.castle.x, G.castle.y, 1.6, `-${e.hearts}`, '#ff6b6b', true);
+    burst(G.castle.x, G.castle.y, 0.6, '#ff6b6b', 12, 3); heckle('hLeak');
   }
+  // the weather on an enemy: the clouds whose shadow it stands in
+  function weatherAt(x, y, out) {
+    out.rain = out.snow = out.sun = false; out.rainbow = null;
+    for (const c of G.clouds) {
+      if (CLOUDS[c.t].raw || dist(c.x, c.y, x, y) > cloudR(c)) continue;
+      if (c.t === 'rain') out.rain = true; else if (c.t === 'snow') out.snow = true; else if (c.t === 'sun') out.sun = true; else if (c.t === 'rainbow') out.rainbow = c;
+    }
+    return out;
+  }
+  const WX = {};
   function updateEnemies(dt) {
-    const rainSlow = 0.3 + 0.1 * lv('sticky'), moat = 0.2 * lv('moat');
+    const acid = has('acid');
     for (const e of G.enemies) {
       if (e.dead) continue;
+      e.t += dt;
       if (e.flash > 0) e.flash -= dt;
       if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowA = 0; }
+      if (e.vuln > 0) e.vuln -= dt;
+      if (e.flip > 0) e.flip -= dt;
+      if (e.curl > 0) e.curl -= dt;
+      if (e.wet > 0) e.wet -= dt;
+      if (e.drop > 0) e.drop = Math.max(0, e.drop - dt * 5);
+      if (e.state === 'under') { updateBurrower(e, dt); continue; }
+      if (e.state === 'fall') { e.fallT -= dt; if (e.fallT <= 0) { e.state = 'walk'; e.stun = 0.5; burst(e.x, e.y, 0, '#8a5a36', 6); } continue; }
+      if (e.state === 'ring') { e.ring -= dt; if (e.ring <= 0) leak(e); continue; }
+      const wx = e.state === 'tunnel' ? null : weatherAt(e.x, e.y, WX);
       let slow = e.slowA;
-      if (!e.under && G.weather === 'rain' && inCol(e.x)) slow = Math.max(slow, rainSlow);
-      if (!e.fly && !e.under && moat && Math.hypot(e.x - G.castle.x, e.y - G.castle.y) < 80) slow = Math.max(slow, moat);
+      if (wx) {
+        if (wx.rain) { if (acid) hurt(e, (6 + G.n) * dt, { quiet: true }); else { slow = Math.max(slow, rainSlow()); if (capped('sticky')) e.wet = 2; } }
+        if (e.wet > 0 && !acid) slow = Math.max(slow, rainSlow());
+        if (wx.snow) slow = Math.max(slow, 0.6);
+        if (wx.rainbow && !e.fly && !e.F.boss && e.danced !== wx.rainbow.id) { e.danced = wx.rainbow.id; e.stun = 2; e.dance = 2; }
+        if (e.dead) continue;
+      }
+      if (e.dance > 0) e.dance -= dt;
+      if (e.stun > 0) { e.stun -= dt; continue; }
       let v = e.spd * Math.max(0.2, 1 - slow);
       if (e.F.boss) v = e.spd * Math.max(0.6, 1 - slow * 0.5);
+      if (e.curl > 0) v *= 1.6;
       if (e.fly) {
-        if (Math.abs(G.castle.x - e.x) > 3) {
-          if (G.weather === 'wind') { e.x -= e.dx * e.spd * (e.F.boss ? 0.15 : 0.5) * dt; e.x = clamp(e.x, -24, W + 24); }
-          else e.x += e.dx * v * dt;
-        } else { e.y += Math.max(40, v) * dt; if (e.y >= G.castle.y - 4) leak(e); }
-      } else if (e.route) { // worm crawling up through the tunnels, then over the grass to the path
-        const tgt = e.route[e.ri], ddx = tgt.x - e.x, ddy = tgt.y - e.y, dist = Math.hypot(ddx, ddy), step = v * (e.under ? 0.8 : 1) * dt;
-        if (ddx) e.dx = ddx;
-        if (dist <= step) {
-          e.x = tgt.x; e.y = tgt.y; e.ri++;
-          if (tgt.surface) e.under = false;
-          if (e.ri >= e.route.length) { e.route = null; e.d = G.joinD; }
-        } else { e.x += ddx / dist * step; e.y += ddy / dist * step; }
-      } else {
-        if (G.weather === 'wind') v *= 0.8;
         e.d += v * dt;
-        const p = posAt(e.d); e.x = p.x; e.y = p.y; if (p.dx) e.dx = p.dx;
-        if (e.d >= G.path.len) leak(e);
+        const f = Math.min(1, e.d / e.len), p = routeAt(e.d);
+        e.x = p.x; e.y = p.y; e.fx = p.fx; e.fy = p.fy;
+        if (e.k === 'goose') { e.layT -= dt; if (e.layT <= 0) { e.layT = 6; layEgg(G.len * rand(0.25, 0.8)); sfx.honk(); } }
+        if (f >= 1) leak(e);
+      } else if (e.route) { // a worm on its way up through the tunnels, then over the grass to the path
+        const tgt = e.route[e.ri], ddx = tgt.x - e.x, ddy = tgt.y - e.y, q = Math.hypot(ddx, ddy), step = v * (e.state === 'tunnel' ? 0.8 : 1) * dt;
+        if (Math.abs(ddx) > Math.abs(ddy)) { e.fx = Math.sign(ddx); e.fy = 0; } else if (ddy) { e.fy = Math.sign(ddy); e.fx = 0; }
+        if (q <= step) {
+          e.x = tgt.x; e.y = tgt.y; e.ri++;
+          if (e.state === 'tunnel') { const t = tileAt(Math.floor(e.x), Math.floor(e.y)); if (t && t.drop) { t.drop = null; onLayer('dig', () => say(e.x, e.y, DIG_Z + 0.4, 'Munch!', '#ff9a9a')); heckle('hPackLost'); } }
+          if (tgt.surface) e.state = 'walk';
+          if (e.ri >= e.route.length) { e.route = null; e.d = G.joinD; }
+        } else { e.x += ddx / q * step; e.y += ddy / q * step; }
+      } else {
+        const g = groundAt(Math.floor(e.x), Math.floor(e.y));
+        if (g && g.t === 'mud') v *= 0.7;
+        if (e.k === 'frog') { const ph = (e.t * 1.05 + e.wob) % 1; e.air = ph < 0.4; v = e.air ? v * 2.5 : 0; }
+        e.d += v * dt;
+        const p = routeAt(e.d); e.x = p.x; e.y = p.y; e.fx = p.fx; e.fy = p.fy;
+        if (e.k === 'sapper' && e.d >= e.diveD) { dive(e); continue; }
+        if (e.k === 'tyrant' && e.dives < 2 && e.hp < e.maxhp * (e.dives ? 0.33 : 0.66)) { e.dives++; dive(e); continue; }
+        if (e.k === 'hen') { e.layT -= dt; if (e.layT <= 0) { e.layT = 5; layEgg(e.d - 0.3); sfx.quack(); } }
+        if (!e.air) {
+          for (const pl of G.peels) if (!pl.gone && pl.land <= 0 && Math.abs(pl.d - e.d) < 0.16) { slip(e, pl); break; }
+          for (const pit of G.pits) if (pit.t > 0 && Math.floor(e.x) === pit.i && Math.floor(e.y) === pit.j && e.pit !== pit) {
+            e.pit = pit; e.state = 'fall'; e.fallT = 2; hurt(e, e.maxhp * (e.F.boss ? 0.08 : 0.5)); pit.count++;
+            say(e.x, e.y, 0.5, 'Aaaah!', '#ffd9b0'); sfx.slip(); break;
+          }
+        }
+        if (e.dead) continue;
+        if (e.d >= G.len) { e.state = 'ring'; e.ring = ringS(); G.bellT = 0.5; sfx.bell(); buzz(30); }
       }
     }
     G.enemies = G.enemies.filter((e) => !e.dead);
+  }
+  function slip(e, pl) {
+    pl.gone = true; sfx.slip();
+    const targets = [e];
+    if (pl.domino) for (const q of G.enemies) if (q !== e && !q.dead && !q.fly && q.state === 'walk' && !q.route && e.d - q.d > 0 && e.d - q.d < 1 && targets.length < 3) targets.push(q);
+    for (const q of targets) { q.d = Math.max(0, q.d - (q.F.boss ? 0.4 : 1)); q.stun = q.F.boss ? 0.4 : 0.9; q.spin = 0.9; hurt(q, pl.dmg); }
+    say(e.x, e.y, 0.6, targets.length > 1 ? 'Whoops! ×' + targets.length : 'Whoops!', '#ffe680');
+  }
+  function layEgg(d) {
+    d = clamp(d, 0.5, G.len - 1); const p = routeAt(d);
+    G.eggs.push({ x: p.x, y: p.y, d, t: 4.5 });
+  }
+  function updateEggs(dt) {
+    for (const g of G.eggs) {
+      g.t -= dt;
+      if (g.t <= 0 && !g.gone) { g.gone = true; for (let k = 0; k < 2; k++) { const c = spawnFoe('chick', { d: g.d + k * 0.15 }); c.x = g.x; c.y = g.y; } burst(g.x, g.y, 0.2, '#fff4d6', 8); }
+    }
+    G.eggs = G.eggs.filter((g) => !g.gone);
+  }
+  function crackEgg(g) {
+    g.gone = true; const c = Math.round(5 * coinMul()); G.coins += c;
+    say(g.x, g.y, 0.5, `Omelette! +${c}`, '#ffe680'); burst(g.x, g.y, 0.2, '#ffe680', 10); sfx.pop(); mark('ground');
+  }
+
+  // ---------- burrowers: sapper moles and the Tunnel Tyrant ----------
+  // A burrower is under the grass. Towers cannot hit it. On the ground it is a moving lump; in the mine it can be tapped.
+  function dive(e) {
+    e.state = 'under'; e.taps = 0; e.underT = 0;
+    if (e.k === 'sapper') { e.tx = G.castle.x; e.ty = G.castle.y; sfx.sapper(); heckle('hSapper'); }
+    else { e.surfaceD = Math.min(G.len - 1.5, e.d + 5); sfx.sapper(); }
+    burst(e.x, e.y, 0, '#8a5a36', 12, 2.5); say(e.x, e.y, 0.6, e.k === 'sapper' ? 'Digging in!' : 'The Tyrant dives!', '#ffb38a');
+  }
+  function updateBurrower(e, dt) {
+    if (e.stun > 0) { e.stun -= dt; return; }
+    e.underT += dt;
+    if (e.k === 'sapper') {
+      const ddx = e.tx - e.x, ddy = e.ty - e.y, q = Math.hypot(ddx, ddy), step = dt / 3;
+      if (Math.abs(ddx) > Math.abs(ddy)) { e.fx = Math.sign(ddx); e.fy = 0; } else { e.fy = Math.sign(ddy); e.fx = 0; }
+      if (q < 0.3) { // under the castle: the foundations give
+        e.dead = true; G.hearts -= 2; G.leaks += 2; shake(10); G.flash = 0.35; sfx.leak();
+        say(G.castle.x, G.castle.y, 1.6, 'Sapped! -2', '#ff6b6b', true); return;
+      }
+      e.x += ddx / q * step; e.y += ddy / q * step;
+      const t = tileAt(Math.floor(e.x), Math.floor(e.y));
+      if (t && !t.dug) { t.dug = true; t.queued = false; if (t.content !== 'lode') t.content = null; else t.dug = false; revealAround(t); cacheDirty.dig = true; }
+    } else {
+      e.d += dt * 1.1; const p = routeAt(e.d); e.x = p.x; e.y = p.y; e.fx = p.fx; e.fy = p.fy;
+      if (e.d >= e.surfaceD) surface(e, false);
+    }
+  }
+  function surface(e, forced) {
+    e.state = 'walk'; burst(e.x, e.y, 0, '#8a5a36', 14, 2.6); shake(5);
+    if (forced) { e.stun = 4; e.vuln = 4; say(e.x, e.y, 0.9, 'Bonked out!', '#ffe680', true); }
+  }
+  // a tap in the mine, or the Boot on the lump
+  function bonk(e, hard) {
+    e.taps += hard ? 99 : 1; e.stun = 0.5; e.flash = 0.12; sfx.bonk(); mark(hard ? 'ground' : 'dig');
+    onLayer(hard ? 'ground' : 'dig', () => { burst(e.x, e.y, hard ? 0.1 : DIG_Z + 0.3, '#ffe680', 6); });
+    if (e.k === 'sapper' && e.taps >= SAPPER_TAPS) { onLayer(hard ? 'ground' : 'dig', () => kill(e)); }
+    else if (e.k === 'tyrant' && e.taps >= TYRANT_TAPS) surface(e, true);
   }
 
   // ---------- towers ----------
   function findTarget(x, y, range, ground, air) {
     let bestE = null, bestLeft = 1e9;
     for (const e of G.enemies) {
-      if (e.dead || e.under || (e.fly ? !air : !ground)) continue;
-      if (Math.hypot(e.x - x, e.y - y) > range) continue;
+      if (e.dead || hidden(e) || (e.fly ? !air : !ground)) continue;
+      if (dist(e.x, e.y, x, y) > range) continue;
       const l = remaining(e); if (l < bestLeft) { bestLeft = l; bestE = e; }
     }
     return bestE;
   }
-  function splash(x, y, rad, dmg, slow, layerFly) {
+  // area damage on one level: flyers (true), walkers (false) or both (null)
+  function splash(x, y, rad, dmg, slow, fly, o) {
     for (const e of G.enemies) {
-      if (e.dead || e.under) continue;
-      if (layerFly !== null && e.fly !== layerFly) continue;
-      if (Math.hypot(e.x - x, e.y - y) > rad + 8) continue;
-      if (slow) { e.slowA = Math.max(e.slowA, slow); e.slowT = 1.8; }
-      hurt(e, dmg);
+      if (e.dead || hidden(e)) continue;
+      if (fly !== null && e.fly !== fly) continue;
+      if (dist(e.x, e.y, x, y) > rad + e.F.r) continue;
+      if (slow) {
+        e.slowA = Math.max(e.slowA, slow); e.slowT = 1.8; e.curl = 0;
+        if (o && o.freeze && !e.F.boss) { e.chill++; if (e.chill >= 3) { e.chill = 0; e.stun = 1.5; e.vuln = 1.5; e.frozen = 1.5; } }
+      }
+      hurt(e, dmg, o);
     }
   }
   function updateTowers(dt) {
-    const sunMul = 1.6 + 0.25 * lv('tan'), rateMul = 1 + 0.1 * lv('espresso');
+    const rateMul = (1 + 0.08 * lv('espresso')) * (G.layer === 'ground' && G.n >= FROM.combo ? EYES_TOWER : 1);
     for (const t of G.towers) {
       const D = TOWERS[t.k];
-      t.sunny = G.weather === 'sun' && inCol(t.x);
-      t.cd -= dt * rateMul * (t.sunny ? sunMul : 1);
+      t.sunny = weatherAt(t.x, t.y, WX).sun;
+      t.cd -= dt * rateMul * (t.sunny ? 1.6 : 1);
       if (t.kick > 0) t.kick -= dt;
       if (t.cd > 0) continue;
-      const e = findTarget(t.x, t.y, towerRange(t), D.ground, D.air);
+      const range = towerRange(t), dmg = towerDmg(t);
+      if (t.k === 'banana') { // a peel on the path, where walkers enter the range
+        const mine = G.peels.filter((p) => p.owner === t && !p.gone).length;
+        if (mine >= 1 + t.lvl || !G.enemies.some((e) => !e.fly && !hidden(e))) { t.cd = 0.3; continue; }
+        const spots = [];
+        for (let d = 0.5; d < G.len - 0.6; d += 0.5) { const p = routeAt(d); if (dist(p.x, p.y, t.x, t.y) <= range && !G.peels.some((q) => !q.gone && Math.abs(q.d - d) < 0.45)) spots.push(d); }
+        if (!spots.length) { t.cd = 0.5; continue; }
+        const d = spots[Math.min(spots.length - 1, (Math.random() * 3) | 0)], p = routeAt(d);
+        G.peels.push({ x: p.x, y: p.y, d, owner: t, dmg, domino: t.lvl >= 3, land: 0.5, fromX: t.x, fromY: t.y });
+        t.cd = D.rate * (1 - 0.1 * (t.lvl - 1)); t.kick = 0.15; sfx.peel(); continue;
+      }
+      const e = findTarget(t.x, t.y, range, D.ground, D.air);
       if (!e) { t.cd = 0.08; continue; }
-      t.cd = D.rate * (1 - 0.08 * (t.lvl - 1)); t.kick = 0.12;
-      const dmg = towerDmg(t);
-      sfx.shoot();
-      if (t.k === 'pea' || t.k === 'kite') G.shots.push({ x: t.x, y: t.y - 6, tgt: e, dmg, v: t.k === 'kite' ? 300 : 380, c: D.color, s: t.k === 'kite' ? 4 : 3 });
-      else if (t.k === 'ice') { splash(e.x, e.y, D.splash + 4 * (t.lvl - 1), dmg, D.slow + 0.05 * (t.lvl - 1), null); ring(e.x, e.y, D.splash, '#bdf3ff'); G.bolts.push({ pts: [[t.x, t.y - 8], [e.x, e.y]], t: 0.12, c: '#bdf3ff', straight: true }); }
-      else if (t.k === 'mortar') G.shots.push({ x: t.x, y: t.y - 8, x0: t.x, y0: t.y - 8, x1: e.x, y1: e.y, t: 0, T: 0.65, dmg, rad: D.splash + 5 * (t.lvl - 1), lob: true });
-      else if (t.k === 'tesla') {
-        const hit = [e], pts = [[t.x, t.y - 8], [e.x, e.y]];
+      t.cd = capped('espresso') && Math.random() < 0.125 ? 0.09 : D.rate * (1 - 0.08 * (t.lvl - 1)); t.kick = 0.12;
+      const mz = t.z + ART_MUZZLE(t.k, t.lvl);
+      if (t.k === 'pea') {
+        t.shots = (t.shots || 0) + 1;
+        const bigPea = t.lvl >= 3 && t.shots % 5 === 0;
+        G.shots.push({ x: t.x, y: t.y, z: mz, tgt: e, dmg: bigPea ? dmg * 3 : dmg, v: 7, c: D.color, s: bigPea ? 7 : 3.2, knock: bigPea ? 0.45 : 0 });
+        sfx.pea();
+      } else if (t.k === 'kite') {
+        G.shots.push({ x: t.x, y: t.y, z: mz, tgt: e, dmg, v: 6.5, c: D.color, s: 4, tangle: t.lvl >= 3 }); sfx.kite();
+      } else if (t.k === 'ice') {
+        splash(e.x, e.y, D.splash + 0.1 * (t.lvl - 1), dmg, D.slow + 0.05 * (t.lvl - 1), null, { splash: false, freeze: t.lvl >= 3 });
+        ring(e.x, e.y, e.z + 0.1, D.splash, '#bdf3ff'); G.bolts.push({ pts: [[t.x, t.y, mz], [e.x, e.y, e.z + 0.2]], t: 0.12, c: '#bdf3ff', straight: true }); sfx.ice();
+      } else if (t.k === 'mortar') {
+        G.shots.push({ x: t.x, y: t.y, z: mz, x0: t.x, y0: t.y, z0: mz, x1: e.x, y1: e.y, t: 0, T: 0.7, dmg, rad: D.splash + 0.12 * (t.lvl - 1), lob: true, puddle: t.lvl >= 3 }); sfx.mortar();
+      } else if (t.k === 'tesla') {
+        const hit = [e], pts = [[t.x, t.y, mz], [e.x, e.y, e.z + 0.2]];
         let cur = e;
-        for (let j = 1; j < D.chain + t.lvl - 1; j++) {
-          let nx = null, nd = 75;
-          for (const o of G.enemies) { if (o.dead || o.under || hit.includes(o)) continue; const q = Math.hypot(o.x - cur.x, o.y - cur.y); if (q < nd) { nd = q; nx = o; } }
-          if (!nx) break; hit.push(nx); pts.push([nx.x, nx.y]); cur = nx;
+        for (let j = 1; j < D.chain + (t.lvl >= 3 ? 2 : 0); j++) {
+          let nx = null, nd = 1.7;
+          for (const o of G.enemies) { if (o.dead || hidden(o) || hit.includes(o)) continue; const q = dist(o.x, o.y, cur.x, cur.y); if (q < nd) { nd = q; nx = o; } }
+          if (!nx) break; hit.push(nx); pts.push([nx.x, nx.y, nx.z + 0.2]); cur = nx;
         }
-        hit.forEach((o, j) => hurt(o, dmg * Math.pow(0.8, j)));
+        hit.forEach((o, j) => { if (t.lvl >= 3 && !o.F.boss) o.stun = Math.max(o.stun, 0.25); hurt(o, dmg * Math.pow(0.8, j)); });
         G.bolts.push({ pts, t: 0.16, c: '#cfe0ff' }); sfx.zap();
       }
     }
   }
+  const ART_MUZZLE = (k, lvl) => (ART.muzzle ? ART.muzzle(k, lvl) : 0.8 + 0.12 * lvl);
   function updateShots(dt) {
     for (const s of G.shots) {
       if (s.lob) {
         s.t += dt; const f = Math.min(1, s.t / s.T);
-        s.x = s.x0 + (s.x1 - s.x0) * f; s.y = s.y0 + (s.y1 - s.y0) * f - Math.sin(f * Math.PI) * 46;
-        if (f >= 1) { s.done = true; splash(s.x1, s.y1, s.rad, s.dmg, 0, false); ring(s.x1, s.y1, s.rad, '#ffb14a'); burst(s.x1, s.y1, '#d9a066', 6, 90); sfx.boom(); }
+        s.x = s.x0 + (s.x1 - s.x0) * f; s.y = s.y0 + (s.y1 - s.y0) * f; s.z = s.z0 * (1 - f) + Math.sin(f * Math.PI) * 1.3;
+        if (f >= 1) {
+          s.done = true; splash(s.x1, s.y1, s.rad, s.dmg, 0, false, { splash: true }); ring(s.x1, s.y1, 0.05, s.rad, '#ffb14a'); burst(s.x1, s.y1, 0.1, '#d9a066', 6, 1.8); sfx.splash();
+          if (s.puddle) G.puddles.push({ x: s.x1, y: s.y1, r: s.rad * 0.8, t: 2.5, dps: s.dmg * 0.35 });
+        }
         continue;
       }
       const e = s.tgt;
-      if (e.dead) { s.done = true; continue; }
-      const dx = e.x - s.x, dy = e.y - s.y, dist = Math.hypot(dx, dy), step = s.v * dt;
-      if (dist <= step + 8) { s.done = true; hurt(e, s.dmg); }
-      else { s.x += dx / dist * step; s.y += dy / dist * step; }
+      if (e.dead || hidden(e)) { s.done = true; continue; }
+      const dx = e.x - s.x, dy = e.y - s.y, dz = e.z + 0.25 - s.z, q = Math.hypot(dx, dy, dz), step = s.v * dt;
+      if (q <= step + 0.15) {
+        s.done = true; hurt(e, s.dmg);
+        if (s.knock && !e.dead && !e.F.boss && !e.fly && !e.route) { e.d = Math.max(0, e.d - s.knock); e.stun = Math.max(e.stun, 0.25); ring(e.x, e.y, 0.1, 0.4, '#9dff6b'); }
+        if (s.tangle) { const o = G.enemies.find((q2) => q2 !== e && !q2.dead && q2.fly && dist(q2.x, q2.y, e.x, e.y) < 1.6); if (o) { hurt(o, s.dmg * 0.7); G.bolts.push({ pts: [[e.x, e.y, e.z], [o.x, o.y, o.z]], t: 0.2, c: '#ff8ad8', straight: true }); } }
+      } else { s.x += dx / q * step; s.y += dy / q * step; s.z += dz / q * step; }
     }
     G.shots = G.shots.filter((s) => !s.done);
+    for (const p of G.puddles) {
+      p.t -= dt;
+      for (const e of G.enemies) if (!e.dead && !e.fly && !hidden(e) && dist(e.x, e.y, p.x, p.y) < p.r) hurt(e, p.dps * dt, { quiet: true });
+    }
+    G.puddles = G.puddles.filter((p) => p.t > 0);
+    for (const p of G.peels) if (p.land > 0) p.land -= dt;
+    G.peels = G.peels.filter((p) => !p.gone);
   }
-  function tryBuild(k, c, r) {
-    const cost = buildCost(k);
-    if (G.grid[r * COLS + c] !== 0 || !towerUnlocked(k) || G.coins < cost) { sfx.nope(); return false; }
+  function canBuildOn(g) { return g && g.t === 'grass' && !g.obj; }
+  function tryBuild(k, i, j) {
+    const cost = buildCost(k), g = groundAt(i, j);
+    if (!canBuildOn(g) || !towerUnlocked(k) || G.coins < cost) { sfx.nope(); return false; }
+    if (has('crown') && G.towers.length >= 5) { sfx.nope(); say(i + 0.5, j + 0.5, 0.8, 'The crown allows five', '#ffe680'); return false; }
     G.coins -= cost;
-    const p = gCenter(c, r);
-    const t = { k, c, r, x: p.x, y: p.y, lvl: 1, cd: 0.2, spent: cost, kick: 0 };
-    G.towers.push(t); G.grid[r * COLS + c] = t;
-    sfx.build(); burst(p.x, p.y, '#ffffff', 8, 90);
+    const u = tileAt(i, j);
+    const t = { k, i, j, x: i + 0.5, y: j + 0.5, z: g.z, lvl: capped('plans') ? 2 : 1, cd: 0.2, spent: cost, kick: 0, born: 0.35, hill: g.hill, crystal: u.content === 'crystal' && !u.dug };
+    G.towers.push(t); g.obj = t;
+    sfx.build(); burst(t.x, t.y, g.z + 0.2, '#ffffff', 8, 1.8); mark('ground');
+    if (t.crystal) say(t.x, t.y, 1.4, 'Crystal power! +25%', '#b9a8ff');
     return true;
   }
   function tryUpgrade(t) {
     const cost = upgradeCost(t);
     if (t.lvl >= 3 || G.coins < cost) { sfx.nope(); return false; }
-    G.coins -= cost; t.spent += cost; t.lvl++; sfx.build(); ring(t.x, t.y, 26, '#ffe680');
+    G.coins -= cost; t.spent += cost; t.lvl++; t.born = 0.35; sfx.upgrade(); ring(t.x, t.y, t.z + 0.3, 0.6, '#ffe680'); mark('ground');
+    if (t.lvl === 3) say(t.x, t.y, 1.6, TOWERS[t.k].cap.split(':')[0] + '!', '#ffe680', true);
     return true;
   }
   function sellTower(t) {
-    G.coins += sellValue(t); G.grid[t.r * COLS + t.c] = 0; G.towers.splice(G.towers.indexOf(t), 1); sfx.tick();
+    G.coins += sellValue(t); groundAt(t.i, t.j).obj = null; G.towers.splice(G.towers.indexOf(t), 1); sfx.sell();
+    for (const p of G.peels) if (p.owner === t) p.gone = true;
   }
 
-  // ---------- cloud ----------
-  function setWeather(w) {
-    if (w !== 'off' && G.cloud.charge < 8 && G.freeWeather <= 0) { sfx.nope(); say(G.cloud.x, CLOUD_Y + 40, 'Cloud is dry. Let it rest.', '#cfe9ff'); return; }
-    G.weather = G.weather === w ? 'off' : w; G.stormT = 0.3; sfx.tick();
-  }
-  function updateCloud(dt) {
-    const C = G.cloud;
-    const dx = C.tx - C.x, step = 190 * dt;
-    C.x = Math.abs(dx) <= step ? C.tx : C.x + Math.sign(dx) * step;
-    if (G.freeWeather > 0) G.freeWeather -= dt;
-    const free = G.freeWeather > 0;
-    if (G.weather === 'off') C.charge = Math.min(C.max, C.charge + 7 * dt);
-    else {
-      if (!free) C.charge -= WEATHER[G.weather].drain * dt;
-      if (G.weather === 'storm') {
-        G.stormT -= dt;
-        if (G.stormT <= 0) {
-          let tgt = null;
-          for (const e of G.enemies) if (!e.dead && !e.under && inCol(e.x) && (!tgt || e.hp > tgt.hp)) tgt = e;
-          if (tgt && (free || C.charge >= 10)) {
-            if (!free) C.charge -= 10;
-            G.stormT = 0.85;
-            hurt(tgt, (26 + 5 * G.n) * (1 + 0.3 * lv('thunder')));
-            G.bolts.push({ pts: [[C.x + rand(-12, 12), CLOUD_Y + 14], [tgt.x, tgt.y]], t: 0.2, c: '#fff6a8', w: 3 });
-            burst(tgt.x, tgt.y, '#fff6a8', 6, 120); sfx.zap();
-          } else { G.stormT = 0.15; if (!free) C.charge -= 1.5 * 0.15; }
-        }
-      }
-      if (C.charge <= 0) { C.charge = 0; G.weather = 'off'; say(C.x, CLOUD_Y + 40, 'Cloud ran dry', '#cfe9ff'); }
-    }
-  }
-
-  // ---------- underground ----------
-  const tileAt = (c, r) => (r >= 0 && r < UROWS && c >= 0 && c < COLS ? G.ug[r][c] : null);
-  function bfs(fc, fr, goal) { // walk through dug tiles; returns list of tiles after the start, ending on the goal tile
-    const start = fr * COLS + fc, prev = new Map([[start, -1]]), q = [start];
-    while (q.length) {
-      const k = q.shift(), c = k % COLS, r = (k / COLS) | 0;
-      if (goal(c, r)) { const out = []; let j = k; while (j !== start) { out.unshift(G.ug[(j / COLS) | 0][j % COLS]); j = prev.get(j); } return out; }
-      for (const [dc, dr] of DIRS) {
-        const t = tileAt(c + dc, r + dr); if (!t || !t.dug) continue;
-        const nk = t.r * COLS + t.c; if (prev.has(nk)) continue;
-        prev.set(nk, k); q.push(nk);
-      }
-    }
-    return null;
-  }
-  function canOrder(t) {
-    if (!t || t.dug || t.queued) return false;
-    return DIRS.some(([dc, dr]) => { const n = tileAt(t.c + dc, t.r + dr); return n && (n.dug || n.queued); });
-  }
-  function orderDig(t) {
-    const cost = digCost(t.r);
-    if (!canOrder(t) || G.coins < cost || G.orders.length >= 6) { sfx.nope(); return false; }
-    G.coins -= cost; if (cost === 0 && G.freeDigs > 0) G.freeDigs--;
-    t.queued = true; G.orders.push({ tile: t, cost, miner: null }); sfx.tick();
+  // ---------- the Boot ----------
+  function stompAt(x, y) {
+    if (G.boot.n <= 0) { sfx.nope(); say(x, y, 0.5, 'The Boot is resting', '#c9d0ff'); return false; }
+    G.boot.n--; if (G.boot.t <= 0) G.boot.t = bootS();
+    G.stomps.push({ x, y, t: BOOT_DELAY }); sfx.stomp(); mark('ground');
     return true;
   }
-  function revealAround(t) { for (const [dc, dr] of DIRS) { const n = tileAt(t.c + dc, t.r + dr); if (n) n.known = true; } }
-  function finishDig(m, t) {
-    const p = uCenter(t.c, t.r), content = t.content;
-    t.queued = false; t.prog = 0; t.dug = true; t.content = null; G.digs++;
-    burst(p.x, p.y, '#8a5a36', 8, 90);
-    if (content === 'cave' && !lv('supports')) {
-      t.dug = false; t.hard = Math.min(4, t.hard + 1); m.daze = 6; m.state = 'daze'; G.shake = 6; sfx.bad();
-      say(p.x, p.y - 16, 'Cave-in! 🪨', '#ffb38a'); burst(p.x, p.y, '#6b5a4e', 16, 140);
-      return;
+  function updateBoot(dt) {
+    const B = G.boot;
+    if (B.n < bootMax()) { B.t -= dt; if (B.t <= 0) { B.n++; B.t = B.n < bootMax() ? bootS() : 0; } }
+    for (const s of G.stomps) {
+      s.t -= dt;
+      if (s.t <= 0 && !s.done) {
+        s.done = true; s.show = 0.35;
+        const r = bootR(), dmg = bootDmg(); let n = 0;
+        for (const e of G.enemies) {
+          if (e.dead || e.fly || e.state === 'tunnel' || e.state === 'fall' || dist(e.x, e.y, s.x, s.y) > r + e.F.r) continue;
+          if (e.state === 'under') { bonk(e, true); n++; continue; }
+          if (e.k === 'beetle') e.flip = 4;
+          if (capped('boots') && !e.F.boss) e.stun = Math.max(e.stun, 1.5);
+          hurt(e, dmg, { splash: true }); n++;
+        }
+        for (const g of G.eggs) if (!g.gone && dist(g.x, g.y, s.x, s.y) < r) crackEgg(g);
+        shake(5); sfx.stompHit(); buzz(20); ring(s.x, s.y, 0.05, r, '#ffffff'); burst(s.x, s.y, 0.05, '#c9a76c', 10, 2.4);
+        if (n >= 3) { say(s.x, s.y, 0.9, `STOMP ×${n}`, '#ffe680', true); heckle('hStomp'); }
+      }
+      if (s.done) s.show -= dt;
     }
-    revealAround(t);
-    if (!content) return;
-    if (content === 'cave') { say(p.x, p.y - 16, 'Props held 🪵', '#c9d0ff'); return; }
-    if (content === 'gas') {
-      burst(p.x, p.y, '#9be36b', 16, 80);
-      if (lv('helmet')) say(p.x, p.y - 16, 'Stink pocket. Mask on ⛑️', '#c9d0ff');
-      else { m.daze = 10; m.state = 'daze'; sfx.bad(); say(p.x, p.y - 16, 'Stink pocket! 🤢', '#b9ff6b'); }
-      return;
-    }
-    if (content === 'nest') {
-      const count = Math.max(1, 3 + Math.floor(t.r / 2) - lv('bait') * 2);
-      const tiles = bfs(t.c, t.r, (c, r) => c === G.shaftCol && r === 0) || [];
-      const route = tiles.map((q) => uCenter(q.c, q.r));
-      route.push({ x: G.hut.x, y: G.hut.y, surface: true });
-      const j = posAt(G.joinD); route.push({ x: j.x, y: j.y });
-      for (let i = 0; i < count; i++) spawnFoe('worm', { x: p.x + rand(-8, 8), y: p.y + rand(-8, 8), under: true, route, ri: 0, spd: FOES.worm.spd * rand(0.8, 1.15) });
-      sfx.bad(); G.shake = 5; say(p.x, p.y - 16, 'Worm nest! 🐛', '#ff9a9a');
-      return;
-    }
-    sfx.loot(); ring(p.x, p.y, 24, '#ffe680');
-    const icon = LOOT[content].icon;
-    if (content === 'gem') { const g = 1 + Math.floor((t.r + 1) / 2); G.loot += g; say(p.x, p.y - 16, `+${g} 💎`, '#8fe6ff'); }
-    else if (content === 'coins') { const c = Math.round((16 + t.r * 8) * (1 + 0.1 * (G.n - 1))); G.coins += c; say(p.x, p.y - 16, `+${c} 🪙`, '#ffd84a'); }
-    else if (content === 'fossil') { const g = 4 + t.r; G.loot += g; say(p.x, p.y - 16, `Fossil! +${g} 💎`, '#8fe6ff'); }
-    else if (content === 'spring') { G.cloud.charge = G.cloud.max; G.freeWeather = Math.max(G.freeWeather, 12); say(p.x, p.y - 16, 'Spring! Free weather 12s 💧', '#8fd0ff'); }
-    else if (content === 'heart') { G.hearts++; say(p.x, p.y - 16, '+1 ❤️', '#ff8aa0'); }
-    else if (content === 'mushroom') { G.mush = true; say(p.x, p.y - 16, 'Zoomy mushroom! Faster digging 🍄', '#ffb3d1'); }
-    else if (content === 'relic') {
-      const k = pick(['dmg', 'dig', 'jar']);
-      if (k === 'dmg') { G.relicDmg += 0.3; say(p.x, p.y - 16, 'Ancient battery: towers +30% 🏺', '#ffe680'); }
-      else if (k === 'dig') { G.freeDigs += 3; say(p.x, p.y - 16, 'Golden shovel: 3 free digs 🏺', '#ffe680'); }
-      else { G.cloud.charge = G.cloud.max; G.freeWeather = 25; say(p.x, p.y - 16, 'Storm jar: free weather 25s 🏺', '#ffe680'); }
-    } else if (content === 'blueprint') {
-      const locked = TOWER_ORDER.filter((k) => !towerUnlocked(k));
-      if (locked.length) { const k = pick(locked); run.up['t_' + k] = 1; saveRun(); say(p.x, p.y - 16, `Blueprint: ${TOWERS[k].name}! 📜`, '#ffe680', true); }
-      else { G.loot += 8; say(p.x, p.y - 16, 'Old blueprint. +8 💎', '#8fe6ff'); }
-    }
-    void icon;
+    G.stomps = G.stomps.filter((s) => !s.done || s.show > 0);
   }
-  function updateMiners(dt) {
-    G.minerT -= dt;
-    const think = G.minerT <= 0; if (think) G.minerT = 0.25;
-    const boost = G.mush ? 1.5 : 1;
-    for (const m of G.miners) {
-      if (m.state === 'daze') { m.daze -= dt; if (m.daze <= 0) m.state = 'idle'; if (m.order) { m.order.miner = null; m.order = null; } continue; }
-      if (m.state === 'idle' && think) {
-        for (const o of G.orders) {
-          if (o.miner) continue;
-          const route = bfs(m.c, m.r, (c, r) => Math.abs(c - o.tile.c) + Math.abs(r - o.tile.r) === 1);
-          if (route) { o.miner = m; m.order = o; m.route = route; m.state = 'walk'; break; }
-        }
-      }
-      if (m.state === 'walk') {
-        if (!m.route.length) { m.state = 'dig'; continue; }
-        const t = m.route[0], p = uCenter(t.c, t.r), dx = p.x - m.x, dy = p.y - m.y, dist = Math.hypot(dx, dy), step = 70 * boost * dt;
-        if (dist <= step) { m.x = p.x; m.y = p.y; m.c = t.c; m.r = t.r; m.route.shift(); }
-        else { m.x += dx / dist * step; m.y += dy / dist * step; }
-      } else if (m.state === 'dig') {
-        const t = m.order.tile, p = uCenter(t.c, t.r);
-        const rate = boost * (G.weather === 'rain' && inCol(p.x) ? 2 : 1);
-        t.prog += dt * rate / digTime(t);
-        G.digSfx -= dt; if (G.digSfx <= 0) { G.digSfx = 0.3; sfx.dig(); G.parts.push({ x: (m.x + p.x) / 2, y: (m.y + p.y) / 2, vx: rand(-40, 40), vy: rand(-60, -10), t: 0.3, c: '#a9774a', s: 3 }); }
-        if (t.prog >= 1) {
-          G.orders.splice(G.orders.indexOf(m.order), 1); m.order = null; m.state = 'idle';
-          finishDig(m, t);
-        }
-      }
+
+  // ---------- Grandma ----------
+  function swat() {
+    const ringers = G.enemies.filter((e) => e.state === 'ring' && !e.dead);
+    if (!ringers.length) return false;
+    if (G.swatT > 0) { sfx.nope(); say(G.castle.x, G.castle.y, 1.7, 'Grandma is catching her breath', '#c9d0ff'); return true; }
+    G.swatT = swatS(); G.doorT = 0.7; sfx.swat(); buzz(25); mark('ground'); heckle('hSwat');
+    ringers.sort((a, b) => a.ring - b.ring);
+    for (const e of capped('pin') ? ringers : ringers.slice(0, 1)) {
+      hurt(e, e.maxhp * (e.F.boss ? 0.15 : 0.8));
+      if (!e.dead) { e.state = 'walk'; e.d = Math.max(0, G.len - 2.5); e.stun = 0.7; e.spin = 0.7; }
     }
+    say(G.castle.x, G.castle.y, 1.7, 'BONK!', '#ffe680', true); shake(4);
+    return true;
   }
 
   // ---------- waves ----------
@@ -648,14 +935,15 @@
     const list = G.waves[G.waveIdx++];
     let t = 0.3;
     for (const k of list) { G.spawnQ.push({ k, at: t }); t += FOES[k].gap * rand(0.8, 1.1); }
-    G.spawnT = 0; G.countdown = 11; sfx.wave();
-    say(W / 2, GROUND_Y - 24, `Wave ${G.waveIdx} of ${G.waves.length}`, '#ffffff', true);
+    G.spawnT = 0; G.countdown = 12; sfx.wave();
+    G.banner2 = G.banner2 && G.banner2.t > 0 ? G.banner2 : { text: `Wave ${G.waveIdx} of ${G.waves.length}`, sub: '', t: 1.6 };
+    if (capped('piggy')) { const c = Math.min(25, Math.floor(G.coins * 0.05)); if (c > 0) { G.coins += c; say(G.castle.x, G.castle.y, 1.5, `Interest +${c}`, '#ffd84a'); } }
   }
   const canCallWave = () => G.spawnQ.length === 0 && G.waveIdx < G.waves.length && G.clearT < 0;
-  const earlyBonus = () => Math.ceil(Math.max(0, G.countdown) * (1 + 0.5 * lv('hurry')));
+  const earlyBonus = () => Math.ceil(Math.max(0, G.countdown) * (has('cuckoo') ? 3 : 1));
   function callWave() {
     if (!canCallWave()) { sfx.nope(); return; }
-    const b = earlyBonus(); if (b > 0) { G.coins += b; say(W - 110, BAR_Y - 14, `+${b} 🪙 early`, '#ffd84a'); }
+    const b = earlyBonus(); if (b > 0) { G.coins += b; G.early++; G.barNote = { text: `+${b} early`, t: 1.4 }; }
     launchWave();
   }
   function updateWaves(dt) {
@@ -665,502 +953,1330 @@
     } else if (G.waveIdx < G.waves.length) { G.countdown -= dt; if (G.countdown <= 0) launchWave(); }
   }
 
+  // ---------- clouds ----------
+  // A cloud floats over the map at (x, y). Its shadow is a circle on the ground: that is where its weather works.
+  let cloudId = 1;
+  function addCloud(t, x, y, big) {
+    const D = CLOUDS[t];
+    const c = { id: cloudId++, t, x, y, big: !!big, anchored: false, life: (D.life || 0) * (big ? 1.3 : 1), life0: 0, bolts: Math.round((D.bolts || 0) * (big ? 1.5 : 1)), bolts0: 0,
+      boltT: 1, born: 0.4, wob: rand(0, 6), zap: 0 };
+    c.life0 = c.life; c.bolts0 = c.bolts;
+    G.clouds.push(c);
+    return c;
+  }
+  function spawnPuff() {
+    G.puffN++;
+    let t = 'puff';
+    if (G.n >= FROM.gold && ((capped('nursery') && G.puffN % 4 === 0) || Math.random() < 0.2)) t = 'gold';
+    else if (G.n >= FROM.frost && Math.random() < 0.16) t = 'frost';
+    // a puff comes in on the wind, from the side that the wind blows from
+    const [wx, wy] = G.wind, a = rand(1.2, N - 1.2);
+    addCloud(t, wx > 0 ? 0.8 : wx < 0 ? N - 0.8 : a, wy > 0 ? 0.8 : wy < 0 ? N - 0.8 : a);
+    if (G.layer === 'sky') sfx.puff();
+  }
+  function mergeResult(a, b) {
+    const r = RECIPES.find((q) => (q[0] === a.t && q[1] === b.t) || (q[0] === b.t && q[1] === a.t));
+    if (r) return { t: r[2], big: capped('fluffy') || (a.big && b.big) };
+    if (a.t === b.t && !CLOUDS[a.t].raw && !a.big && !b.big) return { t: a.t, big: true };
+    return null;
+  }
+  const MERGE_TIER = { rain: 1, sun: 1, snow: 1, storm: 2, rainbow: 3, super: 3 };
+  // cloud a was dropped on cloud b
+  function mergeClouds(a, b) {
+    const r = mergeResult(a, b);
+    if (!r) return false;
+    for (const c of [a, b]) if (c.anchored) G.anchors--;
+    G.clouds = G.clouds.filter((c) => c !== a && c !== b);
+    const c = addCloud(r.t, b.x, b.y, r.big);
+    if (G.anchors < anchorMax()) { c.anchored = true; G.anchors++; }
+    onLayer('sky', () => {
+      burst(c.x, c.y, CLOUD_Z + 0.3, '#ffffff', 14, 2.4); ring(c.x, c.y, CLOUD_Z, 0.9, '#ffffff');
+      say(c.x, c.y, CLOUD_Z + 1.1, (r.big ? 'Big ' : '') + CLOUDS[r.t].name + '!', '#ffffff', true);
+    });
+    sfx.merge(MERGE_TIER[r.t] || 1); mark('sky'); heckle(r.t === 'rainbow' ? 'hRainbow' : r.t === 'storm' || r.t === 'super' ? 'hStorm' : 'hMerge');
+    if (r.t === 'rainbow') sfx.rainbow();
+    const key = [a.t, b.t].sort().join('+');
+    if (!meta.recipes[key]) { meta.recipes[key] = r.t; saveMeta(); toast(`New recipe: ${CLOUDS[a.t].name} + ${CLOUDS[b.t].name} = ${CLOUDS[r.t].name}`); }
+    return true;
+  }
+  function toggleAnchor(c) {
+    if (CLOUDS[c.t].raw) { toast(`${CLOUDS[c.t].name}: drag it onto another cloud to mix weather`); return; }
+    if (c.anchored) { c.anchored = false; G.anchors--; sfx.pop(); }
+    else if (G.anchors >= anchorMax()) { sfx.nope(); onLayer('sky', () => say(c.x, c.y, CLOUD_Z + 0.9, `Only ${anchorMax()} anchors`, '#c9d0ff')); return; }
+    else { c.anchored = true; G.anchors++; sfx.anchor(); onLayer('sky', () => say(c.x, c.y, CLOUD_Z + 0.9, 'Anchored', '#ffe680')); }
+    mark('sky');
+  }
+  function strike(c) {
+    const r = cloudR(c);
+    let tgt = null;
+    for (const e of G.enemies) if (!e.dead && !hidden(e) && dist(e.x, e.y, c.x, c.y) <= r + e.F.r && (!tgt || e.hp > tgt.hp)) tgt = e;
+    if (!tgt) return;
+    c.bolts--; c.zap = 0.25;
+    const dmg = boltDmg() * (c.t === 'super' ? 1.5 : 1), hits = [tgt];
+    if (capped('thunder')) { // fork lightning
+      let o = null, od = 1.9;
+      for (const e of G.enemies) { if (e === tgt || e.dead || hidden(e)) continue; const q = dist(e.x, e.y, tgt.x, tgt.y); if (q < od) { od = q; o = e; } }
+      if (o) hits.push(o);
+    }
+    G.bolts.push({ pts: [[c.x, c.y, FLY_Z + 1.1], ...hits.map((e) => [e.x, e.y, e.z + 0.2])], t: 0.2, c: '#fff6a8' });
+    for (let k = 0; k < (has('rod') ? 2 : 1); k++) for (const e of hits) hurt(e, dmg * (e === tgt ? 1 : 0.6), { bolt: true });
+    sfx.thunder(); if (G.layer === 'ground') shake(2);
+  }
+  function updateClouds(dt) {
+    if (G.n < FROM.sky) return;
+    G.puffT -= dt;
+    if (G.puffT <= 0) { G.puffT = puffS(); if (G.clouds.length < PUFF_MAX) spawnPuff(); }
+    // clouds only drift while nobody watches them
+    const drift = G.layer !== 'sky' && !has('vane');
+    for (const c of G.clouds) {
+      if (c.born > 0) c.born -= dt;
+      if (c.zap > 0) c.zap -= dt;
+      const D = CLOUDS[c.t];
+      if (drift && !c.anchored) {
+        c.x += G.wind[0] * DRIFT * dt; c.y += G.wind[1] * DRIFT * dt;
+        if (c.x < -0.4 || c.y < -0.4 || c.x > N + 0.4 || c.y > N + 0.4) { c.gone = true; if (!D.raw) heckle('hDrift'); continue; }
+      }
+      if (D.life) { c.life -= dt * (c.anchored && capped('anchors') ? 0.67 : 1); if (c.life <= 0) c.gone = true; }
+      if (D.bolts) { c.boltT -= dt; if (c.boltT <= 0) { c.boltT = c.t === 'super' ? 0.7 : 1.3; strike(c); } if (c.bolts <= 0) c.gone = true; }
+      if (c.t === 'rainbow') for (const e of G.enemies) if (e.danced === c.id && !e.paid) { e.paid = true; const p = Math.round(3 * coinMul()); G.coins += p; say(e.x, e.y, 0.7, `+${p}`, '#ff9ad8'); }
+    }
+    for (const c of G.clouds) if (c.gone) { if (c.anchored) G.anchors--; onLayer('sky', () => burst(c.x, c.y, CLOUD_Z + 0.2, '#ffffff', 8, 1.6)); }
+    G.clouds = G.clouds.filter((c) => !c.gone);
+    // the Spy Cloud: tiles under a shadow show what they hide
+    if (lv('spy')) {
+      G.spyT -= dt;
+      if (G.spyT <= 0) {
+        G.spyT = 0.5;
+        for (const c of G.clouds) for (const t of G.ug) if (!t.dug && !t.spied && dist(t.i + 0.5, t.j + 0.5, c.x, c.y) <= cloudR(c)) t.spied = true;
+      }
+    }
+  }
+  const rainOver = (x, y) => G.clouds.some((c) => c.t === 'rain' && dist(c.x, c.y, x, y) <= cloudR(c));
+
+  // ---------- the mine ----------
+  function revealAround(t) {
+    for (const [di, dj] of DIRS) { const q = tileAt(t.i + di, t.j + dj); if (q) q.known = true; }
+    cacheDirty.dig = true;
+  }
+  // The shortest way through the tunnels from a dug tile to the first tile that `goal` accepts. Returns the tiles after the start.
+  function bfs(from, goal) {
+    const prev = new Map([[from, null]]), q = [from];
+    while (q.length) {
+      const t = q.shift();
+      if (goal(t)) { const out = []; for (let c = t; c !== from; c = prev.get(c)) out.unshift(c); return out; }
+      for (const [di, dj] of DIRS) { const n = tileAt(t.i + di, t.j + dj); if (n && n.dug && !prev.has(n)) { prev.set(n, t); q.push(n); } }
+    }
+    return null;
+  }
+  const nextTo = (a, b) => Math.abs(a.i - b.i) + Math.abs(a.j - b.j) === 1;
+  const canQueue = (t) => !!t && !t.dug && !t.queued && DIRS.some(([di, dj]) => { const q = tileAt(t.i + di, t.j + dj); return q && (q.dug || q.queued); });
+  const digLayer = () => (G.layer === 'dig' ? 'dig' : 'ground');
+  function orderDig(t) {
+    if (!canQueue(t)) { sfx.nope(); return false; }
+    const cost = digCost(t);
+    if (G.coins < cost) { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, `Need ${cost} coins`, '#ff9a9a')); return false; }
+    G.coins -= cost; G.digOrders++; t.paid = cost; mark('dig'); sfx.dig();
+    if (cost === 0) onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Free dig!', '#7cf2a8'));
+    if (G.freeDigs > 0) { G.freeDigs--; finishDig(t, null); return true; } // the Golden Shovel
+    t.queued = true; t.prog = 0; t.taken = null; G.orders.push(t);
+    return true;
+  }
+  function dropOrder(t) {
+    const k = G.orders.indexOf(t); if (k >= 0) G.orders.splice(k, 1);
+    t.queued = false; t.taken = null; t.prog = 0;
+    for (const h of G.hamsters) if (h.order === t) { h.order = null; h.route = []; if (h.state !== 'home') h.state = 'idle'; }
+  }
+  function cancelDig(t) { dropOrder(t); G.coins += t.paid || 0; t.paid = 0; sfx.tab(); }
+  // what a carried thing is worth once it is home
+  function collect(k, x, y, z) {
+    let s = '', c = '#8fe6ff';
+    if (k === 'gem') { G.loot += 1; s = '+1 gem'; }
+    else if (k === 'coins') { const v = 20 + 4 * G.n; G.coins += v; s = `+${v} coins`; c = '#ffd84a'; }
+    else if (k === 'fossil') { G.loot += 3; s = 'Fossil! +3 gems'; }
+    else if (k === 'crystal') { G.loot += 3; s = 'Crystal! +3 gems'; c = '#b9a8ff'; }
+    else if (k === 'heart') { G.hearts = Math.min(G.maxHearts, G.hearts + 2); s = '+2 hearts'; c = '#ff8aa0'; }
+    else if (k === 'blueprint') {
+      run.bp++; s = 'Blueprint!'; c = '#bfe9ff';
+      const next = TOWER_ORDER.find((t) => !towerUnlocked(t)) ? null : TOWER_ORDER.filter((t) => TOWERS[t].from > run.level).slice(-1)[0];
+      toast(next ? `Blueprint: the ${TOWERS[next].name} arrives early` : 'Blueprint: worth 2 gems to a collector'); if (!next) G.loot += 2;
+    }
+    say(x, y, z, s, c); sfx.gem();
+  }
+  function bank(h) {
+    const L = digLayer();
+    onLayer(L, () => h.pack.forEach((k, n) => collect(k, G.hut.x, G.hut.y, (L === 'dig' ? DIG_Z + 0.5 : 0.9) + n * 0.32)));
+    h.pack = []; sfx.loot();
+  }
+  function finishDig(t, h) {
+    dropOrder(t);
+    t.dug = true; G.digs++;
+    if (h) { h.order = null; h.state = 'idle'; }
+    revealAround(t);
+    const x = t.i + 0.5, y = t.j + 0.5, z = DIG_Z + 0.5, c = t.content;
+    t.content = null;
+    onLayer('dig', () => {
+      burst(x, y, DIG_Z + 0.3, '#8a5a36', 8, 2);
+      if (!c) {
+        sfx.digDone();
+        if (t.hard >= 2 && Math.random() < 0.22) { G.gems.push({ x, y, t: GEM_ROLL_S * (capped('socks') ? 2 : 1), wob: rand(0, 6) }); sfx.gemRoll(); say(x, y, z, 'A loose gem! Tap it!', '#8fe6ff'); }
+      } else if (c === 'gas') {
+        sfx.gas(); burst(x, y, DIG_Z + 0.3, '#b6e36a', 16, 2.2); heckle('hGas');
+        if (lv('helmet') || !h) say(x, y, z, 'Stink pocket. Masks on!', '#b6e36a');
+        else { h.daze = 6; say(x, y, z, 'Stink pocket!', '#b6e36a', true); if (h.pack.length) { h.pack = []; say(x, y, z + 0.4, 'Backpack lost', '#ff9a9a'); heckle('hPackLost'); } }
+      } else if (c === 'cave') {
+        if (lv('props')) { say(x, y, z, 'Creak... the props hold', '#d9b97f'); sfx.digDone(); }
+        else { // the tile falls in again, as soft dirt
+          t.dug = false; t.hard = 1; t.known = true; cacheDirty.dig = true; if (h) h.daze = 4;
+          sfx.cave(); shake(8); burst(x, y, DIG_Z + 0.3, '#6b4a2a', 18, 2.6); say(x, y, 0.4, 'Cave-in!', '#ffb38a', true); heckle('hCave');
+        }
+      } else if (c === 'nest') {
+        sfx.worms(); say(x, y, z, 'Worm nest!', '#ff9a9a', true); heckle('hWorms');
+        const way = bfs(t, (q) => q.i === G.hut.i && q.j === G.hut.j) || [];
+        const route = way.map((q) => ({ x: q.i + 0.5, y: q.j + 0.5 }));
+        if (route.length) route[route.length - 1].surface = true;
+        const jp = routeAt(G.joinD); route.push({ x: jp.x, y: jp.y });
+        for (let k = 0; k < 2 + Math.floor(G.n / 8); k++) spawnFoe('worm', { x, y, state: way.length ? 'tunnel' : 'walk', route: route.map((p) => Object.assign({}, p)), ri: 0, stun: 0.6 + k * 0.5 });
+      } else if (c === 'lode') {
+        G.lodeFound = true; t.chest = true; G.loot += 5; sfx.relic(); shake(6); G.flash = 0.3;
+        burst(x, y, DIG_Z + 0.4, '#ffe680', 26, 3.2); say(x, y, z + 0.4, 'THE MOTHER LODE! +5 gems', '#ffe680', true); heckle('motherlode');
+      } else if (c === 'crystal') {
+        const tw = G.towers.find((q) => q.i === t.i && q.j === t.j); if (tw) tw.crystal = false;
+        if (h && !has('pouch')) { h.pack.push('crystal'); say(x, y, z, 'Crystal!', '#b9a8ff'); } else collect('crystal', x, y, z);
+        sfx.loot();
+      } else if (LOOT[c].carry) {
+        if (h && !has('pouch')) { h.pack.push(c); say(x, y, z, LOOT[c].name + '!', '#ffe680'); sfx.loot(); } else collect(c, x, y, z);
+      } else bonusLoot(c, x, y, z);
+    });
+  }
+  // loot that works on the spot
+  function bonusLoot(c, x, y, z) {
+    sfx.loot();
+    if (c === 'spring') { G.boot.n = bootMax(); G.boot.t = 0; say(x, y, z, 'Spring! The Boot is ready', '#7cf2a8'); }
+    else if (c === 'mushroom') { G.mush = true; say(x, y, z, 'Zoomy mushroom! Faster hamsters', '#ff9ad8'); }
+    else if (c === 'relic') { G.urnDmg += 0.1; say(x, y, z, 'Old urn! Towers +10%', '#ffe680'); }
+    else if (c === 'dynamite') { G.dyn++; say(x, y, z, 'Dynamite! +1 stick', '#ff8a5c'); }
+  }
+  function updateHamsters(dt) {
+    const eyes = G.n >= FROM.combo && (G.layer === 'dig' || capped('hire')) ? EYES_DIG : 1;
+    const v = 2.4 * (G.mush ? 1.5 : 1);
+    for (const h of G.hamsters) {
+      if (h.cheer > 0) h.cheer -= dt;
+      if (h.daze > 0) { h.daze -= dt; continue; }
+      const here = tileAt(h.i, h.j), home = h.i === G.hut.i && h.j === G.hut.j;
+      if (h.state === 'idle') {
+        if (home && h.pack.length) bank(h);
+        const free = (t) => G.orders.some((o) => !o.taken && nextTo(o, t));
+        const way = h.pack.length < PACK_CAP && G.orders.some((o) => !o.taken) ? bfs(here, free) : null;
+        if (way) {
+          const end = way.length ? way[way.length - 1] : here, o = G.orders.find((q) => !q.taken && nextTo(q, end));
+          o.taken = h; h.order = o; h.route = way; h.state = 'go';
+        } else if (h.pack.length && !home) { const back = bfs(here, (t) => t.i === G.hut.i && t.j === G.hut.j); if (back) { h.route = back; h.state = 'home'; } }
+        continue;
+      }
+      if (h.state === 'go' || h.state === 'home') {
+        if (h.route.length) {
+          const t = h.route[0], tx = t.i + 0.5, ty = t.j + 0.5, dx = tx - h.x, dy = ty - h.y, q = Math.hypot(dx, dy), step = v * dt;
+          if (Math.abs(dx) > Math.abs(dy)) { h.fx = Math.sign(dx); h.fy = 0; } else if (dy) { h.fy = Math.sign(dy); h.fx = 0; }
+          if (q <= step) { h.x = tx; h.y = ty; h.i = t.i; h.j = t.j; h.route.shift(); } else { h.x += dx / q * step; h.y += dy / q * step; }
+          continue;
+        }
+        if (h.state === 'home') { h.state = 'idle'; continue; }
+        const o = h.order;
+        if (!o || !o.queued || !nextTo(o, here)) { if (o) o.taken = null; h.order = null; h.state = 'idle'; continue; }
+        h.state = 'dig'; h.fx = o.i - h.i; h.fy = o.j - h.j;
+        continue;
+      }
+      if (h.state === 'dig') {
+        const o = h.order;
+        if (!o || !o.queued) { h.order = null; h.state = 'idle'; continue; }
+        o.prog += dt / digTime(o) * eyes * (h.cheer > 0 ? 2 : 1) * (rainOver(o.i + 0.5, o.j + 0.5) ? 2 : 1);
+        G.digSfx -= dt;
+        if (G.digSfx <= 0 && G.layer === 'dig') { G.digSfx = 0.42; sfx.dig(); onLayer('dig', () => burst(o.i + 0.5 - h.fx * 0.4, o.j + 0.5 - h.fy * 0.4, DIG_Z + 0.4, '#a8744a', 3, 1.4)); }
+        if (o.prog >= 1) finishDig(o, h);
+      }
+    }
+  }
+  function cheer(h) { h.cheer = 2.5; sfx.squeak(); mark('dig'); onLayer('dig', () => say(h.x, h.y, DIG_Z + 0.8, pick(['Squeak!', 'On it!', 'Digging!', 'Yes boss!']), '#ffe680')); }
+  function takeGem(g) {
+    g.gone = true; const v = capped('socks') ? 2 : 1; G.loot += v; sfx.gem(); mark('dig');
+    onLayer('dig', () => { say(g.x, g.y, DIG_Z + 0.6, `+${v} gem${v > 1 ? 's' : ''}`, '#8fe6ff'); burst(g.x, g.y, DIG_Z + 0.3, '#8fe6ff', 8, 2); });
+  }
+  // dynamite: a stick on a dug tile opens the eight tiles around it and shakes the ground above
+  function placeStick(t) {
+    if (!t.dug || G.dyn <= 0 || G.sticks.some((s) => s.i === t.i && s.j === t.j)) { sfx.nope(); return false; }
+    G.dyn--; G.armed = false; G.sticks.push({ i: t.i, j: t.j, x: t.i + 0.5, y: t.j + 0.5, t: FUSE_S }); sfx.fuse(); mark('dig');
+    return true;
+  }
+  function blast(s) {
+    sfx.boom(); shake(12); G.flash = 0.3; buzz(80); heckle('hDynamite');
+    let lost = 0;
+    onLayer('dig', () => {
+      burst(s.x, s.y, DIG_Z + 0.4, '#ffb14a', 30, 4); ring(s.x, s.y, DIG_Z + 0.1, 1.5, '#ffb14a');
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const t = tileAt(s.i + di, s.j + dj);
+        if (!t || t.dug || t.content === 'lode') continue;
+        const c = t.content; t.content = null;
+        if (t.queued) { G.coins += t.paid || 0; dropOrder(t); }
+        t.dug = true; revealAround(t);
+        if (c === 'crystal') { const tw = G.towers.find((q) => q.i === t.i && q.j === t.j); if (tw) tw.crystal = false; }
+        if (c && (LOOT[c] || c === 'crystal')) {
+          if (!capped('fuse')) lost++;
+          else if (c === 'crystal' || LOOT[c].carry) collect(c, t.i + 0.5, t.j + 0.5, DIG_Z + 0.5); else bonusLoot(c, t.i + 0.5, t.j + 0.5, DIG_Z + 0.5);
+        }
+      }
+      if (lost) say(s.x, s.y, DIG_Z + 0.9, `${lost} treasure${lost > 1 ? 's' : ''} blown to bits`, '#ff9a9a');
+      for (const h of G.hamsters) if (dist(h.x, h.y, s.x, s.y) < 1.6) { h.daze = 3; say(h.x, h.y, DIG_Z + 0.7, 'Eek!', '#ffffff'); }
+    });
+    const dmg = 60 + 14 * G.n; let n = 0;
+    for (const e of G.enemies) {
+      if (e.dead || e.fly || dist(e.x, e.y, s.x, s.y) > 1.7) continue;
+      if (hidden(e)) { onLayer('dig', () => (e.k === 'tyrant' ? surface(e, true) : kill(e))); n++; continue; }
+      e.stun = Math.max(e.stun, e.F.boss ? 0.5 : 1.2); hurt(e, dmg, { splash: true }); n++;
+    }
+    G.geysers.push({ x: s.x, y: s.y, t: 0.6 }); ring(s.x, s.y, 0.05, 1.7, '#ffb14a'); burst(s.x, s.y, 0.1, '#8a5a36', 16, 3);
+    if (n >= 3) say(s.x, s.y, 1, `KABOOM ×${n}`, '#ffe680', true);
+  }
+  // a tunnel under the path can be collapsed into a pit; later it fills with mud
+  const canPit = (t) => G.n >= FROM.pit && !!t && t.dug && !t.pitted && groundAt(t.i, t.j).t === 'path' && !(t.i === G.castle.i && t.j === G.castle.j);
+  function collapse(t) {
+    if (!canPit(t) || G.coins < PIT_COST) { sfx.nope(); return false; }
+    G.coins -= PIT_COST; t.pitted = true; G.pits.push({ i: t.i, j: t.j, t: PIT_S, count: 0 });
+    sfx.cave(); shake(6); mark('dig'); heckle('hSinkhole');
+    onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.2, 'Sinkhole!', '#ffb38a', true));
+    burst(t.i + 0.5, t.j + 0.5, 0.1, '#8a5a36', 14, 2.6);
+    return true;
+  }
+  function updateMine(dt) {
+    updateHamsters(dt);
+    for (const g of G.gems) { g.t -= dt; if (g.t <= 0 && !g.gone) { g.gone = true; heckle('hGemLost'); onLayer('dig', () => say(g.x, g.y, DIG_Z + 0.5, 'Rolled away', '#9aa3d6')); } }
+    G.gems = G.gems.filter((g) => !g.gone);
+    for (const s of G.sticks) { s.t -= dt; if (s.t <= 0) { s.done = true; blast(s); } }
+    G.sticks = G.sticks.filter((s) => !s.done);
+    for (const p of G.pits) {
+      if (p.t <= 0) continue;
+      p.t -= dt;
+      if (p.t <= 0) { const g = groundAt(p.i, p.j); g.t = 'mud'; cacheDirty.ground = true; if (p.count) say(p.i + 0.5, p.j + 0.5, 0.5, `${p.count} fell in`, '#ffd9b0'); }
+    }
+    for (const g of G.geysers) g.t -= dt;
+    G.geysers = G.geysers.filter((g) => g.t > 0);
+  }
+
   // ---------- update ----------
-  function update(dt) {
-    if (mode !== 'play') return;
-    G.time += dt;
-    if (G.banner > 0) G.banner -= dt;
-    G.shake = Math.max(0, G.shake - dt * 30);
-    updateWaves(dt);
-    updateCloud(dt);
-    updateEnemies(dt);
-    updateTowers(dt);
-    updateShots(dt);
-    updateMiners(dt);
-    for (const p of G.parts) { p.t -= dt; if (!p.ring) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt; } }
+  function updateFx(dt) {
+    for (const p of G.parts) {
+      p.t -= dt;
+      if (p.ring) continue;
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vz -= 9 * dt;
+    }
     G.parts = G.parts.filter((p) => p.t > 0);
-    for (const t of G.texts) { t.t -= dt; t.y -= (t.big ? 10 : 22) * dt; }
+    for (const t of G.texts) { t.t -= dt; t.z += dt * 0.5; }
     G.texts = G.texts.filter((t) => t.t > 0);
     for (const b of G.bolts) b.t -= dt;
     G.bolts = G.bolts.filter((b) => b.t > 0);
-    if (G.hearts <= 0) { gameOver(); return; }
-    if (G.clearT < 0 && G.waveIdx >= G.waves.length && !G.spawnQ.length && !G.enemies.length) { G.clearT = 1.6; sfx.clear(); closePop(); say(W / 2, GROUND_Y + 120, 'Level clear!', '#ffe680', true); }
-    if (G.clearT >= 0) { G.clearT -= dt; if (G.clearT <= 0) finishLevel(); }
+    for (const t of G.towers) if (t.born > 0) t.born -= dt;
+    for (const e of G.enemies) { if (e.spin > 0) e.spin -= dt; if (e.frozen > 0) e.frozen -= dt; }
+    if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 30);
+    if (G.flash > 0) G.flash -= dt;
   }
+  function update(dt) {
+    G.time += dt;
+    updateWaves(dt); updateEnemies(dt); updateEggs(dt); updateTowers(dt); updateShots(dt); updateBoot(dt); updateClouds(dt); updateMine(dt); updateFx(dt);
+    if (G.swatT > 0) G.swatT -= dt;
+    if (G.doorT > 0) G.doorT -= dt;
+    if (G.bellT > 0) G.bellT -= dt;
+    if (G.banner > 0) G.banner -= dt;
+    if (G.banner2 && G.banner2.t > 0) G.banner2.t -= dt;
+    if (G.barNote && G.barNote.t > 0) G.barNote.t -= dt;
+    if (G.heckle && G.heckle.t > 0) G.heckle.t -= dt;
+    if (G.toast && G.toast.t > 0) G.toast.t -= dt;
+    if (G.streak.t > 0) { G.streak.t -= dt; if (G.streak.t <= 0) { G.streak.n = 0; A.streak(0); } }
+    if (G.combo > 0) { G.combo -= dt; if (G.combo <= 0) { G.combo = 0; A.fever(false); } }
+    // the gnome notices a layer that nobody uses
+    G.idleT += dt;
+    if (G.idleT > 30) { G.idleT = 0; heckle('hIdle'); }
+    if (G.time > 70 && G.n >= FROM.sky + 1 && !G.used.sky) heckle('hSkyIdle');
+    if (G.time > 50 && G.n >= FROM.dig + 1 && !G.used.dig) heckle('hDigIdle');
+    if (G.hearts <= 0) { G.hearts = 0; gameOver(); return; }
+    if (G.clearT < 0 && G.waveIdx >= G.waves.length && !G.spawnQ.length && !G.enemies.length && !G.eggs.length) { G.clearT = 1.5; sfx.cheer(); }
+    if (G.clearT > 0) { G.clearT -= dt; if (G.clearT <= 0) finishLevel(); }
+  }
+  const ringing = () => G.enemies.some((e) => e.state === 'ring' && !e.dead);
 
-  // ---------- level end ----------
+  // ---------- the end of a level ----------
+  let pendingRelics = 0;
   function finishLevel() {
-    const conv = Math.floor(G.coins / gemRate()), clear = 3 + G.n, flawless = G.leaks === 0 ? 2 : 0;
-    lastSummary = { level: G.n, conv, clear, flawless, loot: G.loot, coins: G.coins, kills: G.kills };
-    run.gems += conv + clear + flawless + G.loot;
-    run.score += G.kills;
-    run.level++;
-    recordBest(); saveRun();
-    openShop();
+    const n = G.n, boss = BOSS_AT[n] || G.bossDown;
+    const stars = 1 + (G.leaks <= 2 ? 1 : 0) + (G.leaks === 0 ? 1 : 0);
+    const rows = [['Level cleared', 3 + Math.floor(n / 3)], [`${stars} star${stars > 1 ? 's' : ''}`, stars]];
+    if (G.loot) rows.push(['Loot from the mine', G.loot]);
+    const conv = Math.min(GEM_CAP, Math.floor(G.coins / GEM_RATE));
+    if (conv) rows.push([`${Math.floor(G.coins)} coins left over`, conv]);
+    if (boss) rows.push([`${BOSS_NAMES[boss]} beaten`, 8]);
+    if (G.combos) rows.push([`Strata combo ×${G.combos}`, G.combos]);
+    let total = rows.reduce((a, r) => a + r[1], 0);
+    const heat0 = run.heat;
+    if (heat0 > 0 && n >= FROM.heat) { const b = Math.ceil(total * 0.1 * heat0); rows.push([`Heat ${heat0}: +${heat0 * 10}%`, b]); total += b; }
+    if (n >= FROM.heat) { if (G.leaks === 0) run.heat = Math.min(5, run.heat + 1); else if (G.leaks >= 4) run.heat = Math.max(0, run.heat - 1); }
+    summary = { n, name: G.name, stars, rows, total, leaks: G.leaks, hearts: G.hearts, kills: G.kills, digs: G.digs, loot: G.loot, time: G.time, usedSky: G.used.sky, usedDig: G.used.dig,
+      heat0, heat1: run.heat, boss, lode: G.lodeFound, victory: n === CAMPAIGN };
+    pendingRelics = (boss ? 1 : 0) + (G.lodeFound ? 1 : 0);
+    run.level++; run.gems += total; run.stars += stars; run.score += total;
+    saveRun(); recordBest(); saveMeta();
+    mode = 'tally'; closePop(); pauseBtn.style.display = 'none';
+    A.fever(false); A.streak(0); A.music(0); sfx.clear();
+    showTally();
   }
   function gameOver() {
-    mode = 'over'; closePop(); pauseBtn.style.display = 'none'; sfx.bad();
-    showOverlay(`<div class="center">
-      <h2>The castle fell</h2>
-      <div class="stat">Level <b>${run.level}</b> · wave <b>${G.waveIdx}</b> of <b>${G.waves.length}</b></div>
-      <div class="stat">Best: level <b>${best.level || 1}</b></div>
-      <div style="height:1.2em"></div>
-      <button class="big gold" data-act="retry">Try this level again</button>
-      <button class="big alt" data-act="shop">Visit the shop first (${run.gems} 💎)</button>
-      <button class="big alt" data-act="menu">Menu</button>
-      <div class="hint">You keep every upgrade and all banked gems. Loot dug up this level is lost.</div>
-    </div>`);
+    mode = 'over'; closePop(); pauseBtn.style.display = 'none';
+    A.fever(false); A.streak(0); A.music(0); sfx.over(); buzz([80, 60, 160]);
+    meta.runs++; saveMeta(); recordBest(); store.del(SAVE_KEY);
+    showOver();
   }
 
-  // ---------- overlays ----------
-  function showOverlay(html) { ov.innerHTML = html; ov.classList.add('show'); }
-  function hideOverlay() { ov.classList.remove('show'); ov.innerHTML = ''; }
+  // ---------- screens ----------
+  // The HTML screens sit over the canvas. A button carries data-act; one listener handles them all.
+  function showOverlay(html, see) { ov.innerHTML = html; ov.className = 'show' + (see ? ' see' : ''); ov.scrollTop = 0; }
+  function hideOverlay() { ov.className = ''; ov.innerHTML = ''; }
+  const soundBtns = () => `<div class="pair"><button class="big alt" data-act="sfx">${muted ? '🔇 Sound off' : '🔊 Sound on'}</button><button class="big alt" data-act="music">${musicOff ? '🎵 Music off' : '🎵 Music on'}</button></div>`;
+  const relicBar = () => (run && run.relics.length ? `<div class="relicbar">Relics:${run.relics.map((id) => `<span title="${RELIC_BY_ID[id].name}">${RELIC_BY_ID[id].icon}</span>`).join('')}</div>` : '');
+  const levelName = (n) => LV.names[(n - 1) % LV.names.length];
+  function tipFor(n) { const t = LV.tips[n]; return t || ''; }
+  const tipHtml = (t) => (t.startsWith('NEW:') ? `<b>NEW</b>${t.slice(4)}` : t);
+
+  let screen = '';
   function showMenu() {
-    mode = 'menu'; closePop(); pauseBtn.style.display = 'none';
+    mode = 'menu'; screen = 'menu'; G = null; pauseBtn.style.display = 'none'; closePop(); A.music(0);
     const saved = loadRun();
     showOverlay(`<div class="center">
-      <div class="logo">STRATA<br>SIEGE</div>
-      <div class="tag">Defend the meadow. Dig for loot. Boss the weather around.</div>
-      ${saved ? `<button class="big gold" data-act="resume">Continue · level ${saved.level} · ${saved.gems} 💎</button>` : ''}
-      <button class="big" data-act="newrun">${saved ? 'New run' : 'Play'}</button>
-      <button class="big alt" data-act="mute">Sound: ${muted ? 'off' : 'on'}</button>
-      ${best.level ? `<div class="stat" style="margin-top:1em">Best: level <b>${best.level}</b></div>` : ''}
-      <div class="hint">☁️ Sky: tap to move your cloud, pick its weather<br>🌱 Ground: tap grass to build, tap a tower to upgrade<br>⛏️ Underground: tap dirt next to a tunnel to dig<br>Everything is one tap. Right click or Esc pauses.</div>
-    </div>`);
+      <div class="logo">Strata<br>Siege</div>
+      <div class="tag">Sky, garden and mine. One thumb.</div>
+      ${keeperBubble(keeperLine(saved && saved.level > 1 ? 'menuBack' : 'menu', saved ? saved.level : 1), 0)}
+      ${saved && saved.level > 1 ? `<button class="big gold" data-act="continue">Continue: level ${saved.level}</button>` : ''}
+      <button class="big${saved && saved.level > 1 ? ' alt' : ''}" data-act="new">New run</button>
+      ${soundBtns()}
+      ${best.level > 1 ? `<div class="stat">Best: level <b>${best.level}</b></div>` : ''}
+      <div class="hint">Tap to build, stomp and dig. Drag to look around and to herd clouds.<br>Escape or a right click pauses.</div>
+    </div>`, true);
+  }
+  function recipeBook() {
+    const rows = RECIPES.map(([a, b, r]) => (meta.recipes[[a, b].sort().join('+')] ? `<span><b>${CLOUDS[a].name} + ${CLOUDS[b].name}</b> = ${CLOUDS[r].name}</span>` : '<span>? + ? = ?</span>'));
+    return `<div class="summary">${rows.join('')}</div>`;
   }
   function showPause() {
-    mode = 'pause'; closePop();
+    if (mode !== 'play') return;
+    mode = 'pause'; screen = 'pause'; closePop(); A.music(0);
+    const tip = tipFor(G.n) || keeperLine('tips');
     showOverlay(`<div class="center">
       <h2>Paused</h2>
-      <div class="stat">Level <b>${run.level}</b> · <b>${G.hearts}</b> ❤️ · <b>${Math.floor(G.coins)}</b> 🪙 · <b>${run.gems}</b> 💎</div>
-      <div style="height:1em"></div>
-      <button class="big" data-act="unpause">Resume</button>
-      <button class="big alt" data-act="mute">Sound: ${muted ? 'off' : 'on'}</button>
-      <button class="big alt" data-act="quit">Quit to menu</button>
-      <div class="hint">☔ Rain slows enemies and doubles digging under the cloud.<br>⛈️ Storm zaps the toughest enemy under the cloud.<br>☀️ Sun speeds up towers under the cloud.<br>💤 Rest refills the cloud.<br>Quitting restarts this level later.</div>
-    </div>`);
+      <div class="stat">Level <b>${G.n}</b>: ${G.name}</div>
+      ${relicBar()}
+      ${keeperBubble(keeperLine('gazette') || keeperLine('tips'), 0)}
+      <button class="big" data-act="resume">Resume</button>
+      <button class="big alt" data-act="restart">Restart level</button>
+      ${soundBtns()}
+      <button class="big alt" data-act="menu">Menu</button>
+      ${G.n >= FROM.sky ? `<div class="hint">Weather recipes</div>${recipeBook()}` : ''}
+      <div class="hint">${tipHtml(tip)}</div>
+    </div>`, true);
   }
-  let shopCat = 'tow';
-  function openShop() { mode = 'shop'; closePop(); pauseBtn.style.display = 'none'; renderShop(false); }
-  function renderShop(keepScroll, flashId) {
-    const prev = ov.querySelector('.items');
-    const st = keepScroll && prev ? prev.scrollTop : 0;
-    const cards = ITEMS.filter((it) => it.cat === shopCat).map((it) => {
-      const state = itemState(it), l = lv(it.id);
-      const pips = it.max > 1 ? `<div class="pips">${Array.from({ length: it.max }, (_, i) => `<span class="pip ${i < l ? 'on' : ''}"></span>`).join('')}</div>` : '';
-      const btn = state === 'max' ? `<button class="buy max" disabled>${it.max > 1 ? 'Maxed' : 'Owned'}</button>`
-        : `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${l ? 'Upgrade' : 'Buy'} · ${itemCost(it)} 💎</button>`;
-      return `<div class="card ${flashId === it.id ? 'flash' : ''}">
-        <div class="top"><span class="ic">${it.icon}</span><span class="nm">${it.name}</span></div>
-        ${pips}<div class="ds">${it.desc(Math.min(l, it.max - 1))}</div>${btn}</div>`;
+  function resume() { if (mode !== 'pause') return; mode = 'play'; hideOverlay(); A.music(G.combo > 0 || BOSS_AT[G.n] ? 2 : 1); }
+
+  function tallyLine() {
+    const s = summary;
+    if (s.boss) return [keeperLine('afterBoss'), 1];
+    if (s.lode) return [keeperLine('motherlode'), 1];
+    if (s.leaks === 0) return [keeperLine('tallyFlawless'), 1];
+    if (s.hearts <= 3) return [keeperLine('tallyClose'), 2];
+    if (s.leaks >= 4) return [keeperLine('tallyLeaky', s.leaks), 2];
+    if (s.n >= FROM.dig + 1 && !s.usedDig) return [keeperLine('tallyNoDig'), 0];
+    if (s.n >= FROM.sky + 1 && !s.usedSky) return [keeperLine('tallyNoSky'), 0];
+    if (s.loot >= 4) return [keeperLine('tallyLoot', s.loot), 1];
+    return [keeperLine('tallyFast'), 0];
+  }
+  function showTally() {
+    const s = summary; screen = 'tally';
+    const notes = [['Cleared', true], ['At most 2 leaks', s.leaks <= 2], ['No leaks', s.leaks === 0]];
+    const [line, mood] = tallyLine();
+    const next = run.level, tip = tipFor(next);
+    const newTowers = TOWER_ORDER.filter((k) => TOWERS[k].from === next).map((k) => TOWERS[k].name);
+    const newStock = ITEMS.filter((it) => it.at === next).map((it) => it.name);
+    const chips = [];
+    if (s.heat1 > s.heat0) chips.push(`<div class="chip hot">🔥 Heat ${s.heat1}: enemies are tougher, gems are worth more</div>`);
+    if (s.heat1 < s.heat0) chips.push(`<div class="chip">Heat cools to ${s.heat1}</div>`);
+    if (tip.startsWith('NEW:')) chips.push(`<div class="chip new">Next level: <b>${tip.slice(4).split('.')[0].trim()}</b></div>`);
+    else if (newTowers.length) chips.push(`<div class="chip new">Next level: <b>${newTowers.join(', ')}</b></div>`);
+    if (newStock.length) chips.push(`<div class="chip new">New at Gnome Depot: <b>${newStock.join(', ')}</b></div>`);
+    showOverlay(`<div class="tallyv">
+      <div class="tbody">
+        <div class="tally-sub">LEVEL ${s.n} · ${s.name.toUpperCase()}</div>
+        <div class="tally-title">${s.boss ? 'BOSS DOWN!' : s.leaks === 0 ? 'FLAWLESS!' : 'CLEARED!'}</div>
+        <div class="stars">${[0, 1, 2].map((k) => `<span class="star${k < s.stars ? ' on' : ''}" style="animation-delay:${0.25 + k * 0.3}s">★</span>`).join('')}</div>
+        <div class="starnotes">${notes.map(([t, ok]) => `<span class="${ok ? 'ok' : 'no'}">${ok ? '✓' : '·'} ${t}</span>`).join('')}</div>
+        <div class="trows">${s.rows.map(([t, v]) => `<div class="trow"><span>${t}</span><b>+${v}</b></div>`).join('')}
+          <div class="trow total"><span>Gems</span><b>+${s.total}</b></div></div>
+        ${keeperBubble(line, mood)}
+        ${chips.join('')}
+      </div>
+      <div class="tfoot"><button class="big gold" data-act="next">${pendingRelics ? 'Choose a relic' : 'To Gnome Depot'}</button></div>
+    </div>`, true);
+    for (let k = 0; k < s.stars; k++) setTimeout(() => { if (screen === 'tally') sfx.star(k); }, 250 + k * 300);
+  }
+  let relicChoice = [];
+  function showRelic() {
+    mode = 'relic'; screen = 'relic';
+    relicChoice = shuffle(RELICS.filter((r) => !run.relics.includes(r.id))).slice(0, 3);
+    if (!relicChoice.length) { pendingRelics = 0; afterTally(); return; }
+    sfx.relic();
+    showOverlay(`<div class="tallyv"><div class="tbody">
+      <div class="tally-sub">${summary && summary.lode && pendingRelics === 1 ? 'FROM THE MOTHER LODE' : 'A RELIC'}</div>
+      <div class="tally-title">Pick one</div>
+      ${keeperBubble(keeperLine('relic'), 0)}
+      <div class="relics" style="margin-top:0.8em">${relicChoice.map((r, k) => `<button class="relic" data-act="relic" data-id="${r.id}" style="animation-delay:${k * 0.12}s"><span class="ric">${r.icon}</span><span class="rnm">${r.name}</span><span class="rds">${r.desc}</span></button>`).join('')}</div>
+      <div class="hint">A relic changes a rule for the rest of the run.</div>
+    </div></div>`, true);
+  }
+  function showVictory() {
+    mode = 'victory'; screen = 'victory'; summary.victory = false; sfx.cheer(3);
+    showOverlay(`<div class="center">
+      <div class="tally-sub">LEVEL ${CAMPAIGN} CLEARED</div>
+      <div class="tally-title">The garden is saved!</div>
+      <div class="stat">Stars: <b>${run.stars}</b> of ${CAMPAIGN * 3}</div>
+      ${relicBar()}
+      ${keeperBubble(keeperLine('victory'), 1)}
+      <button class="big gold" data-act="next">Keep going: endless siege</button>
+      <div class="hint">From here on a boss comes every fifth level, and they do not get smaller.</div>
+    </div>`, true);
+  }
+  function afterTally() {
+    if (summary && summary.victory) { showVictory(); return; }
+    if (pendingRelics > 0) { showRelic(); return; }
+    openShop();
+  }
+  function showOver() {
+    screen = 'over';
+    const n = run.level, isBest = n >= best.level && n > 1;
+    showOverlay(`<div class="center">
+      ${isBest ? '<div class="newbest">NEW BEST</div>' : ''}
+      <div class="tally-title late">The castle fell</div>
+      <div class="stat">Level <b>${n}</b>: ${levelName(n)}</div>
+      <div class="stat">Best: level <b>${best.level}</b></div>
+      ${relicBar()}
+      ${keeperBubble(keeperLine(n <= 3 ? 'overEarly' : 'over') || keeperLine('over'), 2)}
+      <button class="big gold" data-act="new">New run</button>
+      <button class="big alt" data-act="menu">Menu</button>
+    </div>`, true);
+  }
+
+  // ---------- the shop ----------
+  let shopTab = 'tow';
+  function openShop() {
+    mode = 'shop'; shopMsg = '';
+    if (run.refunded) { shopMsg = 'The shop has new stock. Your old upgrades were sold back for gems.'; delete run.refunded; saveRun(); }
+    const s = summary;
+    if (s && s.boss) quip('afterBoss');
+    else if (s && s.hearts <= 3) quip('lowHearts');
+    else if (run.gems >= 40) quip('rich', run.gems);
+    else if (run.gems < 5) quip('broke');
+    else quip('open');
+    if (!ITEMS.some((it) => it.cat === shopTab && unlocked(it))) shopTab = (CATS.find((c) => ITEMS.some((it) => it.cat === c.id && unlocked(it))) || CATS[0]).id;
+    A.music(0);
+    showShop();
+  }
+  function showShop(flashId) {
+    screen = 'shop';
+    const stock = ITEMS.filter(unlocked);
+    const tabs = CATS.map((c) => {
+      const mine = stock.filter((it) => it.cat === c.id);
+      return `<button class="tab${c.id === shopTab ? ' on' : ''}${mine.some((it) => itemState(it) === 'ok') ? ' can' : ''}" data-act="tab" data-id="${c.id}">${c.name}</button>`;
     }).join('');
-    const s = lastSummary;
-    const summary = s ? `<div class="summary"><span>Level ${s.level} cleared!</span><span>Clear bonus <b>${s.clear}</b></span>${s.flawless ? `<span>No leaks <b>+${s.flawless}</b></span>` : ''}<span>Dug up <b>${s.loot}</b></span><span>${Math.floor(s.coins)} coins left → <b>${s.conv}</b></span></div>` : '';
+    const cards = stock.filter((it) => it.cat === shopTab).map((it) => {
+      const l = lv(it.id), st = itemState(it), isNew = it.at === run.level && l === 0;
+      const pips = it.max > 1 ? `<div class="pips">${Array.from({ length: it.max }, (_, k) => `<span class="pip${k < l ? ' on' : ''}"></span>`).join('')}</div>` : '';
+      const capNote = it.cap ? `<div class="setline${st === 'max' ? ' on' : ''}">★ ${it.cap[0]}: ${it.cap[1]}</div>` : '';
+      const btn = st === 'max' ? '<button class="buy max">MAX</button>' : `<button class="buy${st === 'poor' ? ' no' : ''}" data-act="buy" data-id="${it.id}">💎 ${itemCost(it)}</button>`;
+      return `<div class="card${st === 'ok' ? ' can' : ''}${it.id === flashId ? ' flash' : ''}">${isNew ? '<span class="sale new">NEW</span>' : ''}
+        <div class="top"><span class="ic">${it.icon}</span><span class="nm">${it.name}</span></div>
+        <div class="ds">${it.desc(Math.min(l, it.max - 1))}</div>${capNote}${pips}${btn}</div>`;
+    });
+    const later = ITEMS.filter((it) => it.cat === shopTab && !unlocked(it)).sort((a, b) => a.at - b.at)[0];
+    if (later) cards.push(`<div class="teaser">More stock arrives at level ${later.at}.</div>`);
+    const n = run.level, tip = tipFor(n);
     showOverlay(`<div class="shop">
-      <div class="shop-head"><div><div class="t">Gnome Depot</div><div class="sub">next up: level ${run.level}</div></div><div class="coins">${run.gems} 💎</div></div>
-      ${summary}
-      <div class="tabs">${CATS.map((c) => `<button class="tab ${c.id === shopCat ? 'on' : ''}" data-cat="${c.id}">${c.name}</button>`).join('')}</div>
-      <div class="items">${cards}</div>
-      <div class="shopfoot"><button class="big" data-act="next">Start level ${run.level} ▶</button></div>
-    </div>`);
-    const items = ov.querySelector('.items'); if (items) items.scrollTop = st;
+      <div class="shop-head"><div><div class="t">Gnome Depot</div><div class="sub">Next: level ${n}, ${levelName(n)}</div></div><div class="coins${flashId ? ' bump' : ''}">💎 ${run.gems}</div></div>
+      ${keeperBubble(shopQuip, flashId ? 1 : 0)}
+      ${shopMsg ? `<div class="shopmsg">${shopMsg}</div>` : ''}
+      ${relicBar()}
+      <div class="tabs">${tabs}</div>
+      <div class="items">${cards.join('')}</div>
+      <div class="shopfoot">${tip ? `<div class="hint" style="margin:0 0 0.5em">${tipHtml(tip)}</div>` : ''}<button class="big gold" data-act="go">Start level ${n}</button></div>
+    </div>`, false);
   }
-  ov.addEventListener('click', (e) => {
+
+  const ACTS = {
+    continue() { run = loadRun() || newRun(); summary = null; if (run.level > 1) openShop(); else startLevel(); },
+    new() { run = newRun(); saveRun(); summary = null; pendingRelics = 0; startLevel(); },
+    resume,
+    restart() { startLevel(); },
+    menu() { showMenu(); },
+    sfx() { muted = !muted; store.set(MUTE_KEY, muted); A.setSfx(!muted); if (screen === 'pause') { mode = 'play'; showPause(); } else showMenu(); },
+    music() { musicOff = !musicOff; store.set(MUSIC_KEY, musicOff); A.setMusic(!musicOff); if (screen === 'pause') { mode = 'play'; showPause(); } else showMenu(); },
+    next() { afterTally(); },
+    relic(id) {
+      if (!RELIC_BY_ID[id] || run.relics.includes(id)) return;
+      run.relics.push(id); pendingRelics--; saveRun(); sfx.buy();
+      afterTally();
+    },
+    tab(id) { shopTab = id; sfx.tab(); showShop(); },
+    buy(id) { const it = ITEM_BY_ID[id]; if (!it) return; const ok = buy(it); showShop(ok ? id : null); },
+    go() { startLevel(); },
+  };
+  ov.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b) return;
     audio();
-    const t = e.target.closest('button'); if (!t) return;
-    if (t.dataset.cat) { shopCat = t.dataset.cat; renderShop(false); return; }
-    if (t.dataset.buy) { const it = ITEM_BY_ID[t.dataset.buy]; const ok = buy(it); renderShop(true, ok ? it.id : null); return; }
-    const act = t.dataset.act;
-    if (act === 'newrun') { run = newRun(); lastSummary = null; store.del(SAVE_KEY); saveRun(); startLevel(); }
-    else if (act === 'resume') { run = loadRun(); lastSummary = null; if (run.level === 1 && run.gems === 0) startLevel(); else openShop(); }
-    else if (act === 'next' || act === 'retry') { lastSummary = null; startLevel(); }
-    else if (act === 'shop') { lastSummary = null; openShop(); }
-    else if (act === 'unpause') { mode = 'play'; hideOverlay(); }
-    else if (act === 'quit' || act === 'menu') showMenu();
-    else if (act === 'mute') { muted = !muted; store.set(MUTE_KEY, muted); t.textContent = 'Sound: ' + (muted ? 'off' : 'on'); }
+    const act = ACTS[b.dataset.act];
+    if (b.dataset.act !== 'buy' && b.dataset.act !== 'tab' && b.dataset.act !== 'relic') sfx.tap();
+    if (act) act(b.dataset.id);
   });
 
-  // ---------- in-game popups ----------
-  let popInfo = null;
-  function closePop() { pop.classList.remove('show'); pop.innerHTML = ''; popInfo = null; if (G) G.sel = null; }
-  function openPop(info, html, ax, ay) {
-    popInfo = info; G.sel = info;
-    pop.innerHTML = html; pop.classList.add('show');
-    const pw = pop.offsetWidth, ph = pop.offsetHeight, cw = W * scale, ch = H * scale;
-    const left = clamp(ax * scale - pw / 2, 4, Math.max(4, cw - pw - 4));
-    let top = ay * scale - ph - 26 * scale;
-    if (top < HUD_H * scale) top = ay * scale + 26 * scale;
-    top = clamp(top, 4, Math.max(4, ch - ph - 4));
-    pop.style.left = left + 'px'; pop.style.top = top + 'px';
-    refreshPop();
+  // ---------- popups ----------
+  // A small menu next to the tapped tile: build, upgrade, sell, collapse.
+  let popOpen = false;
+  function closePop() { if (!popOpen && !(G && G.sel)) return; popOpen = false; pop.className = ''; pop.innerHTML = ''; if (G) G.sel = null; }
+  function openPop(html, vx, vy) {
+    const sx = vx * ZOOM, sy = vy * ZOOM + VIEW_Y0;
+    pop.innerHTML = html; pop.className = 'show'; popOpen = true;
+    const w = pop.offsetWidth, h = pop.offsetHeight, cw = W * scale, chh = H * scale;
+    let x = sx * scale - w / 2, y = sy * scale + 26 * scale;
+    if (y + h > chh - BAR_H * scale - 4) y = sy * scale - h - 40 * scale;
+    pop.style.left = clamp(x, 4, cw - w - 4) + 'px'; pop.style.top = clamp(y, HUD_H * scale + 4, chh - h - 4) + 'px';
   }
-  function refreshPop() { if (!popInfo) return; for (const b of pop.querySelectorAll('[data-cost]')) b.classList.toggle('no', G.coins < +b.dataset.cost); }
-  function buildPop(c, r) {
-    const p = gCenter(c, r);
-    const btns = TOWER_ORDER.filter(towerUnlocked).map((k) => {
-      const D = TOWERS[k];
-      return `<button class="pb" data-build="${k}" data-cost="${buildCost(k)}"><span class="pi">${D.icon}</span><span class="pn">${D.name}<small>${D.desc}</small></span><b>${buildCost(k)}🪙</b></button>`;
-    }).join('');
-    const locked = TOWER_ORDER.length - TOWER_ORDER.filter(towerUnlocked).length;
-    openPop({ kind: 'g', c, r }, `<div class="ptitle">Build a tower</div>${btns}${locked ? `<div class="pinfo" style="margin:0.5em 0 0">${locked} more in the shop, or dig up a 📜 blueprint.</div>` : ''}`, p.x, p.y);
+  function popBuild(i, j) {
+    const g = groundAt(i, j), u = tileAt(i, j), p = toScreen(i + 0.5, j + 0.5, g.z);
+    const notes = [];
+    if (g.hill) notes.push('On a hill: towers see further.');
+    if (G.n >= FROM.crystal && u.content === 'crystal' && !u.dug) notes.push('A crystal hums below: +25% damage.');
+    const rows = TOWER_ORDER.filter(towerUnlocked).map((k) => {
+      const D = TOWERS[k], cost = buildCost(k);
+      return `<button class="pb${G.coins < cost ? ' no' : ''}" data-act="build" data-id="${k}"><span class="pi">${D.icon}</span><span class="pn">${D.name}<small>${D.desc}</small></span><span>${cost}</span></button>`;
+    });
+    const next = TOWER_ORDER.find((k) => !towerUnlocked(k));
+    G.sel = { i, j };
+    openPop(`<div class="ptitle">Build here</div>${notes.length ? `<div class="pinfo">${notes.join(' ')}</div>` : ''}${rows.join('')}
+      ${next ? `<div class="pinfo" style="margin:0.5em 0 0">Next: ${TOWERS[next].name} at level ${TOWERS[next].from}</div>` : ''}`, p.x, p.y);
   }
-  function towerPop(t) {
-    const D = TOWERS[t.k];
-    const up = t.lvl >= 3 ? '<button class="pb no" disabled><span class="pn">Max level</span></button>'
-      : `<button class="pb" data-act="up" data-cost="${upgradeCost(t)}"><span class="pn">Upgrade</span><b>${upgradeCost(t)}🪙</b></button>`;
-    openPop({ kind: 't', c: t.c, r: t.r, tower: t }, `<div class="ptitle">${D.icon} ${D.name} · level ${t.lvl}</div>
-      <div class="pinfo">Damage ${Math.round(towerDmg(t) * 10) / 10} · range ${Math.round(towerRange(t))} · ${D.ground && D.air ? 'ground + air' : D.air ? 'air only' : 'ground only'}</div>
-      <div class="prow">${up}<button class="pb alt" data-act="sell"><span class="pn">Sell</span><b>+${sellValue(t)}🪙</b></button></div>`, t.x, t.y);
+  function popTower(t) {
+    const D = TOWERS[t.k], p = toScreen(t.x, t.y, t.z), up = upgradeCost(t);
+    G.sel = { i: t.i, j: t.j, tower: t };
+    const extra = [t.hill ? 'hill' : '', t.crystal ? 'crystal' : '', t.sunny ? 'sunny' : ''].filter(Boolean).join(', ');
+    openPop(`<div class="ptitle">${D.icon} ${D.name} · level ${t.lvl}</div>
+      <div class="pinfo">Damage ${Math.round(towerDmg(t))}, range ${towerRange(t).toFixed(1)}${extra ? ` (${extra})` : ''}.<br>${t.lvl >= 3 ? '★ ' : 'At level 3: '}${D.cap}</div>
+      <div class="prow">${t.lvl < 3 ? `<button class="pb${G.coins < up ? ' no' : ''}" data-act="upgrade"><span class="pn">Upgrade</span><span>${up}</span></button>` : '<button class="pb no"><span class="pn">MAX</span></button>'}
+      <button class="pb alt" data-act="sell"><span class="pn">Sell</span><span>+${sellValue(t)}</span></button></div>`, p.x, p.y - 30);
   }
-  const HARD_NAMES = ['', 'Soft dirt', 'Packed clay', 'Stone', 'Hard rock'];
-  function digPop(t) {
-    const p = uCenter(t.c, t.r), cost = digCost(t.r);
-    let hint = 'Nothing glints here.';
-    if (t.content && (t.known || spied(t))) {
-      if (spied(t)) hint = (LOOT[t.content] ? 'Spy cloud sees treasure: ' + LOOT[t.content].icon : 'Spy cloud sees danger: ' + HAZ[t.content].icon);
-      else if (lv('detector')) hint = LOOT[t.content] ? '📡 Treasure here!' : '📡 Danger here!';
-      else hint = '✨ Something is buried here. Treasure or trouble.';
-    } else if (!t.known && !spied(t)) hint = 'Too far from a tunnel to tell what is inside.';
-    let btn;
-    if (t.queued) btn = '<button class="pb no" disabled><span class="pn">Already queued</span></button>';
-    else if (!canOrder(t)) btn = '<button class="pb no" disabled><span class="pn">Dig next to a tunnel first</span></button>';
-    else if (G.orders.length >= 6) btn = '<button class="pb no" disabled><span class="pn">Dig queue is full</span></button>';
-    else btn = `<button class="pb" data-act="dig" data-cost="${cost}"><span class="pi">⛏️</span><span class="pn">Dig</span><b>${cost ? cost + '🪙' : 'free'}</b></button>`;
-    openPop({ kind: 'u', c: t.c, r: t.r, tile: t }, `<div class="ptitle">${HARD_NAMES[t.hard]} · depth ${t.r + 1}</div>
-      <div class="pinfo">Takes about ${Math.round(digTime(t) / (G.mush ? 1.5 : 1))}s. ${hint}</div>${btn}`, p.x, p.y);
+  function popPit(t) {
+    const p = toScreen(t.i + 0.5, t.j + 0.5, DIG_Z);
+    G.sel = { i: t.i, j: t.j, dig: t };
+    openPop(`<div class="ptitle">A tunnel under the path</div><div class="pinfo">Collapse it: for ${PIT_S} seconds walkers fall into the pit. Afterwards it is mud.</div>
+      <button class="pb${G.coins < PIT_COST ? ' no' : ''}" data-act="pit"><span class="pi">🕳️</span><span class="pn">Collapse</span><span>${PIT_COST}</span></button>`, p.x, p.y);
   }
-  function infoPop(c, r, title, text) { const p = gCenter(c, r); openPop({ kind: 'i', c, r }, `<div class="ptitle">${title}</div><div class="pinfo" style="margin:0">${text}</div>`, p.x, p.y); }
-  pop.addEventListener('click', (e) => {
-    audio();
-    const b = e.target.closest('button'); if (!b || !popInfo || mode !== 'play') return;
-    const info = popInfo;
-    if (b.dataset.build) { if (tryBuild(b.dataset.build, info.c, info.r)) closePop(); }
-    else if (b.dataset.act === 'up') { if (tryUpgrade(info.tower)) towerPop(info.tower); }
-    else if (b.dataset.act === 'sell') { sellTower(info.tower); closePop(); }
-    else if (b.dataset.act === 'dig') { if (orderDig(info.tile)) closePop(); }
+  pop.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  pop.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-act]');
+    if (!b || !G || !G.sel || mode !== 'play') return;
+    const sel = G.sel, act = b.dataset.act;
+    if (act === 'build') { if (tryBuild(b.dataset.id, sel.i, sel.j)) closePop(); }
+    else if (act === 'upgrade') { if (tryUpgrade(sel.tower)) popTower(sel.tower); }
+    else if (act === 'sell') { sellTower(sel.tower); closePop(); }
+    else if (act === 'pit') { if (collapse(sel.dig)) closePop(); }
   });
-  const spied = (t) => lv('spyglass') > 0 && inCol(t.c * CELL + CELL / 2);
+
+  // ---------- layers ----------
+  const ORDER = { sky: 0, ground: 1, dig: 2 };
+  const layerOpen = (l) => l === 'ground' || G.n >= FROM[l];
+  function setLayer(l, instant) {
+    if (!G || G.trans || l === G.layer) return;
+    if (!layerOpen(l)) { sfx.nope(); toast(`The ${l === 'sky' ? 'sky' : 'mine'} opens at level ${FROM[l]}`); return; }
+    closePop(); G.armed = false; ptr.cloud = null; G.drag = null;
+    if (!instant) G.trans = { from: G.layer, to: l, t: 0, T: 0.46 };
+    if (ORDER[l] > ORDER[G.layer]) sfx.layerDown(); else sfx.layerUp();
+    A.layer(l); G.layer = l; G.visited[l]++;
+  }
+
+  // ---------- picking ----------
+  // The tile under a screen point. Higher tiles are tried first, and the one nearest to the viewer wins.
+  function pickTile(sx, sy, zs, zOf) {
+    let hit = null;
+    for (const z of zs) {
+      const w = toWorld(sx, sy, z), i = Math.floor(w.wx), j = Math.floor(w.wy);
+      if (inMap(i, j) && Math.abs(zOf(i, j) - z) < 1e-6 && (!hit || i + j > hit.i + hit.j)) hit = { i, j, wx: w.wx, wy: w.wy };
+    }
+    return hit;
+  }
+  const EDGE_Z = ART.SLAB_Z == null ? -SLAB / ZU : ART.SLAB_Z, UG_EDGE = DIG_Z - 0.4;
+  const gz = (i, j) => { const g = groundAt(i, j); return g ? g.z : EDGE_Z; };
+  const uz = (i, j) => { const u = tileAt(i, j); return u ? (u.dug ? DIG_Z : 0) : UG_EDGE; };
+  const near = (sx, sy, wx, wy, z, r) => { const p = toScreen(wx, wy, z); return Math.hypot(sx - p.x, sy - p.y) < r; };
+  function cloudAt(sx, sy) {
+    let bestC = null;
+    for (const c of G.clouds) {
+      const p = toScreen(c.x, c.y, CLOUD_Z), k = c.big ? 1.45 : 1;
+      if (Math.abs(sx - p.x) < 40 * k && sy > p.y - 50 * k && sy < p.y + 10 && (!bestC || c.x + c.y > bestC.x + bestC.y)) bestC = c;
+    }
+    return bestC;
+  }
+
+  // ---------- taps ----------
+  function tapGround(sx, sy) {
+    const cp = toScreen(G.castle.x, G.castle.y, 0);
+    if (Math.abs(sx - cp.x) < 36 && sy > cp.y - 86 && sy < cp.y + 14) {
+      if (!swat()) toast(`Grandma is in. ${G.hearts} heart${G.hearts === 1 ? '' : 's'} left. Tap here when the bell rings`);
+      return;
+    }
+    for (const g of G.eggs) if (!g.gone && near(sx, sy + 8, g.x, g.y, 0, 20)) { crackEgg(g); return; }
+    for (const e of G.enemies) if (e.state === 'under' && near(sx, sy, e.x, e.y, 0, 26)) { stompAt(e.x, e.y); return; }
+    let tw = null;
+    for (const t of G.towers) {
+      const p = toScreen(t.x, t.y, t.z);
+      if (Math.abs(sx - p.x) < 22 && sy > p.y - 78 && sy < p.y + 12 && (!tw || t.i + t.j > tw.i + tw.j)) tw = t;
+    }
+    if (tw) { sfx.tap(); popTower(tw); return; }
+    const hit = pickTile(sx, sy, [0.32, 0.16, 0, -0.18], gz);
+    if (!hit) return;
+    const g = groundAt(hit.i, hit.j);
+    if (g.obj === 'hut') { setLayer('dig'); return; }
+    if (g.t === 'path' || g.t === 'mud') { stompAt(clamp(hit.wx, hit.i + 0.2, hit.i + 0.8), clamp(hit.wy, hit.j + 0.2, hit.j + 0.8)); return; }
+    if (canBuildOn(g)) { sfx.tap(); popBuild(hit.i, hit.j); return; }
+    if (g.obj === 'tree') say(hit.i + 0.5, hit.j + 0.5, 1, 'A tree. It was here first', '#c9d0ff');
+  }
+  function tapDig(sx, sy) {
+    for (const g of G.gems) if (near(sx, sy + 6, g.x, g.y, DIG_Z, 24)) { takeGem(g); return; }
+    for (const e of G.enemies) {
+      if (e.dead || (e.state !== 'under' && e.state !== 'tunnel') || !near(sx, sy + 12, e.x, e.y, DIG_Z, 28)) continue;
+      if (e.state === 'under') bonk(e, false);
+      else { sfx.bonk(); mark('dig'); e.stun = Math.max(e.stun, 0.4); onLayer('dig', () => { burst(e.x, e.y, DIG_Z + 0.3, '#ffe680', 6); hurt(e, e.maxhp * 0.5); }); }
+      return;
+    }
+    for (const h of G.hamsters) if (h.state === 'dig' && h.daze <= 0 && near(sx, sy + 14, h.x, h.y, DIG_Z, 22)) { cheer(h); return; }
+    // the grid of the mine is its top: a tap in the mouth of a hole means that hole
+    const w = toWorld(sx, sy, 0), t = tileAt(Math.floor(w.wx), Math.floor(w.wy));
+    if (!t) return;
+    if (!t.dug) {
+      if (t.queued) cancelDig(t);
+      else if (canQueue(t)) orderDig(t);
+      else { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Dig next to a tunnel', '#c9d0ff')); }
+    } else if (G.armed) placeStick(t);
+    else if (canPit(t)) { sfx.tap(); popPit(t); }
+  }
+  function barRects() {
+    const y = H - BAR_H + 8, h = BAR_H - 16;
+    return { sky: [6, y, 58, h], ground: [68, y, 58, h], dig: [130, y, 58, h], tool: [196, y, 62, h], wave: [264, y, 146, h], speed: [416, y, 58, h] };
+  }
+  const inRect = (r, x, y) => x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3];
+  const BELL = [W / 2 - 44, HUD_H + 10, 88, 56];
+  function tap(sx, sy) {
+    if (G.trans) return;
+    if (sy >= H - BAR_H) {
+      const R = barRects();
+      for (const l of LAYERS) if (inRect(R[l], sx, sy)) { setLayer(l); return; }
+      if (inRect(R.wave, sx, sy)) { callWave(); return; }
+      if (inRect(R.speed, sx, sy)) { speed = speed === 1 ? 2 : 1; sfx.tab(); return; }
+      if (inRect(R.tool, sx, sy)) {
+        if (G.layer === 'dig' && G.n >= FROM.dynamite) { if (G.dyn > 0) { G.armed = !G.armed; sfx.tab(); if (G.armed) toast('Tap a tunnel to place the stick'); } else { sfx.nope(); toast('No dynamite left'); } }
+        else if (G.layer === 'ground') toast(`The Boot: tap the path to stomp. ${G.boot.n} of ${bootMax()} ready`);
+        else if (G.layer === 'sky') toast(`Anchors: tap a weather cloud to pin it. ${G.anchors} of ${anchorMax()} used`);
+        else toast('Tap dirt next to a tunnel to dig. Tap a digging hamster to cheer it on');
+      }
+      return;
+    }
+    if (sy < HUD_H) return;
+    if (G.layer !== 'ground' && ringing() && inRect(BELL, sx, sy)) { swat(); return; }
+    const vx = sx / ZOOM, vy = (sy - VIEW_Y0) / ZOOM;
+    if (G.layer === 'ground') tapGround(vx, vy);
+    else if (G.layer === 'dig') tapDig(vx, vy);
+    else { const c = cloudAt(vx, vy); if (c) toggleAnchor(c); }
+  }
 
   // ---------- input ----------
-  function toGame(e) {
-    const r = canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+  const ptr = { down: false, id: -1, x0: 0, y0: 0, x: 0, y: 0, moved: false, cloud: null, cam0: 0, eat: false, ox: 0, oy: 0 };
+  function evPos(ev) { const r = canvas.getBoundingClientRect(); return { x: (ev.clientX - r.left) / scale, y: (ev.clientY - r.top) / scale }; }
+  canvas.addEventListener('pointerdown', (ev) => {
+    audio();
+    if (ev.button === 2 || mode !== 'play' || !G) return;
+    const p = evPos(ev);
+    Object.assign(ptr, { down: true, id: ev.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, moved: false, cloud: null, cam0: cam.x, eat: false });
+    try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+    if (popOpen) { closePop(); ptr.eat = true; return; }
+    if (G.layer === 'sky' && !G.trans && p.y > HUD_H && p.y < H - BAR_H) {
+      const vx = p.x / ZOOM, vy = (p.y - VIEW_Y0) / ZOOM, c = cloudAt(vx, vy);
+      if (c) { const q = toScreen(c.x, c.y, CLOUD_Z); ptr.cloud = c; ptr.ox = q.x - vx; ptr.oy = q.y - vy; }
+    }
+  });
+  canvas.addEventListener('pointermove', (ev) => {
+    if (!ptr.down || ev.pointerId !== ptr.id || !G) return;
+    const p = evPos(ev); ptr.x = p.x; ptr.y = p.y;
+    if (!ptr.moved && Math.hypot(p.x - ptr.x0, p.y - ptr.y0) > 9) ptr.moved = true;
+    if (!ptr.moved || ptr.eat || mode !== 'play') return;
+    if (ptr.cloud) {
+      const c = ptr.cloud, w = toWorld(p.x / ZOOM + ptr.ox, (p.y - VIEW_Y0) / ZOOM + ptr.oy, CLOUD_Z);
+      c.x = clamp(w.wx, 0.3, N - 0.3); c.y = clamp(w.wy, 0.3, N - 0.3); G.drag = c;
+    } else if (ptr.y0 > HUD_H && ptr.y0 < H - BAR_H) cam.x = clamp(ptr.cam0 - (p.x - ptr.x0) / ZOOM, -PAN_MAX, PAN_MAX);
+  });
+  function dragTarget(c) {
+    let o = null, od = 0.85;
+    for (const q of G.clouds) { if (q === c) continue; const d = dist(q.x, q.y, c.x, c.y); if (d < od) { od = d; o = q; } }
+    return o;
   }
-  function barButtons() {
-    const out = [], ws = ['off', 'rain', 'storm', 'sun']; if (lv('wind')) ws.push('wind');
-    let x = 6;
-    for (const w of ws) { out.push({ kind: 'w', w, x, y: BAR_Y + 6, wd: 40, h: 38 }); x += 44; }
-    out.push({ kind: 'speed', x, y: BAR_Y + 6, wd: 40, h: 38 }); x += 46;
-    out.push({ kind: 'wave', x, y: BAR_Y + 6, wd: W - 6 - x, h: 38 });
+  function pointerEnd(ev) {
+    if (!ptr.down || ev.pointerId !== ptr.id) return;
+    ptr.down = false;
+    if (!G || mode !== 'play' || ptr.eat) { ptr.cloud = null; if (G) G.drag = null; return; }
+    if (ptr.cloud && ptr.moved) {
+      const c = ptr.cloud, o = dragTarget(c);
+      if (o && !mergeClouds(c, o)) { // they will not mix: step aside
+        sfx.nope(); onLayer('sky', () => say(c.x, c.y, CLOUD_Z + 0.9, 'They will not mix', '#c9d0ff'));
+        const a = Math.atan2(c.y - o.y, c.x - o.x) || 0; c.x = clamp(o.x + Math.cos(a) * 1.1, 0.3, N - 0.3); c.y = clamp(o.y + Math.sin(a) * 1.1, 0.3, N - 0.3);
+      } else if (!o) { sfx.puff(); if (!CLOUDS[c.t].raw) mark('sky'); }
+    } else if (!ptr.moved && ev.type === 'pointerup') tap(ptr.x, ptr.y);
+    ptr.cloud = null; G.drag = null;
+  }
+  canvas.addEventListener('pointerup', pointerEnd);
+  canvas.addEventListener('pointercancel', pointerEnd);
+  function togglePause() { if (mode === 'play') showPause(); else if (mode === 'pause') resume(); }
+  pauseBtn.addEventListener('click', () => { audio(); sfx.tap(); togglePause(); });
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') { ev.preventDefault(); togglePause(); return; }
+    if (mode !== 'play' || !G) return;
+    if (ev.key === '1') setLayer('sky'); else if (ev.key === '2') setLayer('ground'); else if (ev.key === '3') setLayer('dig');
+    else if (ev.key === ' ') { ev.preventDefault(); callWave(); }
+  });
+  // a right click pauses, and never opens the browser menu
+  window.addEventListener('contextmenu', (ev) => ev.preventDefault(), true);
+  for (const type of ['pointerdown', 'mousedown']) window.addEventListener(type, (ev) => {
+    if (ev.button !== 2) return;
+    ev.preventDefault(); ev.stopPropagation();
+    if (type === 'pointerdown') togglePause();
+  }, true);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') showPause(); });
+
+  // ---------- drawing: helpers ----------
+  let T = 0; // seconds of wall time, for animation
+  const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  let textK = 1; // text inside the world is drawn larger, because the world is drawn smaller
+  function text(s, x, y, color = '#ffffff', px = 13, align = 'center', outline = false, bold = true) {
+    px *= textK;
+    ctx.font = `${bold ? '800 ' : '600 '}${px}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
+    if (outline) { ctx.lineWidth = Math.max(2.5, px / 4.5); ctx.strokeStyle = 'rgba(12,14,30,0.85)'; ctx.lineJoin = 'round'; ctx.strokeText(s, x, y); }
+    ctx.fillStyle = color; ctx.fillText(s, x, y);
+  }
+  function wrapLines(s, px, maxW) {
+    ctx.font = `600 ${px}px ${FONT}`;
+    const out = []; let line = '';
+    for (const w of s.split(' ')) { const tryL = line ? line + ' ' + w : w; if (ctx.measureText(tryL).width > maxW && line) { out.push(line); line = w; } else line = tryL; }
+    if (line) out.push(line);
     return out;
   }
-  let skyDrag = false;
-  canvas.addEventListener('pointerdown', (e) => {
-    audio();
-    if (mode !== 'play' || e.button === 2) return;
-    e.preventDefault();
-    const p = toGame(e), prevSel = popInfo;
-    closePop();
-    if (p.y >= BAR_Y) {
-      for (const b of barButtons()) {
-        if (p.x < b.x || p.x > b.x + b.wd) continue;
-        if (b.kind === 'w') setWeather(b.w);
-        else if (b.kind === 'speed') { speed = speed === 1 ? 2 : 1; sfx.tick(); }
-        else callWave();
-      }
-    } else if (p.y >= UG_Y) {
-      const t = tileAt(Math.floor(p.x / CELL), Math.floor((p.y - UG_Y) / CELL));
-      if (!t || t.dug) return;
-      if (prevSel && prevSel.kind === 'u' && prevSel.tile === t) return;
-      digPop(t);
-    } else if (p.y >= GROUND_Y) {
-      const c = clamp(Math.floor(p.x / CELL), 0, COLS - 1), r = Math.floor((p.y - GROUND_Y) / CELL);
-      if (prevSel && prevSel.c === c && prevSel.r === r && prevSel.kind !== 'u') return;
-      const cell = G.grid[r * COLS + c];
-      if (cell === 0) buildPop(c, r);
-      else if (cell === 3) infoPop(c, r, '🏰 Your castle', 'Every enemy that gets here costs a heart.');
-      else if (cell === 4) infoPop(c, r, '🛖 Mine hut', 'Your hamsters dig below. Tap dirt next to a tunnel to send them. Worms you disturb crawl out here.');
-      else if (typeof cell === 'object') towerPop(cell);
-    } else if (p.y >= HUD_H) { G.cloud.tx = clamp(p.x, 30, W - 30); skyDrag = true; }
-  });
-  canvas.addEventListener('pointermove', (e) => {
-    if (mode !== 'play' || !skyDrag || !e.buttons) return;
-    G.cloud.tx = clamp(toGame(e).x, 30, W - 30);
-  });
-  window.addEventListener('pointerup', () => { skyDrag = false; });
-  window.addEventListener('pointercancel', () => { skyDrag = false; });
-  pauseBtn.addEventListener('click', (e) => { e.stopPropagation(); audio(); if (mode === 'play') showPause(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') showPause(); });
-  // Right click or Escape pauses (Escape again resumes). Pause straight from the button press as well as
-  // from 'contextmenu', because some browsers never deliver the latter.
-  function rightPause(e) {
-    if (e.type === 'contextmenu' || e.button === 2) {
-      e.preventDefault();
-      if (mode === 'play') showPause();
-    }
+  // a circle on a layer, seen from the corner: an ellipse
+  function isoEllipse(wx, wy, z, r) { const p = toScreen(wx, wy, z); ctx.beginPath(); ctx.ellipse(p.x, p.y, r * Math.SQRT2 * HW, r * Math.SQRT2 * HH, 0, 0, 7); }
+  function shadow(wx, wy, z, r, a = 0.22) { const p = toScreen(wx, wy, z); ctx.fillStyle = `rgba(10,14,30,${a})`; ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r / 2, 0, 0, 7); ctx.fill(); }
+  const P_SCREEN = (wx, wy, z) => toScreen(wx, wy, z);
+  function tilePath(i, j, z, inset = 0) {
+    const a = toScreen(i + inset, j + inset, z), b = toScreen(i + 1 - inset, j + inset, z), c = toScreen(i + 1 - inset, j + 1 - inset, z), d = toScreen(i + inset, j + 1 - inset, z);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath();
   }
-  window.addEventListener('pointerdown', rightPause, true);
-  window.addEventListener('mousedown', rightPause, true);
-  window.addEventListener('contextmenu', rightPause, true);
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault();
-    if (mode === 'play') showPause();
-    else if (mode === 'pause') { mode = 'play'; hideOverlay(); }
-  });
 
-  // ---------- drawing ----------
-  const deco = Array.from({ length: 5 }, (_, i) => ({ x: i * 110 + rand(0, 60), y: rand(HUD_H + 14, GROUND_Y - 60), s: rand(0.6, 1.1), v: rand(3, 8) }));
-  function puff(x, y, w, color, alpha = 1) {
-    ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath();
-    ctx.arc(x - w * 0.5, y + 4, w * 0.3, 0, 7); ctx.arc(x - w * 0.15, y - 6, w * 0.38, 0, 7); ctx.arc(x + w * 0.25, y - 2, w * 0.34, 0, 7); ctx.arc(x + w * 0.55, y + 5, w * 0.26, 0, 7);
-    ctx.rect(x - w * 0.5, y + 2, w * 1.05, w * 0.24); ctx.fill(); ctx.globalAlpha = 1;
+  // ---------- drawing: layer caches ----------
+  // The terrain of a layer is painted once into a canvas. Only what moves is drawn every frame.
+  const layerCv = {};
+  function paintUg(c, P, u) {
+    ART.ugTile(c, P, u, uz(u.i + 1, u.j), uz(u.i, u.j + 1));
+    if (u.dug) return;
+    const top = (col) => { const a = P(u.i, u.j, 0), b = P(u.i + 1, u.j, 0), d = P(u.i + 1, u.j + 1, 0), e = P(u.i, u.j + 1, 0); c.fillStyle = col; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(d.x, d.y); c.lineTo(e.x, e.y); c.closePath(); c.fill(); };
+    const g = groundAt(u.i, u.j);
+    if (g.t === 'path' || g.t === 'mud') top('rgba(255,225,170,0.10)'); // the path runs above this tile
+    if (!u.known) top('rgba(8,5,4,0.3)');
   }
-  function drawSky(t) {
-    const g = ctx.createLinearGradient(0, HUD_H, 0, GROUND_Y);
-    const stormy = G && G.weather === 'storm';
-    g.addColorStop(0, stormy ? '#4b6a9c' : '#5aa9f2'); g.addColorStop(1, stormy ? '#9fb4cf' : '#c9e8ff');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROUND_Y);
-    for (const d of deco) { const x = ((d.x + t * d.v) % (W + 160)) - 80; puff(x, d.y, 44 * d.s, '#ffffff', 0.45); }
+  function buildLayer(name) {
+    const w = Math.ceil(CACHE_W * SZ), h = Math.ceil(CACHE_H * SZ);
+    const cv = layerCv[name] || (layerCv[name] = document.createElement('canvas'));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const c = cv.getContext('2d');
+    c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, w, h); c.setTransform(SZ, 0, 0, SZ, 0, 0);
+    for (let d = 0; d <= 2 * (N - 1); d++) for (let i = Math.max(0, d - N + 1); i <= Math.min(d, N - 1); i++) {
+      const j = d - i;
+      if (name === 'ground') ART.groundTile(c, PC, groundAt(i, j), gz(i + 1, j), gz(i, j + 1));
+      else if (name === 'dig') paintUg(c, PC, tileAt(i, j));
+      else {
+        ART.skyTile(c, PC, i, j);
+        const g = groundAt(i, j);
+        if (g.t === 'path' || g.t === 'mud' || g.obj === 'castle') { // the path below, seen through the glass
+          const a = PC(i, j, 0), b = PC(i + 1, j, 0), e = PC(i + 1, j + 1, 0), f = PC(i, j + 1, 0);
+          c.fillStyle = g.obj === 'castle' ? 'rgba(255,120,140,0.45)' : 'rgba(255,225,160,0.34)';
+          c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.lineTo(e.x, e.y); c.lineTo(f.x, f.y); c.closePath(); c.fill();
+        }
+      }
+    }
+    cacheDirty[name] = false;
   }
-  const GRASS = ['#62b354', '#5bab4d'];
-  const HARD_COL = ['', '#8a5a36', '#74503a', '#6a625c', '#4c4a52'];
+  function drawCache(name, off) {
+    if (cacheDirty[name] || !layerCv[name]) buildLayer(name);
+    const cv = layerCv[name];
+    ctx.drawImage(cv, Math.round(mapLeft() * SZ) / SZ, Math.round((MAP_Y + view.dy + off) * SZ) / SZ, cv.width / SZ, cv.height / SZ);
+  }
+
+  // ---------- drawing: creatures ----------
+  function foeXY(e) { // an enemy at the door runs round to the front step
+    if (e.state !== 'ring') return e;
+    const C = G.castle, dx = C.flip ? 0.62 : 0, dy = C.flip ? 0 : 0.62, p = routeAt(G.len - 0.62), f = clamp((ringS() - e.ring) / 0.35, 0, 1);
+    return { x: p.x + (C.x + dx - p.x) * f, y: p.y + (C.y + dy - p.y) * f, fx: C.flip ? -1 : 0, fy: C.flip ? 0 : -1 };
+  }
+  function drawFoe(e, z, alt) {
+    const q = foeXY(e), fx = q.fx == null ? e.fx : q.fx, fy = q.fy == null ? e.fy : q.fy, front = fx > 0 || fy > 0, mirrored = (fy !== 0) !== (!front);
+    const o = {};
+    if (!front) o.back = true;
+    if (alt) o.alt = alt;
+    if (!alt && (e.t + e.wob) % 3.3 < 0.13) o.blink = true;
+    const s = foeSpr(e.k, o, e.flash > 0), p = toScreen(q.x, q.y, z);
+    const still = e.stun > 0 && !(e.dance > 0) && e.state !== 'ring';
+    const ph = still || e.fly ? 0 : Math.abs(Math.sin(e.t * (e.state === 'ring' || e.dance > 0 ? 9 : 5 + e.spd * 2) + e.wob));
+    const bob = e.fly ? Math.sin(e.t * 3 + e.wob) * 3 : -ph * (e.F.boss ? 3 : 5);
+    const sq = 1 - ph, sx = e.fly ? 1 : 1 + 0.1 * sq - 0.05 * ph, sy = e.fly ? 1 : 1 - 0.1 * sq + 0.08 * ph;
+    const y = p.y + bob - (e.drop || 0) * ZU;
+    if (e.spin > 0) { ctx.save(); ctx.translate(p.x, y - s.h * 0.4); ctx.rotate(e.spin * 14); ctx.translate(-p.x, -(y - s.h * 0.4)); blit(s, p.x, y, 1, 1, mirrored); ctx.restore(); }
+    else blit(s, p.x, y, sx, sy, mirrored);
+    if (e.frozen > 0) { ctx.fillStyle = 'rgba(190,243,255,0.45)'; ctx.beginPath(); ctx.ellipse(p.x, y - s.ay * 0.45, s.w * 0.42, s.ay * 0.5, 0, 0, 7); ctx.fill(); }
+    const top = y - s.ay * sy - 2;
+    if (e.hp < e.maxhp) {
+      const w = e.F.boss ? 54 : 22, f = clamp(e.hp / e.maxhp, 0, 1);
+      ctx.fillStyle = 'rgba(12,14,30,0.75)'; ctx.fillRect(p.x - w / 2 - 1, top - 5, w + 2, 5);
+      ctx.fillStyle = f > 0.5 ? '#7cf28a' : f > 0.25 ? '#ffd84a' : '#ff5a7a'; ctx.fillRect(p.x - w / 2, top - 4, w * f, 3);
+    }
+    if (e.state === 'ring') {
+      const f = clamp(e.ring / ringS(), 0, 1);
+      ctx.strokeStyle = '#ff5a7a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, top - 14, 8, -Math.PI / 2, -Math.PI / 2 + f * 6.283); ctx.stroke();
+      icon('bell', p.x + Math.sin(T * 30) * 1.5, top - 14, 14);
+    }
+    if (e.stun > 0 && e.state === 'walk' && !(e.dance > 0)) for (let k = 0; k < 2; k++) text('✦', p.x + Math.cos(T * 6 + k * 3.14) * 9, top - 3 + Math.sin(T * 6 + k * 3.14) * 3, '#ffe680', 9);
+    if (e.dance > 0) text('♪', p.x + 10, top - 4 - (T * 20 % 8), '#ff9ad8', 12);
+  }
+  function hamsterAlt(h) { return h.daze > 0 ? 'daze' : h.state === 'dig' ? 'dig' : null; }
+  function drawHamster(h, k) {
+    const front = h.fx > 0 || h.fy > 0, mirrored = (h.fy !== 0) !== (!front);
+    const o = {};
+    if (!front) o.back = true;
+    const alt = hamsterAlt(h); if (alt) o.alt = alt;
+    o.pack = Math.min(3, h.pack.length);
+    const idle = h.state === 'idle' && h.daze <= 0;
+    const ox = idle ? (k - (G.hamsters.length - 1) / 2) * 0.2 : 0;
+    const p = toScreen(h.x + ox, h.y - ox, DIG_Z);
+    const ph = h.state === 'dig' ? Math.abs(Math.sin(T * (h.cheer > 0 ? 18 : 10) + k)) : idle || h.daze > 0 ? 0 : Math.abs(Math.sin(T * 12 + k));
+    shadow(h.x + ox, h.y - ox, DIG_Z, 11, 0.3);
+    blit(foeSpr('hamster', o), p.x, p.y - ph * 3, 1 + 0.06 * (1 - ph), 1 - 0.06 * (1 - ph), mirrored);
+    if (h.cheer > 0) text('!', p.x + 12, p.y - 34, '#ffe680', 13, 'center', true);
+    if (idle && !G.orders.length && h.i === G.hut.i && h.j === G.hut.j && T % 3 < 1.5 && k === 0) text('z', p.x + 12, p.y - 30 - (T % 1.5) * 6, '#c9d0ff', 11);
+  }
+
+  // ---------- drawing: the ground ----------
   function drawGround() {
-    for (let r = 0; r < GROWS; r++) for (let c = 0; c < COLS; c++) {
-      const x = c * CELL, y = GROUND_Y + r * CELL, cell = G.grid[r * COLS + c];
-      if (cell === 1 || cell === 3) { ctx.fillStyle = '#d9b97f'; ctx.fillRect(x, y, CELL, CELL); ctx.fillStyle = '#cdab70'; ctx.fillRect(x + 6 + ((c * 7 + r * 3) % 20), y + 8 + ((c * 5 + r * 11) % 22), 5, 3); }
-      else { ctx.fillStyle = GRASS[(r + c) % 2]; ctx.fillRect(x, y, CELL, CELL); }
+    // decals: crystals, cloud shadows, ranges, pits
+    if (G.n >= FROM.crystal) for (const t of G.ug) if (t.content === 'crystal' && !t.dug) {
+      const p = toScreen(t.i + 0.5, t.j + 0.5, gz(t.i, t.j)), a = 0.5 + 0.5 * Math.sin(T * 3 + t.i * 2 + t.j);
+      ctx.fillStyle = `rgba(185,168,255,${0.25 + 0.3 * a})`; ctx.beginPath(); ctx.ellipse(p.x, p.y, 15, 7.5, 0, 0, 7); ctx.fill();
+      text('✦', p.x, p.y - 1, `rgba(255,255,255,${0.5 + 0.5 * a})`, 10);
     }
-    ctx.fillStyle = '#3f8f3a'; ctx.fillRect(0, GROUND_Y - 3, W, 4);
-    // sel highlight + range
-    const s = G.sel;
-    if (s && s.kind !== 'u') {
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.strokeRect(s.c * CELL + 1, GROUND_Y + s.r * CELL + 1, CELL - 2, CELL - 2);
-      if (s.tower) { ctx.beginPath(); ctx.arc(s.tower.x, s.tower.y, towerRange(s.tower), 0, 7); ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    for (const c of G.clouds) {
+      const D = CLOUDS[c.t];
+      isoEllipse(c.x, c.y, 0, D.raw ? 0.6 : cloudR(c));
+      if (D.raw) { ctx.fillStyle = 'rgba(20,30,60,0.10)'; ctx.fill(); continue; }
+      ctx.fillStyle = `rgba(${D.tint},0.22)`; ctx.fill(); ctx.strokeStyle = `rgba(${D.tint},0.6)`; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -T * 8; ctx.stroke(); ctx.setLineDash([]);
     }
-    emo('🛖', G.hut.x, G.hut.y - 2, 34);
-    emo('🏰', G.castle.x, G.castle.y - 6, 44);
-  }
-  function drawUnderground(t) {
-    const spy = lv('spyglass') > 0, det = lv('detector') > 0;
-    for (let r = 0; r < UROWS; r++) for (let c = 0; c < COLS; c++) {
-      const tile = G.ug[r][c], x = c * CELL, y = UG_Y + r * CELL;
-      if (tile.dug) { ctx.fillStyle = '#241a12'; ctx.fillRect(x, y, CELL, CELL); ctx.fillStyle = '#2e2218'; ctx.fillRect(x + 4, y + 4, CELL - 8, CELL - 8); continue; }
-      ctx.fillStyle = HARD_COL[tile.hard]; ctx.fillRect(x, y, CELL, CELL);
-      ctx.fillStyle = 'rgba(0,0,0,0.13)'; ctx.fillRect(x + 5 + tile.seed * 22, y + 6 + ((tile.seed * 97) % 1) * 22, 6, 4); ctx.fillRect(x + 26 - tile.seed * 18, y + 26, 5, 3);
-      ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(x, y + CELL - 1, CELL, 1); ctx.fillRect(x + CELL - 1, y, 1, CELL);
-      const sp = spy && inCol(x + CELL / 2);
-      if (tile.content && sp) { ctx.globalAlpha = 0.9; emo((LOOT[tile.content] || HAZ[tile.content]).icon, x + 20, y + 20, 22); ctx.globalAlpha = 1; }
-      else if (tile.content && tile.known) {
-        const tw = 0.55 + 0.45 * Math.sin(t * 4 + tile.seed * 20);
-        ctx.fillStyle = det ? (LOOT[tile.content] ? '#ffe066' : '#ff5a5a') : '#ffffff'; ctx.globalAlpha = tw;
-        const cx = x + 20, cy = y + 20, a = 7, b = 2;
-        ctx.beginPath(); ctx.moveTo(cx, cy - a); ctx.lineTo(cx + b, cy - b); ctx.lineTo(cx + a, cy); ctx.lineTo(cx + b, cy + b); ctx.lineTo(cx, cy + a); ctx.lineTo(cx - b, cy + b); ctx.lineTo(cx - a, cy); ctx.lineTo(cx - b, cy - b); ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      if (tile.queued) {
-        ctx.fillStyle = 'rgba(255,230,128,0.18)'; ctx.fillRect(x, y, CELL, CELL);
-        if (tile.prog > 0) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x + 5, y + 31, 30, 5); ctx.fillStyle = '#ffe680'; ctx.fillRect(x + 5, y + 31, 30 * Math.min(1, tile.prog), 5); }
-        else emo('⛏️', x + 30, y + 10, 14);
-      }
+    for (const p of G.puddles) { isoEllipse(p.x, p.y, 0.02, p.r); ctx.fillStyle = `rgba(217,140,60,${0.2 + 0.25 * Math.min(1, p.t)})`; ctx.fill(); }
+    for (const p of G.pits) if (p.t > 0) { const q = toScreen(p.i + 0.5, p.j + 0.5, 0); ctx.globalAlpha = Math.min(1, p.t * 2); blit(art('pit'), q.x, q.y); ctx.globalAlpha = 1; }
+    const sel = G.sel;
+    if (sel && !sel.dig) {
+      const z = gz(sel.i, sel.j);
+      if (sel.tower) { isoEllipse(sel.tower.x, sel.tower.y, z, towerRange(sel.tower)); ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+      tilePath(sel.i, sel.j, z, 0.04); ctx.strokeStyle = `rgba(255,255,255,${0.7 + 0.3 * Math.sin(T * 6)})`; ctx.lineWidth = 2.5; ctx.stroke();
     }
-    // tappable outline on diggable tiles
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-    for (let r = 0; r < UROWS; r++) for (let c = 0; c < COLS; c++) { const tile = G.ug[r][c]; if (canOrder(tile)) ctx.strokeRect(c * CELL + 2.5, UG_Y + r * CELL + 2.5, CELL - 5, CELL - 5); }
-    ctx.setLineDash([]);
-    ctx.fillStyle = '#4a2f1a'; ctx.fillRect(0, UG_Y - 2, W, 4);
-    const s = G.sel;
-    if (s && s.kind === 'u') { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.strokeRect(s.c * CELL + 1, UG_Y + s.r * CELL + 1, CELL - 2, CELL - 2); }
-    for (const m of G.miners) {
-      const bob = m.state === 'dig' ? Math.sin(t * 22) * 2 : 0;
-      emo('🐹', m.x + bob, m.y, 24);
-      if (m.state === 'daze') emo('💫', m.x + 8, m.y - 12, 14);
+    for (const s of G.stomps) if (!s.done) { const f = 1 - s.t / BOOT_DELAY; isoEllipse(s.x, s.y, 0.02, bootR() * (0.4 + 0.6 * f)); ctx.fillStyle = `rgba(10,14,30,${0.15 + 0.3 * f})`; ctx.fill(); }
+
+    // bodies, from the back of the map to the front
+    const list = [];
+    const add = (d, f) => list.push({ d, f });
+    for (const g of G.map) {
+      if (typeof g.obj !== 'string') continue;
+      const p = toScreen(g.i + 0.5, g.j + 0.5, g.z);
+      if (g.obj === 'tree') add(g.i + g.j + 1, () => blit(art('tree', { seed: Math.floor(g.seed * 4) & 3 }), p.x, p.y));
+      else if (g.obj === 'hut') add(g.i + g.j + 1, () => { blit(art('hut'), p.x, p.y); if (G.n >= FROM.dig && G.layer === 'ground' && G.gems.length) text('!', p.x, p.y - 52 - Math.abs(Math.sin(T * 6)) * 4, '#8fe6ff', 18, 'center', true); });
+      else if (g.obj === 'castle') add(g.i + g.j + 1, () => {
+        const k = G.doorT > 0 ? 1 + 0.06 * Math.sin(G.doorT * 30) : 1;
+        blit(art('castle', { door: G.doorT > 0 ? 1 : 0 }), p.x, p.y, k, 2 - k, G.castle.flip);
+        if (ringing()) { const b = art('bell'); blit(b, p.x + Math.sin(T * 34) * 3, p.y - 92, 1.3, 1.3); }
+        else if (G.swatT > 0) { ctx.fillStyle = 'rgba(12,14,30,0.6)'; ctx.fillRect(p.x - 16, p.y - 92, 32, 5); ctx.fillStyle = '#ffe680'; ctx.fillRect(p.x - 15, p.y - 91, 30 * (1 - G.swatT / swatS()), 3); }
+      });
     }
-  }
-  function drawWeatherColumn(t) {
-    const C = G.cloud, hw = cloudHalf(), w = G.weather, top = CLOUD_Y + 12;
-    if (w !== 'off') {
-      ctx.fillStyle = `rgba(${WEATHER[w].tint},0.13)`; ctx.fillRect(C.x - hw, top, hw * 2, BAR_Y - top);
-      if (w === 'rain') {
-        ctx.strokeStyle = 'rgba(120,180,255,0.75)'; ctx.lineWidth = 1.5; ctx.beginPath();
-        for (let i = 0; i < 16; i++) { const x = C.x - hw + ((i * 37.3) % (hw * 2)), y = top + ((t * 420 + i * 61) % (UG_Y - top)); ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 9); }
-        ctx.stroke();
-      } else if (w === 'sun') {
-        ctx.fillStyle = 'rgba(255,230,120,0.16)'; ctx.beginPath(); ctx.moveTo(C.x - 10, top); ctx.lineTo(C.x + 10, top); ctx.lineTo(C.x + hw, UG_Y); ctx.lineTo(C.x - hw, UG_Y); ctx.fill();
-      } else if (w === 'wind') {
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.beginPath();
-        for (let i = 0; i < 6; i++) { const y = HUD_H + 16 + i * 22, x = W - ((t * 260 + i * 97) % (W + 80)); ctx.moveTo(x, y); ctx.lineTo(x + 34, y); }
-        ctx.stroke();
-      }
-    }
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.setLineDash([3, 6]); ctx.beginPath();
-    ctx.moveTo(C.x - hw, top); ctx.lineTo(C.x - hw, BAR_Y); ctx.moveTo(C.x + hw, top); ctx.lineTo(C.x + hw, BAR_Y); ctx.stroke(); ctx.setLineDash([]);
-  }
-  function drawCloud() {
-    const C = G.cloud, hw = cloudHalf(), w = G.weather;
-    puff(C.x - hw * 0.05, CLOUD_Y + 4, hw * 1.7, 'rgba(0,0,0,0.12)');
-    puff(C.x - hw * 0.05, CLOUD_Y, hw * 1.7, WEATHER[w].cloud);
-    if (w !== 'off') emo(WEATHER[w].icon, C.x, CLOUD_Y - 2, 20); else if (lv('spyglass')) emo('🔭', C.x, CLOUD_Y - 2, 18);
-    const bw = 56, f = C.charge / C.max;
-    ctx.fillStyle = 'rgba(0,0,0,0.45)'; rr(C.x - bw / 2, CLOUD_Y - 34, bw, 7, 3); ctx.fill();
-    ctx.fillStyle = G.freeWeather > 0 ? '#ffe680' : f < 0.2 ? '#ff8a6b' : '#6ec8ff'; rr(C.x - bw / 2 + 1, CLOUD_Y - 33, Math.max(2, (bw - 2) * f), 5, 2); ctx.fill();
-  }
-  function drawTowers() {
-    for (const t of G.towers) {
-      ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(t.x, t.y + 13, 15, 6, 0, 0, 7); ctx.fill();
-      if (t.sunny) { ctx.fillStyle = 'rgba(255,230,120,0.35)'; ctx.beginPath(); ctx.arc(t.x, t.y, 19, 0, 7); ctx.fill(); }
-      emo(TOWERS[t.k].icon, t.x, t.y - 2 - (t.kick > 0 ? 3 : 0), 30);
-      ctx.fillStyle = '#ffe680'; for (let i = 0; i < t.lvl; i++) { ctx.beginPath(); ctx.arc(t.x - (t.lvl - 1) * 4 + i * 8, t.y + 16, 2.5, 0, 7); ctx.fill(); }
-    }
-  }
-  function drawEnemies(t, flyers) {
+    for (const t of G.towers) add(t.i + t.j + 1, () => {
+      const p = toScreen(t.x, t.y, t.z), b = t.born > 0 ? t.born / 0.35 : 0, k = t.kick > 0 ? t.kick / 0.12 : 0;
+      blit(art(t.k, { lvl: t.lvl }), p.x, p.y, 1 + 0.25 * b - 0.05 * k, 1 - 0.25 * b + 0.07 * k);
+      if (t.crystal) text('✦', p.x + 16, p.y - 8, '#b9a8ff', 11, 'center', true);
+      if (t.sunny) text('☀', p.x - 16, p.y - 8, '#ffe680', 11, 'center', true);
+    });
     for (const e of G.enemies) {
-      if (e.fly !== flyers) continue;
-      const s = e.F.size * (e.under ? 0.8 : 1), bobY = e.fly ? Math.sin(t * 3 + e.wob) * 3 : Math.abs(Math.sin(t * 9 + e.wob)) * -2;
-      if (!e.under) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(e.x, e.fly ? e.y + s * 0.7 : e.y + s * 0.4, s * 0.4, s * 0.14, 0, 0, 7); ctx.fill(); }
-      if (e.slowA > 0) { ctx.fillStyle = 'rgba(150,220,255,0.45)'; ctx.beginPath(); ctx.arc(e.x, e.y, s * 0.55, 0, 7); ctx.fill(); }
-      if (e.flash > 0) ctx.globalAlpha = 0.55;
-      emo(e.F.icon, e.x, e.y + bobY, s, e.dx > 0);
-      ctx.globalAlpha = 1;
-      if (e.hp < e.maxhp) {
-        const bw = e.F.boss ? 44 : 22;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(e.x - bw / 2, e.y - s * 0.62 - 4, bw, 4);
-        ctx.fillStyle = e.F.boss ? '#ff5a7a' : '#7cf28a'; ctx.fillRect(e.x - bw / 2, e.y - s * 0.62 - 4, bw * Math.max(0, e.hp / e.maxhp), 4);
+      if (e.dead || e.fly || e.state === 'tunnel') continue;
+      const q = foeXY(e);
+      if (e.state === 'under') add(e.x + e.y, () => { const p = toScreen(e.x, e.y, 0); blit(art('ridge'), p.x, p.y + Math.sin(e.t * 16) * 1, 1 + 0.08 * Math.sin(e.t * 16), 1); if (e.flash > 0) text('Bonk!', p.x, p.y - 22, '#ffe680', 11, 'center', true); });
+      else if (e.state === 'fall') add(e.x + e.y, () => { const p = toScreen(e.x, e.y, 0); text('!', p.x, p.y - 12 - Math.sin(e.fallT * 9) * 4, '#ffd9b0', 14, 'center', true); });
+      else add(q.x + q.y + (e.state === 'ring' ? 0.5 : 0), () => { shadow(q.x, q.y, 0, e.F.boss ? 24 : 11); drawFoe(e, 0, e.k === 'beetle' && e.flip > 0 ? 'flip' : e.k === 'hedgehog' && e.curl > 0 ? 'ball' : e.k === 'frog' && e.air ? 'hop' : null); });
+    }
+    for (const g of G.eggs) add(g.x + g.y, () => { const p = toScreen(g.x, g.y, 0), w = g.t < 1.5 ? Math.sin(T * 40) * 2 : 0; shadow(g.x, g.y, 0, 8); blit(art('egg'), p.x + w, p.y); });
+    for (const pl of G.peels) add(pl.x + pl.y - 0.3, () => {
+      if (pl.land > 0) { const f = 1 - pl.land / 0.5, p = toScreen(pl.fromX + (pl.x - pl.fromX) * f, pl.fromY + (pl.y - pl.fromY) * f, 0.9 * (1 - f) + Math.sin(f * Math.PI) * 0.9); blit(art('peel'), p.x, p.y); }
+      else { const p = toScreen(pl.x, pl.y, 0); blit(art('peel'), p.x, p.y); }
+    });
+    for (const g of G.geysers) add(g.x + g.y + 0.2, () => { const p = toScreen(g.x, g.y, 0); blit(art('geyser', { f: Math.min(2, Math.floor((0.6 - g.t) / 0.2)) }), p.x, p.y); });
+    for (const s of G.shots) add(s.x + s.y, () => {
+      const p = toScreen(s.x, s.y, s.z);
+      if (s.lob) { shadow(s.x, s.y, 0, 6, 0.25); ctx.fillStyle = '#7a4a2a'; ctx.beginPath(); ctx.arc(p.x, p.y, 5.5, 0, 7); ctx.fill(); ctx.fillStyle = '#e8c9a0'; ctx.beginPath(); ctx.arc(p.x - 1.5, p.y - 1.5, 2.5, 0, 7); ctx.fill(); return; }
+      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(p.x, p.y, s.s + 1.2, 0, 7); ctx.fill();
+      ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(p.x, p.y, s.s, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(p.x - s.s * 0.3, p.y - s.s * 0.3, s.s * 0.35, 0, 7); ctx.fill();
+    });
+    for (const s of G.stomps) add(s.x + s.y + 0.4, () => {
+      const f = s.done ? 0 : s.t / BOOT_DELAY, p = toScreen(s.x, s.y, f * f * 5), k = s.done ? clamp(s.show / 0.35, 0, 1) : 0;
+      ctx.globalAlpha = s.done ? k : 1; blit(art('boot'), p.x, p.y, 1 + 0.25 * k, 1 - 0.25 * k); ctx.globalAlpha = 1;
+    });
+    list.sort((a, b) => a.d - b.d);
+    for (const o of list) o.f();
+    // flyers: over everything, each with a shadow on the grass
+    const fl = G.enemies.filter((e) => e.fly && !e.dead).sort((a, b) => a.x + a.y - b.x - b.y);
+    for (const e of fl) shadow(e.x, e.y, 0, e.F.boss ? 22 : 10, 0.18);
+    for (const e of fl) drawFoe(e, e.z);
+    for (const b of G.bolts) drawBolt(b);
+  }
+  const INK = ART.INK || '#1b1f33';
+  function drawBolt(b) {
+    ctx.strokeStyle = b.c; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.lineWidth = pass ? 1.6 : 4.5; ctx.globalAlpha = (pass ? 1 : 0.45) * Math.min(1, b.t * 10); if (pass) ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      for (let k = 0; k < b.pts.length - 1; k++) {
+        const a = toScreen(...b.pts[k]), e = toScreen(...b.pts[k + 1]);
+        ctx.moveTo(a.x, a.y);
+        if (!b.straight) for (let q = 1; q < 5; q++) { const f = q / 5, h = ART.hash(k * 7 + q + Math.floor(T * 30)) - 0.5; ctx.lineTo(a.x + (e.x - a.x) * f + h * 16, a.y + (e.y - a.y) * f + h * 6); }
+        ctx.lineTo(e.x, e.y);
       }
-    }
-  }
-  function drawShots() {
-    for (const s of G.shots) {
-      if (s.lob) { ctx.fillStyle = '#6b4a2a'; ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, 7); ctx.fill(); ctx.fillStyle = '#ffd9a0'; ctx.beginPath(); ctx.arc(s.x - 1, s.y - 1, 2, 0, 7); ctx.fill(); }
-      else { ctx.fillStyle = s.c; ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, 7); ctx.fill(); }
-    }
-    for (const b of G.bolts) {
-      ctx.strokeStyle = b.c; ctx.lineWidth = b.w || 2; ctx.globalAlpha = Math.min(1, b.t / 0.12); ctx.beginPath();
-      for (let i = 0; i < b.pts.length - 1; i++) {
-        const [x1, y1] = b.pts[i], [x2, y2] = b.pts[i + 1];
-        ctx.moveTo(x1, y1);
-        if (!b.straight) for (let j = 1; j < 5; j++) { const f = j / 5; ctx.lineTo(x1 + (x2 - x1) * f + rand(-6, 6), y1 + (y2 - y1) * f + rand(-6, 6)); }
-        ctx.lineTo(x2, y2);
-      }
-      ctx.stroke(); ctx.globalAlpha = 1;
-    }
-  }
-  function drawHUD() {
-    ctx.fillStyle = 'rgba(8,10,24,0.92)'; ctx.fillRect(0, 0, W, HUD_H);
-    ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.font = 'bold 18px system-ui, sans-serif';
-    emo('❤️', 20, 24, 20); ctx.fillStyle = G.hearts <= 3 ? '#ff6b6b' : '#ffffff'; ctx.fillText(Math.max(0, G.hearts), 34, 25);
-    emo('🪙', 86, 24, 20); ctx.fillStyle = '#ffd84a'; ctx.fillText(Math.floor(G.coins), 100, 25);
-    emo('💎', 170, 24, 20); ctx.fillStyle = '#8fe6ff'; ctx.fillText(run.gems + (G.loot ? ' +' + G.loot : ''), 184, 25);
-    ctx.textAlign = 'right'; ctx.fillStyle = '#9aa3d6'; ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillText('LEVEL ' + G.n, W - 60, 16);
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.fillText(`Wave ${Math.min(G.waveIdx, G.waves.length)}/${G.waves.length}`, W - 60, 33);
-    // spy report: what the next wave brings
-    if (G.waveIdx < G.waves.length && !G.spawnQ.length) {
-      const counts = {}; for (const k of G.waves[G.waveIdx]) counts[k] = (counts[k] || 0) + 1;
-      ctx.textAlign = 'left'; ctx.font = 'bold 12px system-ui, sans-serif';
-      let x = 8; const y = HUD_H + 13;
-      const keys = Object.keys(counts), wd = 44 + keys.length * 40;
-      ctx.fillStyle = 'rgba(8,10,24,0.45)'; rr(4, HUD_H + 3, wd, 20, 8); ctx.fill();
-      ctx.fillStyle = '#ffffff'; ctx.fillText('Next:', x + 2, y); x += 44;
-      for (const k of keys) { emo(FOES[k].icon, x, y, 16); ctx.fillText('×' + counts[k], x + 9, y); x += 40; }
-    }
-    const bits = []; if (G.relicDmg) bits.push('🏺 +' + Math.round(G.relicDmg * 100) + '%'); if (G.freeDigs) bits.push('⛏️ ' + G.freeDigs + ' free'); if (G.mush) bits.push('🍄'); if (G.freeWeather > 0) bits.push('💧 ' + Math.ceil(G.freeWeather) + 's');
-    if (bits.length) { ctx.textAlign = 'right'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillStyle = 'rgba(8,10,24,0.45)'; const s = bits.join('  '), tw = ctx.measureText(s).width + 14; rr(W - 4 - tw, HUD_H + 3, tw, 20, 8); ctx.fill(); ctx.fillStyle = '#ffe680'; ctx.fillText(s, W - 11, HUD_H + 13); }
-  }
-  function drawBar() {
-    ctx.fillStyle = '#0c0e20'; ctx.fillRect(0, BAR_Y, W, H - BAR_Y);
-    ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    for (const b of barButtons()) {
-      if (b.kind === 'w') {
-        const on = G.weather === b.w;
-        ctx.fillStyle = on ? '#ffe680' : '#1c2040'; rr(b.x, b.y, b.wd, b.h, 9); ctx.fill();
-        emo(WEATHER[b.w].icon, b.x + b.wd / 2, b.y + 14, 20);
-        ctx.fillStyle = on ? '#251a00' : '#9aa3d6'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.fillText(WEATHER[b.w].label, b.x + b.wd / 2, b.y + 31);
-      } else if (b.kind === 'speed') {
-        ctx.fillStyle = speed > 1 ? '#5ef0ff' : '#1c2040'; rr(b.x, b.y, b.wd, b.h, 9); ctx.fill();
-        ctx.fillStyle = speed > 1 ? '#041021' : '#dfe4ff'; ctx.font = 'bold 15px system-ui, sans-serif'; ctx.fillText(speed + '×', b.x + b.wd / 2, b.y + 15);
-        ctx.font = 'bold 9px system-ui, sans-serif'; ctx.fillStyle = speed > 1 ? '#041021' : '#9aa3d6'; ctx.fillText('speed', b.x + b.wd / 2, b.y + 31);
-      } else {
-        const ok = canCallWave();
-        const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, ok ? '#5ef0ff' : '#22264a'); g.addColorStop(1, ok ? '#2f8cff' : '#22264a');
-        ctx.fillStyle = g; rr(b.x, b.y, b.wd, b.h, 10); ctx.fill();
-        ctx.fillStyle = ok ? '#041021' : '#7f88bb'; ctx.font = 'bold 14px system-ui, sans-serif';
-        let s, s2 = '';
-        if (ok) { s = `▶ Wave ${G.waveIdx + 1} now`; s2 = `auto in ${Math.ceil(G.countdown)}s · +${earlyBonus()} coins`; }
-        else if (G.spawnQ.length) { s = `Wave ${G.waveIdx} incoming`; s2 = G.spawnQ.length + ' more to come'; }
-        else { s = 'Final wave'; s2 = G.enemies.length + ' left'; }
-        ctx.fillText(s, b.x + b.wd / 2, b.y + 13);
-        ctx.font = 'bold 10px system-ui, sans-serif'; ctx.fillText(s2, b.x + b.wd / 2, b.y + 29);
-      }
-    }
-  }
-  function wrapText(text, x, y, maxW, lh) {
-    let line = '';
-    for (const w of text.split(' ')) {
-      const test = line ? line + ' ' + w : w;
-      if (ctx.measureText(test).width > maxW && line) { ctx.fillText(line, x, y); y += lh; line = w; } else line = test;
-    }
-    if (line) ctx.fillText(line, x, y);
-  }
-  let tAcc = 0, lastCoins = -1;
-  function draw(t) {
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
-    if (!G) { ctx.fillStyle = '#0b0d1a'; ctx.fillRect(0, 0, W, H); return; }
-    ctx.save();
-    if (G.shake > 0 && mode === 'play') ctx.translate(rand(-G.shake, G.shake) * 0.4, rand(-G.shake, G.shake) * 0.4);
-    drawSky(t);
-    drawGround();
-    drawUnderground(t);
-    drawWeatherColumn(t);
-    drawEnemies(t, false);
-    drawTowers();
-    drawEnemies(t, true);
-    drawCloud();
-    drawShots();
-    for (const p of G.parts) {
-      if (p.ring) { ctx.strokeStyle = p.c; ctx.globalAlpha = p.t / p.T; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, p.ring * (1 - p.t / p.T * 0.6), 0, 7); ctx.stroke(); }
-      else { ctx.globalAlpha = Math.min(1, p.t * 2.5); ctx.fillStyle = p.c; ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s); }
-    }
-    ctx.globalAlpha = 1; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const tx of G.texts) {
-      ctx.globalAlpha = Math.min(1, tx.t * 2); ctx.font = (tx.big ? 'bold 22px' : 'bold 13px') + ' system-ui, sans-serif';
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.strokeText(tx.s, tx.x, tx.y);
-      ctx.fillStyle = tx.c; ctx.fillText(tx.s, tx.x, tx.y);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    ctx.restore();
-    drawHUD();
-    drawBar();
-    if (mode === 'play' && G.banner > 0) {
-      const a = Math.min(1, G.banner);
-      ctx.globalAlpha = a * 0.78; ctx.fillStyle = '#080a18'; rr(30, 262, W - 60, 136, 16); ctx.fill();
-      ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 34px system-ui, sans-serif'; ctx.fillText('LEVEL ' + G.n, W / 2, 292);
-      ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.fillText(G.name, W / 2, 322);
-      const tip = TIPS[G.n] || (G.n % 5 === 0 ? TIPS[5] : '');
-      if (tip) { ctx.fillStyle = '#c9d0ff'; ctx.font = '14px system-ui, sans-serif'; wrapText(tip, W / 2, 350, W - 100, 19); }
-      ctx.globalAlpha = 1;
-    }
-    if (popInfo && G.coins !== lastCoins) refreshPop();
-    lastCoins = G.coins;
   }
 
-  let last = performance.now();
+  // ---------- drawing: the sky ----------
+  function drawSky() {
+    // what is below, as marks on the glass
+    for (const t of G.towers) { tilePath(t.i, t.j, 0, 0.3); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill(); }
+    for (const e of G.enemies) {
+      if (e.dead || e.state === 'tunnel' || e.state === 'under') continue;
+      const p = toScreen(e.x, e.y, 0), r = e.F.boss ? 9 : 4.5;
+      ctx.fillStyle = e.F.boss ? '#ff2a4d' : e.fly ? '#ff7ad9' : 'rgba(27,31,51,0.75)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r * 0.6, 0, 0, 7); ctx.fill();
+    }
+    for (const c of G.clouds) {
+      const D = CLOUDS[c.t];
+      isoEllipse(c.x, c.y, 0, D.raw ? 0.55 : cloudR(c));
+      ctx.fillStyle = D.raw ? 'rgba(20,40,90,0.13)' : `rgba(${D.tint},0.3)`; ctx.fill();
+      if (!D.raw) { ctx.strokeStyle = `rgba(${D.tint},0.85)`; ctx.lineWidth = 1.5; ctx.stroke(); }
+    }
+    const drag = G.drag, tgt = drag ? dragTarget(drag) : null;
+    const list = G.clouds.slice().sort((a, b) => a.x + a.y - b.x - b.y);
+    for (const c of list) {
+      const D = CLOUDS[c.t], lift = c === drag ? 0.3 : 0, bob = Math.sin(T * 1.6 + c.wob) * 0.04;
+      const p = toScreen(c.x, c.y, CLOUD_Z + lift + bob), b = c.born > 0 ? c.born / 0.4 : 0;
+      if (c.anchored) {
+        const q = toScreen(c.x, c.y, 0);
+        ctx.strokeStyle = 'rgba(60,50,30,0.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]); ctx.beginPath(); ctx.moveTo(p.x, p.y - 4); ctx.lineTo(q.x, q.y - 6); ctx.stroke(); ctx.setLineDash([]);
+        blit(art('anchor'), q.x, q.y + 2);
+      }
+      if (c === tgt) { ctx.strokeStyle = mergeResult(drag, c) ? '#ffe680' : '#ff5a7a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(p.x, p.y - 20, 50, 34, 0, 0, 7); ctx.stroke(); }
+      if (c.zap > 0) { ctx.fillStyle = `rgba(255,246,168,${c.zap * 2})`; ctx.beginPath(); ctx.ellipse(p.x, p.y - 20, 52, 34, 0, 0, 7); ctx.fill(); }
+      blit(art('cloud', c.big ? { t: c.t, big: true } : { t: c.t }), p.x, p.y, 1 + 0.3 * b, 1 - 0.3 * b);
+      if (!D.raw) {
+        const f = D.bolts ? c.bolts / c.bolts0 : c.life / c.life0, w = 30;
+        ctx.fillStyle = 'rgba(12,14,30,0.6)'; ctx.fillRect(p.x - w / 2 - 1, p.y + 5, w + 2, 5);
+        ctx.fillStyle = f > 0.3 ? '#ffffff' : '#ff8a5c'; ctx.fillRect(p.x - w / 2, p.y + 6, w * clamp(f, 0, 1), 3);
+      }
+    }
+    if (drag && tgt) { const r = mergeResult(drag, tgt), p = toScreen(tgt.x, tgt.y, CLOUD_Z + 1.5); text(r ? `= ${r.big && r.t === tgt.t ? 'Big ' : ''}${CLOUDS[r.t].name}` : 'no mix', p.x, p.y, r ? '#ffe680' : '#ff9a9a', 15, 'center', true); }
+    // the wind
+    if (!has('vane')) { const p = toScreen(N / 2 - G.wind[0] * 5.3, N / 2 - G.wind[1] * 5.3, 0), q = toScreen(N / 2 - G.wind[0] * 4.7, N / 2 - G.wind[1] * 4.7, 0); icon('wind', p.x, p.y, 20); ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x + (q.x - p.x) * 0.6, p.y + (q.y - p.y) * 0.6); ctx.lineTo(p.x + (q.x - p.x) * 1.6, p.y + (q.y - p.y) * 1.6); ctx.stroke(); }
+  }
+
+  // ---------- drawing: the mine ----------
+  function drawDig() {
+    const queuedHint = 0.5 + 0.5 * Math.sin(T * 5);
+    for (const t of G.ug) {
+      if (t.dug) continue;
+      const p = toScreen(t.i + 0.5, t.j + 0.5, 0);
+      if (t.content === 'crystal' && (t.known || t.spied)) blit(art('crystal'), p.x, p.y + 6, 0.8, 0.8);
+      else if (t.content === 'lode' && (t.known || t.spied)) text('✦', p.x + Math.sin(T * 2 + t.i) * 6, p.y - 2 + Math.cos(T * 3) * 3, `rgba(255,230,128,${0.5 + 0.5 * Math.sin(T * 4)})`, 14);
+      else if (t.spied && t.content) {
+        if (HAZARDS[t.content]) text('!', p.x, p.y, '#ff5a7a', 16, 'center', true);
+        else { ctx.globalAlpha = 0.85; const s = art('loot', { k: t.content }); ctx.drawImage(s.cv, p.x - 9, p.y - 9, 18, 18); ctx.globalAlpha = 1; }
+      }
+      if (t.queued) {
+        tilePath(t.i, t.j, 0, 0.08); ctx.strokeStyle = `rgba(255,230,128,${0.6 + 0.4 * queuedHint})`; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+        if (t.prog > 0) { ctx.fillStyle = 'rgba(12,14,30,0.7)'; ctx.fillRect(p.x - 15, p.y - 3, 30, 6); ctx.fillStyle = '#ffe680'; ctx.fillRect(p.x - 14, p.y - 2, 28 * clamp(t.prog, 0, 1), 4); }
+        else icon('dig', p.x, p.y, 16);
+      }
+    }
+    const sel = G.sel;
+    if (sel && sel.dig) { tilePath(sel.i, sel.j, 0, 0.04); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5; ctx.stroke(); }
+    if (G.armed) for (const t of G.ug) if (t.dug) { tilePath(t.i, t.j, 0, 0.2); ctx.strokeStyle = `rgba(255,138,92,${0.4 + 0.4 * queuedHint})`; ctx.lineWidth = 1.5; ctx.stroke(); }
+    const list = [];
+    const add = (x, y, f) => list.push({ d: x + y, x, y, f });
+    add(G.hut.x - 0.3, G.hut.y - 0.3, () => { // the ladder up
+      const a = toScreen(G.hut.x - 0.25, G.hut.y - 0.25, DIG_Z), b = toScreen(G.hut.x - 0.25, G.hut.y - 0.25, 0.5);
+      ctx.strokeStyle = '#c99a5b'; ctx.lineWidth = 2.5; ctx.beginPath();
+      for (const dx of [-5, 5]) { ctx.moveTo(a.x + dx, a.y); ctx.lineTo(b.x + dx, b.y); }
+      for (let y = a.y - 6; y > b.y; y -= 8) { ctx.moveTo(a.x - 5, y); ctx.lineTo(a.x + 5, y); }
+      ctx.stroke();
+    });
+    for (const t of G.ug) if (t.chest) add(t.i + 0.5, t.j + 0.5, () => { const p = toScreen(t.i + 0.5, t.j + 0.5, DIG_Z); blit(art('chest', { open: 1 }), p.x, p.y); });
+    for (const t of G.ug) if (t.pitted) add(t.i + 0.5, t.j + 0.5, () => { const p = toScreen(t.i + 0.5, t.j + 0.5, DIG_Z); ctx.globalAlpha = 0.7; blit(art('crack'), p.x, p.y); ctx.globalAlpha = 1; });
+    for (const s of G.sticks) add(s.x, s.y, () => { const p = toScreen(s.x, s.y, DIG_Z), k = 1 + 0.15 * Math.abs(Math.sin(s.t * (s.t < 1 ? 20 : 8))); blit(art('dynamite', { lit: 1 }), p.x, p.y, k, k); text(String(Math.ceil(s.t)), p.x, p.y - 34, '#ff8a5c', 15, 'center', true); });
+    for (const g of G.gems) add(g.x, g.y, () => {
+      const p = toScreen(g.x, g.y, DIG_Z), hop = Math.abs(Math.sin(T * 7 + g.wob)) * 8, s = art('loot', { k: 'gem' });
+      shadow(g.x, g.y, DIG_Z, 8, 0.3); if (g.t < 2 && T * 8 % 2 < 1) return;
+      ctx.drawImage(s.cv, p.x - 13, p.y - 26 - hop, 26, 26);
+    });
+    G.hamsters.forEach((h, k) => add(h.x, h.y, () => drawHamster(h, k)));
+    for (const e of G.enemies) {
+      if (e.dead) continue;
+      if (e.state === 'under') add(e.x, e.y, () => { drawFoe(e, DIG_Z, 'dig'); const p = toScreen(e.x, e.y, DIG_Z); text(`${Math.max(0, (e.k === 'tyrant' ? TYRANT_TAPS : SAPPER_TAPS) - e.taps)}`, p.x, p.y - (e.k === 'tyrant' ? 70 : 40), '#ffe680', 14, 'center', true); });
+      else if (e.state === 'tunnel') add(e.x, e.y, () => { shadow(e.x, e.y, DIG_Z, 9, 0.3); drawFoe(e, DIG_Z); });
+    }
+    list.sort((a, b) => a.d - b.d);
+    for (const o of list) {
+      o.f();
+      // the dirt in front of a body hides its feet
+      const i = Math.floor(o.x), j = Math.floor(o.y);
+      for (const [di, dj] of [[1, 0], [0, 1], [1, 1]]) { const u = tileAt(i + di, j + dj); if (u && !u.dug) paintUg(ctx, P_SCREEN, u); }
+    }
+    // the numbers: how many dangers hide around a dug tile
+    for (const t of G.ug) {
+      if (!t.dug) continue;
+      const n = dangerCount(t);
+      if (n) { const p = toScreen(t.i + 0.5, t.j + 0.5, 0); text(String(n), p.x, p.y + 1, NUM_COL[n], 17, 'center', true); }
+    }
+    // the castle above: sappers head for it
+    const cp = toScreen(G.castle.x, G.castle.y, 0.1);
+    ctx.globalAlpha = 0.3 + 0.1 * Math.sin(T * 3); blit(art('castle', { door: 0 }), cp.x, cp.y, 0.6, 0.6); ctx.globalAlpha = 1;
+  }
+
+  // ---------- drawing: effects ----------
+  function drawFx(name) {
+    for (const p of G.parts) {
+      if (p.layer !== name) continue;
+      if (p.ring) { const f = 1 - p.t / p.T; isoEllipse(p.x, p.y, p.z, p.ring * (0.3 + 0.7 * f)); ctx.strokeStyle = p.c; ctx.globalAlpha = 1 - f; ctx.lineWidth = 3; ctx.stroke(); ctx.globalAlpha = 1; continue; }
+      const q = toScreen(p.x, p.y, Math.max(name === 'dig' ? DIG_Z : 0, p.z));
+      ctx.globalAlpha = Math.min(1, p.t * 4); ctx.fillStyle = p.c; ctx.fillRect(q.x - p.s / 2, q.y - p.s / 2, p.s, p.s);
+    }
+    ctx.globalAlpha = 1;
+    for (const t of G.texts) {
+      if (t.layer !== name) continue;
+      const q = toScreen(t.x, t.y, t.z), f = t.t / t.T, pop2 = t.big ? 1 + 0.4 * Math.max(0, f - 0.85) / 0.15 : 1;
+      ctx.globalAlpha = Math.min(1, f * 3);
+      text(t.s, clamp(q.x, 70, VW - 70), q.y, t.c, (t.big ? 17 : 12) * pop2, 'center', true);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- drawing: backgrounds and the layer switch ----------
+  function drawBackground(name) {
+    const g = ctx.createLinearGradient(0, VIEW_Y0, 0, VIEW_Y1);
+    if (name === 'sky') { g.addColorStop(0, '#3f8fe0'); g.addColorStop(1, '#bfe4ff'); }
+    else if (name === 'ground') { g.addColorStop(0, '#8fd0ff'); g.addColorStop(0.6, '#cfeaff'); g.addColorStop(1, '#a9dc9a'); }
+    else { g.addColorStop(0, '#2a1b14'); g.addColorStop(1, '#0d0806'); }
+    ctx.fillStyle = g; ctx.fillRect(0, VIEW_Y0, W, VIEW_Y1 - VIEW_Y0);
+    if (name === 'dig') { // pebbles in the dark
+      for (let k = 0; k < 26; k++) { const x = (ART.hash(k * 3 + 1) * (W + 300) - 150 - cam.x * 0.4), y = VIEW_Y0 + ART.hash(k * 5 + 2) * (VIEW_Y1 - VIEW_Y0); ctx.fillStyle = `rgba(120,90,60,${0.15 + ART.hash(k) * 0.2})`; ctx.beginPath(); ctx.ellipse(x, y, 4 + ART.hash(k + 9) * 7, 2 + ART.hash(k + 4) * 3, 0, 0, 7); ctx.fill(); }
+    } else if (name === 'ground') { // far clouds
+      for (let k = 0; k < 4; k++) { const x = ((ART.hash(k * 7 + 3) * 700 + T * (4 + k) - cam.x * 0.3) % 700 + 700) % 700 - 110, y = VIEW_Y0 + 24 + k * 22; ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.ellipse(x, y, 46, 10, 0, 0, 7); ctx.ellipse(x + 22, y - 7, 24, 9, 0, 0, 7); ctx.fill(); }
+    }
+  }
+  function drawLayer(name, dy, alpha) {
+    ctx.save(); ctx.translate(0, VIEW_Y0); ctx.scale(ZOOM, ZOOM); textK = 1.2;
+    view.dy = dy;
+    if (name === 'sky') { ctx.globalAlpha = 0.24 * alpha; drawCache('ground', 96); }
+    ctx.globalAlpha = alpha; drawCache(name, 0); ctx.globalAlpha = 1;
+    if (alpha > 0.6) {
+      if (name === 'ground') drawGround(); else if (name === 'sky') drawSky(); else drawDig();
+      drawFx(name);
+    }
+    view.dy = 0; textK = 1;
+    ctx.restore();
+  }
+  function drawWorld() {
+    const tr = G.trans;
+    if (!tr) { drawBackground(G.layer); drawLayer(G.layer, 0, 1); return; }
+    // a lift: the old layer slides away, strata rush past, the new layer arrives with a small bounce
+    const p = Math.min(1, tr.t / tr.T), dir = ORDER[tr.to] > ORDER[tr.from] ? 1 : -1, SLIDE = 800;
+    const pOut = Math.min(1, p / 0.55), pIn = Math.max(0, (p - 0.3) / 0.7);
+    drawBackground(pIn > 0.5 ? tr.to : tr.from);
+    if (tr.from === 'dig' || tr.to === 'dig') {
+      const bands = ['#6b4a2a', '#5a3d24', '#7d5a42', '#4f3a2a', '#3d2c20'];
+      ctx.globalAlpha = Math.sin(p * Math.PI) * 0.85;
+      for (let k = 0; k < 10; k++) { const y = ((k * 72 - dir * p * 1100) % 720 + 720) % 720 + VIEW_Y0 - 36; ctx.fillStyle = bands[k % 5]; ctx.fillRect(0, y, W, 72); }
+      ctx.globalAlpha = 1;
+    }
+    if (pOut < 1) drawLayer(tr.from, -dir * SLIDE * easeInCubic(pOut), pOut > 0.8 ? (1 - pOut) * 5 : 1);
+    if (pIn > 0) drawLayer(tr.to, dir * SLIDE * (1 - easeOutBack(pIn, 1.1)), Math.min(1, pIn * 4));
+  }
+
+  // ---------- drawing: HUD and the bar ----------
+  function panel(x, y, w, h, r, fill, stroke) { rr(x, y, w, h, r); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); } }
+  function drawHud() {
+    ctx.fillStyle = 'rgba(10,12,28,0.94)'; ctx.fillRect(0, 0, W, HUD_H);
+    const low = G.hearts <= 3 && T % 0.6 < 0.3;
+    icon('heart', 20, 19, 22); text(String(G.hearts), 34, 20, low ? '#ff5a7a' : '#ffffff', 17, 'left');
+    icon('coin', 86, 19, 22); text(String(Math.floor(G.coins)), 100, 20, G.combo > 0 ? '#ffe680' : '#ffd84a', 17, 'left');
+    icon('gem', 176, 19, 22); text(`${run.gems}${G.loot ? ` +${G.loot}` : ''}`, 190, 20, '#8fe6ff', 17, 'left');
+    if (run.heat > 0 && G.n >= FROM.heat) text(`🔥${run.heat}`, 286, 20, '#ff9a3d', 13, 'left');
+    text(`Level ${G.n} · ${G.name}`, 10, 43, '#9aa3d6', 12, 'left', false, false);
+    // the three lights of the Strata Combo
+    if (G.n >= FROM.combo) {
+      if (G.combo > 0) { panel(250, 34, 170, 17, 8, 'rgba(255,230,128,0.18)'); panel(250, 34, 170 * G.combo / COMBO_S, 17, 8, '#ffb02e'); text('STRATA COMBO ×2', 335, 43, '#2a1700', 11); }
+      else LAYERS.forEach((l, k) => { const on = G.time - G.act[l] <= COMBO_WINDOW; ctx.globalAlpha = on ? 1 : 0.3; icon(l, 368 + k * 22, 43, 16); ctx.globalAlpha = 1; });
+    }
+    if (G.combo > 0 || G.flash > 0) { /* the frame glows */ }
+  }
+  function drawBar() {
+    const R = barRects();
+    ctx.fillStyle = 'rgba(10,12,28,0.96)'; ctx.fillRect(0, H - BAR_H, W, BAR_H);
+    for (const l of LAYERS) {
+      const r = R[l], on = G.layer === l, open = layerOpen(l);
+      panel(r[0], r[1], r[2], r[3], 12, on ? '#ffe680' : '#1c2145', on ? '#fff6c9' : '#ffffff22');
+      ctx.globalAlpha = open ? 1 : 0.35;
+      icon(l, r[0] + r[2] / 2, r[1] + 23, 30);
+      text(open ? LAYER_NAME[l] : `L${FROM[l]}`, r[0] + r[2] / 2, r[1] + r[3] - 11, on ? '#251a00' : '#c9d0ff', 11);
+      ctx.globalAlpha = 1;
+      // a badge: something on that layer wants a thumb
+      let badge = '';
+      if (!on && open) {
+        if (l === 'ground' && ringing()) badge = '#ff2a4d';
+        else if (l === 'dig' && (G.gems.length || G.enemies.some((e) => e.state === 'under'))) badge = '#5ef0ff';
+        else if (l === 'sky' && G.clouds.filter((c) => CLOUDS[c.t].raw).length >= 2) badge = '#ffffff';
+      }
+      if (badge) { const k = 1 + 0.25 * Math.abs(Math.sin(T * 7)); ctx.fillStyle = badge; ctx.beginPath(); ctx.arc(r[0] + r[2] - 7, r[1] + 7, 6 * k, 0, 7); ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.stroke(); }
+    }
+    // the tool of the layer
+    const t = R.tool; let ic = 'boot', label = '', hot = false;
+    if (G.layer === 'ground') { ic = 'boot'; label = `${G.boot.n}/${bootMax()}`; }
+    else if (G.layer === 'sky') { ic = 'anchor'; label = `${G.anchors}/${anchorMax()}`; }
+    else if (G.n >= FROM.dynamite) { ic = 'dynamite'; label = `×${G.dyn}`; hot = G.armed; }
+    else { ic = 'dig'; label = `${G.orders.length} queued`; }
+    panel(t[0], t[1], t[2], t[3], 12, hot ? '#ff8a5c' : '#14183a', hot ? '#ffd9b0' : '#ffffff22');
+    icon(ic, t[0] + t[2] / 2, t[1] + 23, 28); text(label, t[0] + t[2] / 2, t[1] + t[3] - 11, hot ? '#2a1000' : '#c9d0ff', 11);
+    if (G.layer === 'ground' && G.boot.n < bootMax()) { ctx.fillStyle = '#5ef0ff'; ctx.fillRect(t[0] + 8, t[1] + t[3] - 3, (t[2] - 16) * (1 - G.boot.t / bootS()), 2); }
+    // the wave button
+    const w = R.wave, can = canCallWave(), left = G.enemies.length + G.spawnQ.length;
+    panel(w[0], w[1], w[2], w[3], 12, can ? '#2f8cff' : '#14183a', can ? '#9fd0ff' : '#ffffff22');
+    if (G.barNote && G.barNote.t > 0) text(G.barNote.text, w[0] + w[2] / 2, w[1] + w[3] / 2, '#ffe680', 16);
+    else if (can) { text(`Send wave ${G.waveIdx + 1}/${G.waves.length}`, w[0] + w[2] / 2, w[1] + 22, '#ffffff', 14); text(`in ${Math.ceil(G.countdown)} s · now: +${earlyBonus()} coins`, w[0] + w[2] / 2, w[1] + 43, '#d6ebff', 11, 'center', false, false); }
+    else { text(G.waveIdx >= G.waves.length ? 'Last wave' : `Wave ${G.waveIdx}/${G.waves.length}`, w[0] + w[2] / 2, w[1] + 22, '#c9d0ff', 14); text(`${left} to go`, w[0] + w[2] / 2, w[1] + 43, '#9aa3d6', 11, 'center', false, false); }
+    const s = R.speed;
+    panel(s[0], s[1], s[2], s[3], 12, speed > 1 ? '#7cf28a' : '#14183a', '#ffffff22');
+    text(speed > 1 ? '▶▶' : '▶', s[0] + s[2] / 2, s[1] + 23, speed > 1 ? '#0b2a10' : '#c9d0ff', 16); text(`×${speed}`, s[0] + s[2] / 2, s[1] + s[3] - 11, speed > 1 ? '#0b2a10' : '#c9d0ff', 11);
+  }
+  function drawNotices() {
+    // the doorbell, when the garden is not on screen
+    if (G.layer !== 'ground' && !G.trans && ringing()) {
+      const k = 1 + 0.08 * Math.sin(T * 20);
+      panel(BELL[0], BELL[1], BELL[2], BELL[3], 14, 'rgba(255,42,77,0.92)', '#ffffff');
+      blit(art('bell'), W / 2 - 22 + Math.sin(T * 34) * 2, BELL[1] + 44, 1.3 * k, 1.3 * k); text(G.swatT > 0 ? 'wait...' : 'SWAT!', W / 2 + 16, BELL[1] + 28, '#ffffff', 14);
+    }
+    if (G.toast && G.toast.t > 0) {
+      const lines = wrapLines(G.toast.text, 12, W - 70), h = lines.length * 16 + 12, y = VIEW_Y1 - h - 8;
+      ctx.globalAlpha = Math.min(1, G.toast.t * 3);
+      panel(20, y, W - 40, h, 10, 'rgba(12,14,30,0.9)', '#ffffff33');
+      lines.forEach((l, k) => text(l, W / 2, y + 14 + k * 16, '#e8ecff', 12, 'center', false, false));
+      ctx.globalAlpha = 1;
+    }
+    const hk = G.heckle;
+    if (hk && hk.t > 0 && !(G.toast && G.toast.t > 0)) {
+      const lines = wrapLines(hk.text, 12, W - 130), h = Math.max(44, lines.length * 16 + 14), y = VIEW_Y1 - h - 8;
+      ctx.globalAlpha = Math.min(1, hk.t * 3, (4.5 - hk.t) * 6);
+      const gs = art('gnome', { mood: 0 }); ctx.drawImage(gs.cv, 8, y + h - 52, gs.w * 0.72, gs.h * 0.72);
+      panel(70, y, W - 84, h, 12, '#f4f6ff'); ctx.fillStyle = '#f4f6ff'; ctx.beginPath(); ctx.moveTo(70, y + h - 24); ctx.lineTo(60, y + h - 18); ctx.lineTo(70, y + h - 12); ctx.fill();
+      lines.forEach((l, k) => text(l, 80, y + (h - lines.length * 16) / 2 + 8 + k * 16, '#1b1f33', 12, 'left', false, false));
+      ctx.globalAlpha = 1;
+    }
+    if (G.banner > 0) {
+      const a = Math.min(1, G.banner * 2, (5 - G.banner) * 4), tip = tipFor(G.n), isNew = tip.startsWith('NEW:');
+      const lines = tip ? wrapLines(isNew ? tip.slice(4).trim() : tip, 13, W - 80) : [], h = 62 + lines.length * 17 + (isNew ? 18 : 0);
+      ctx.globalAlpha = a;
+      panel(24, HUD_H + 14, W - 48, h, 14, 'rgba(12,14,30,0.9)', isNew ? '#ffe680' : '#ffffff33');
+      text(`Level ${G.n}`, W / 2, HUD_H + 34, '#9aa3d6', 12); text(G.name, W / 2, HUD_H + 56, '#ffffff', 22);
+      let y = HUD_H + 80;
+      if (isNew) { text('NEW', W / 2, y, '#ffe680', 13); y += 18; }
+      lines.forEach((l, k) => text(l, W / 2, y + k * 17, isNew ? '#fff6c9' : '#c9d0ff', 13, 'center', false, false));
+      ctx.globalAlpha = 1;
+    }
+    const b = G.banner2;
+    if (b && b.t > 0 && (mode === 'play' || mode === 'pause')) {
+      const a = Math.min(1, b.t * 3), k = 1 + 0.5 * Math.max(0, b.t - (b.t0 || (b.t0 = b.t)) + 0.2) / 0.2;
+      ctx.globalAlpha = a;
+      text(b.text, W / 2, 330, '#ffe680', 34 * k, 'center', true); if (b.sub) text(b.sub, W / 2, 364, '#ffffff', 17, 'center', true);
+      ctx.globalAlpha = 1;
+    }
+    if (G.clearT > 0) text('GARDEN SAFE!', W / 2, 330, '#7cf28a', 34, 'center', true);
+  }
+  function drawBackdrop() { // behind the menu, before a level exists
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#3f8fe0'); g.addColorStop(0.55, '#bfe4ff'); g.addColorStop(0.56, '#62b354'); g.addColorStop(0.8, '#4d9a43'); g.addColorStop(0.81, '#8a5a36'); g.addColorStop(1, '#3d2c20');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    blit(art('cloud', { t: 'puff' }), 90 + Math.sin(T * 0.3) * 20, 120); blit(art('cloud', { t: 'rain' }), 380 + Math.sin(T * 0.23 + 2) * 24, 200);
+    blit(art('castle', { door: 0 }), 360, 520); blit(art('pea', { lvl: 2 }), 120, 540); blit(art('tree', { seed: 1 }), 50, 500);
+    blit(foeSpr('hamster', { alt: 'dig', pack: 2 }), 240, 730 - Math.abs(Math.sin(T * 6)) * 3);
+  }
+  function draw() {
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    if (!G) { drawBackdrop(); return; }
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, VIEW_Y0, W, VIEW_Y1 - VIEW_Y0); ctx.clip();
+    if (G.shake > 0) ctx.translate(Math.sin(T * 90) * G.shake * 0.5, Math.cos(T * 77) * G.shake * 0.5);
+    drawWorld();
+    ctx.restore();
+    if (G.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, G.flash)})`; ctx.fillRect(0, VIEW_Y0, W, VIEW_Y1 - VIEW_Y0); }
+    if (G.combo > 0) { ctx.strokeStyle = `rgba(255,216,74,${0.5 + 0.3 * Math.sin(T * 8)})`; ctx.lineWidth = 6; ctx.strokeRect(3, VIEW_Y0 + 3, W - 6, VIEW_Y1 - VIEW_Y0 - 6); }
+    drawNotices(); drawHud(); drawBar();
+  }
+
+  // ---------- the loop ----------
+  let last = 0;
   function frame(now) {
-    const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
-    tAcc += dt;
-    for (let i = 0; i < speed; i++) update(dt);
-    draw(tAcc);
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000 || 0)); last = now; T += dt;
+    if (G) {
+      if (G.trans) { G.trans.t += dt; if (G.trans.t >= G.trans.T) G.trans = null; }
+      for (let k = 0; k < speed && mode === 'play'; k++) update(dt);
+    }
+    try { draw(); } catch (e) { if (!frame.err) { frame.err = true; console.error(e); } }
     requestAnimationFrame(frame);
   }
 
-  // debug hook for automated testing (harmless in normal play)
+  // ---------- debug hook ----------
+  // For automated tests and for tuning from the console.
   window.__ss = {
-    get mode() { return mode; }, get run() { return run; }, get G() { return G; },
-    step(dt) { update(dt); }, build: tryBuild, dig(c, r) { return orderDig(tileAt(c, r)); },
-    weather: setWeather, wave: callWave, buyId(id) { return buy(ITEM_BY_ID[id]); },
-    next() { lastSummary = null; startLevel(); }, W, H, CELL, GROUND_Y, UG_Y, BAR_Y,
+    get G() { return G; }, get run() { return run; }, get mode() { return mode; }, get meta() { return meta; },
+    state: () => ({ mode, screen, level: run ? run.level : 0, gems: run ? run.gems : 0, layer: G ? G.layer : '', coins: G ? G.coins : 0, hearts: G ? G.hearts : 0, wave: G ? G.waveIdx : 0, waves: G ? G.waves.length : 0, enemies: G ? G.enemies.length : 0, time: G ? G.time : 0 }),
+    start(n, up) { run = newRun(); run.level = n || 1; Object.assign(run.up, up || {}); startLevel(); },
+    layer: (l) => setLayer(l, true),
+    step(seconds, dt = 1 / 30) { for (let t = 0; t < seconds && mode === 'play'; t += dt) update(dt); },
+    screenOf: (wx, wy, z) => toScreen(wx, wy, z || 0),
+    build: tryBuild, upgrade: tryUpgrade, stomp: stompAt, swat, wave: callWave, dig: (i, j) => orderDig(tileAt(i, j)), stick: (i, j) => placeStick(tileAt(i, j)),
+    cloud: (t, x, y, big) => addCloud(t, x, y, big), merge: mergeClouds, spawn: spawnFoe, relic: (id) => run.relics.push(id),
+    win() { G.waveIdx = G.waves.length; G.spawnQ = []; G.enemies = []; G.eggs = []; }, lose() { G.hearts = 0; },
+    coins(n) { G.coins += n; }, gems(n) { run.gems += n; saveRun(); }, shop: openShop, tables: { TOWERS, FOES, ITEMS, RELICS, CLOUDS, RECIPES, FROM },
   };
 
+  // ---------- start ----------
   resize();
   showMenu();
   requestAnimationFrame(frame);
