@@ -1,7 +1,6 @@
 'use strict';
 /* Brick Bazaar - a one-handed brick breaker with a coin shop.
-   Controls: tap / click the field to set a mark, and the autopilot aims the ball at it. Drag in the bottom zone to
-   steer by hand.
+   Controls: drag / move the mouse to steer, tap / click to launch. Everything else is automatic.
    Sound is in audio.js, the campaign maps are in levels.js. */
 (() => {
   const W = 480, H = 800;
@@ -86,9 +85,9 @@
   };
   function gunDesc(g, l) {
     const t = GUN_TEXT[g];
-    if (!l) return t[0] + ' Fires by itself. Aimed paddle bounces reload it: set a mark or steer by hand.';
+    if (!l) return t[0] + ' Fires by itself. Paddle bounces reload it.';
     const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : '';
-    return `${t[0]} Aimed paddle bounces reload it. Each level: faster and stronger.${next}${l >= 5 && l < gunMax() ? ' The Gun Workshop allows this level.' : ''}`;
+    return `${t[0]} Paddle bounces reload it. Each level: faster and stronger.${next}${l >= 5 && l < gunMax() ? ' The Gun Workshop allows this level.' : ''}`;
   }
   const CATS = [
     { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
@@ -97,21 +96,24 @@
   ];
   // The late game: from these levels the shop has seals, sets and more gear.
   const SEAL_FROM = 26, SET_FROM = 26, FLARE_FROM = 26, BOY_FROM = 26;
-  // The autopilot and the marks; the rules are at "the autopilot and the marks".
-  const GRIP_Y = PADDLE_Y - 56; // a touch from this line down takes the paddle
+  // Pip, his pins and the floor; the rules are at "Pip and his pins".
   const FLOOR_Y = PADDLE_Y + PADDLE_H / 2, COIN_REST = 1.6; // a coin lies on the floor for COIN_REST seconds
+  const PIN_S = 12, PIN_GAP = 6, COFFEE_K = 0.25, JITTER_K = 1 / 3; // pins: life, seconds until the next one, cut of that time per coffee, both times on Too Much Coffee
+  const BULL_K = 3, BULL_CAPSULE = 5, DARE_BULLS = 3; // bullseye: damage factor, each n-th one drops a capsule, count for the dare
+  const TACK_RAD = 46; // radius of the blast of a Blasting Tack
   const BOUNCE_K = 1.08; // bounce angle in rad for each unit of hit offset on the paddle
-  const AIM_MAX = 1.0, AIM_OFF = 0.8; // the flattest shot that the autopilot tries, in rad; the farthest hit offset that it uses
-  const AUTO_SPEED = 620, COFFEE_K = 0.15, LAZY = 0.7; // autopilot: px/s, speed per coffee, the offset that it accepts with no mark
-  const IDLE_HECKLE_S = 15, SLEEP_S = 20; // seconds with no input until the shopkeeper speaks, and until the autopilot sleeps
-  const SMASH_S = 0.2, SMASH_GAP = 0.5; // a tap this long before a bounce is a smash, if no other input came in the SMASH_GAP seconds before it
-  const MARK_R = 24, MARK_SNAP = 14, MARK_HIT = 12, MARK_S = 12; // marks: tap radius, snap to a target, hit radius, life in seconds
-  const BULL_K = 3, BULL_STAR = 3, DARE_BULLS = 6; // bullseye: damage factor, count for the third star, count for the dare
-  const PLAYED_FULL = 0.5; // share of bounces that the player aimed, from which the speed bonus is whole
-  const PIP_GAP = 9; // seconds between two lines of the driver
-  const DAYOFF_K = 0.5, JITTER_SPEED = 1.6, JITTER_SPREAD = 3; // Pip's Day Off: speed of the snail; Too Much Coffee: speed and spread
+  const AIM_MAX = 1.0, AIM_OFF = 0.8, AIM_SPREAD = 0.05; // Pip at the wheel: flattest shot in rad, farthest hit offset, random spread in rad
+  const AUTO_SPEED = 620, LAZY = 0.7, PIP_WAIT = 0.5, PIP_S = 10; // Pip at the wheel: px/s, the offset that he accepts with no pin, seconds with no input until he steers, seconds of the capsule
   const SPILL_HECKLE = 12; // coins lost on the floor in one level before the shopkeeper speaks
-  const aimSpread = (l) => [0.05, 0.034, 0.02, 0.008][l]; // rad of random spread on a shot at a mark
+  const PIP_GAP = 9; // seconds between two lines of Pip
+  const CALL_FROM = 24, CALL_CHANCE = 0.3; // a called pin: "off the wall first" pays double
+  const BLIMP_PIN = 0.5; // chance that Pip pins a loot blimp when one comes
+  const JAR_PINS = 4, JAR_GAP = 0.4, JAR_S = 10; // Tack Jar: extra pins, seconds between them, length
+  const RAKE_K = 0.2; // Floor Rake: extra value of a coin that is swept off the floor, per level
+  const WHIP_V = 900; // Whip Bounce: paddle speed in px/s that gives the ball double damage
+  const HOLSTER_FROM = 21; // first level of the dare that switches guns and drones off
+  const EVENT_CHANCE = 0.3, FILM_S = 9, BINGO_S = 15, BINGO_PAY = 12, COFFEE_S = 8; // mid-level events
+  const PARCEL_FROM = 5, PARCEL_AT = 40; // the slow parcel: ordered at, arrives at
   const magnetR = (l) => (l ? 60 + 22 * l : 0); // reach of the coin magnet in px, from the centre of the paddle
   const BOY_S = 1.5, BOY_SAVES = 2, BOY_WAGE = 0.06; // ball boy: the tap window, saves per level, wage share of the clear bonus
   // at = the level from which the shop stocks the item. A new player sees three items; two or three more arrive per level.
@@ -142,7 +144,7 @@
       desc: (l) => `Circles your paddle and fires free shots. Owned: ${l}/3.` },
     { id: 'd_hunter', at: 15, cat: 'drone', icon: '🐝', name: 'Hunter Bee', max: 3, base: 160, grow: 1.9,
       desc: (l) => `Flies off and rams bricks on its own. Owned: ${l}/3.` },
-    { id: 'd_collect', at: 9, cat: 'drone', icon: '🤖', name: 'Collector', max: 2, base: 240, grow: 2.2,
+    { id: 'd_collect', at: 9, cat: 'drone', icon: '🤖', name: 'Collector', max: 2, base: 90, grow: 2.2,
       desc: (l) => `Zips around grabbing falling coins and capsules. Owned: ${l}/2.` },
     { id: 'd_goalie', at: 12, cat: 'drone', icon: '🧤', name: 'Goalie', max: 3, base: 140, grow: 1.8,
       desc: (l) => l ? `Saves a missed ball. Recharge: ${goalieRecharge(l)}s → ${goalieRecharge(l + 1)}s.` : `Patrols below the paddle and saves a missed ball every ${goalieRecharge(1)}s.` },
@@ -151,28 +153,28 @@
     { id: 'd_ufo', at: 34, cat: 'drone', icon: '🛸', name: 'Abductor', max: 2, base: 900, grow: 2.5,
       desc: (l) => `A saucer that beams away half of a brick every few seconds. Owned: ${l}/2.` },
     { id: 'd_parrot', at: 15, cat: 'drone', icon: '🦜', name: 'Polly', max: 1, base: 600, grow: 1,
-      desc: () => `Rides on your paddle. Every ${PARROT_EVERY}th aimed paddle bounce she pecks the lowest brick. She repeats what bosses say, and it hurts them.` },
+      desc: () => `Rides on your paddle. Every ${PARROT_EVERY}th paddle bounce she pecks the lowest brick. She repeats what bosses say, and it hurts them.` },
 
     { id: 'width', at: 2, cat: 'gear', icon: '↔️', name: 'Long Paddle', max: 6, base: 40, grow: 1.5,
       desc: () => 'Paddle +12% wider.' },
     { id: 'magnet', at: 3, cat: 'gear', icon: '🧲', name: 'Coin Magnet', max: 5, base: 45, grow: 1.6,
-      desc: (l) => (l ? 'Longer reach, stronger pull.' : 'Pulls coins toward the paddle. Pip does not go for coins: this is how he gets them.') + (l >= 2 ? ' Now pulls capsules too.' : ' Level 3 also pulls capsules.') },
+      desc: (l) => (l ? 'Bigger, stronger pull.' : 'Pulls falling coins toward the paddle.') + (l >= 2 ? ' Now pulls capsules too.' : ' Level 3 also pulls capsules.') },
     { id: 'net', at: 4, cat: 'gear', icon: '🥅', name: 'Safety Net', max: 4, base: 70, grow: 1.8,
       desc: (l) => `A barrier that bounces back ${l + 1} missed ball${l ? 's' : ''} each level.` },
     { id: 'aim', at: 5, cat: 'gear', icon: '🔭', name: 'Trick Sight', max: 1, base: 25, grow: 1,
-      desc: () => 'Shows the path of the next shot to your mark, and where the ball goes after its first bounce.' },
-    { id: 'glasses', at: 5, cat: 'gear', icon: '👓', name: "Pip's Glasses", max: 3, base: 50, grow: 1.9,
-      desc: (l) => `Pip aims straighter: his shots at a mark spread ${Math.round((1 - aimSpread(l + 1) / aimSpread(0)) * 100)}% less.` },
-    { id: 'tack', at: 6, cat: 'gear', icon: '📌', name: 'Sticky Tack', max: 1, base: 70, grow: 1,
-      desc: () => 'A mark on a brick stays after its bullseye, for the rest of its time, and Pip keeps the aim on that brick. Tap the brick again for a new bullseye.' },
-    { id: 'coffee', at: 10, cat: 'gear', icon: '☕', name: 'Strong Coffee', max: 3, base: 80, grow: 1.8,
-      desc: (l) => `Pip moves the paddle ${Math.round((l + 1) * COFFEE_K * 100)}% faster.` },
-    { id: 'tack2', at: 14, cat: 'gear', icon: '📍', name: 'Second Tack', max: 1, base: 320, grow: 1,
-      desc: () => 'You can set two marks. Pip aims at them in turn.' },
+      desc: () => 'Shows the launch path before you tap, and where the ball goes after its first bounce.' },
+    { id: 'glasses', at: 15, cat: 'gear', icon: '👓', name: "Pip's Glasses", max: 3, base: 160, grow: 1.9,
+      desc: (l) => `A bullseye on Pip's pin hits ${BULL_K + l + 1} times as hard. Now: ${BULL_K + l} times.` },
+    { id: 'tack', at: 17, cat: 'gear', icon: '📌', name: 'Blasting Tack', max: 1, base: 420, grow: 1,
+      desc: () => 'A bullseye sets off a blast around the pinned brick.' },
+    { id: 'coffee', at: 19, cat: 'gear', icon: '☕', name: 'Strong Coffee', max: 3, base: 180, grow: 1.8,
+      desc: (l) => `Pip pins the next brick sooner: after ${(PIN_GAP * Math.pow(1 - COFFEE_K, l + 1)).toFixed(1)} s. Now: ${(PIN_GAP * Math.pow(1 - COFFEE_K, l)).toFixed(1)} s.` },
+    { id: 'tack2', at: 22, cat: 'gear', icon: '📍', name: 'Second Tack', max: 1, base: 700, grow: 1,
+      desc: () => 'Pip keeps two bricks pinned at a time.' },
     { id: 'shield', at: 10, cat: 'gear', icon: '🛡️', name: 'Deflector', max: 3, base: 70, grow: 1.7,
       desc: (l) => `Blocks ${l + 1} enemy hit${l ? 's' : ''} each level, so your paddle never gets stunned. A blocked shot flies back up and hits what it meets.` },
     { id: 'flare', at: FLARE_FROM, cat: 'gear', icon: '🚨', name: "Spotter's Flare", max: 1, base: 1200, grow: 1,
-      desc: () => 'Rockets, ducks, Arc Coil and Hunter Bees go for the brick that you marked.' },
+      desc: () => 'Rockets, ducks, Arc Coil and Hunter Bees go for the brick that Pip pinned.' },
     { id: 'ballboy', at: BOY_FROM, cat: 'gear', icon: '🧢', name: 'Ball Boy', max: 1, base: 800, grow: 1,
       desc: () => `When your last ball is lost, tap within ${BOY_S} s and he throws it back, ${BOY_SAVES} times per level. Wage: ${BOY_WAGE * 100}% of each clear bonus. If you cannot pay, he quits.` },
     { id: 'second', at: 15, cat: 'gear', icon: '🌬️', name: 'Second Wind', max: 2, base: 150, grow: 2,
@@ -191,11 +193,11 @@
     { id: 'crit', at: 5, cat: 'ball', icon: '✨', name: 'Crit Spark', max: 6, base: 60, grow: 1.5,
       desc: (l) => `${(l + 1) * 8}% chance for a triple-damage hit.` },
     { id: 'pierce', at: 14, cat: 'ball', icon: '🔥', name: 'Ember Core', max: 4, base: 110, grow: 1.9,
-      desc: (l) => `After each aimed paddle bounce the ball smashes through ${l + 1} brick${l ? 's' : ''} without bouncing.` },
+      desc: (l) => `After each paddle bounce the ball smashes through ${l + 1} brick${l ? 's' : ''} without bouncing.` },
     { id: 'twin', at: 8, cat: 'ball', icon: '⚪', name: 'Twin Serve', max: 3, base: 100, grow: 2.2,
       desc: (l) => `Every serve launches ${l + 2} balls.` },
     { id: 'momentum', at: 17, cat: 'ball', icon: '☄️', name: 'Momentum', max: 4, base: 140, grow: 1.9,
-      desc: (l) => `Each brick in a streak adds ${(l + 1) * 4}% ball damage, up to +${(l + 1) * 100}%. A paddle bounce resets it, unless the ball made a bullseye.` },
+      desc: (l) => `Each brick in a streak adds ${(l + 1) * 4}% ball damage, up to +${(l + 1) * 100}%. A paddle bounce resets it.` },
     { id: 'splash', at: 11, cat: 'ball', icon: '💥', name: 'Shatter Core', max: 4, base: 95, grow: 1.7,
       desc: (l) => `${(l + 1) * 15}% chance a ball hit also chips every brick around it.` },
     { id: 'chill', at: 13, cat: 'ball', icon: '❄️', name: 'Chill Field', max: 3, base: 60, grow: 1.7,
@@ -211,6 +213,8 @@
       desc: (l) => `Streak payouts are ${(l + 1) * 25}% bigger. Every 5 bricks without touching the paddle pays out, more the longer it runs.` },
     { id: 'foebounty', at: 9, cat: 'eco', icon: '🏆', name: 'Trophy Hunter', max: 3, base: 70, grow: 1.7,
       desc: (l) => `The first ${l ? l + 1 + ' monsters' : 'monster'} of each kind that you pop in a level drop${l ? '' : 's'} a capsule.` },
+    { id: 'rake', at: 22, cat: 'eco', icon: '🧹', name: 'Floor Rake', max: 3, base: 260, grow: 2,
+      desc: (l) => `A coin that you sweep off the floor is worth ${Math.round((l + 1) * RAKE_K * 100)}% more.` },
     { id: 'bounty', at: 4, cat: 'eco', icon: '💰', name: 'Bounty Board', max: 4, base: 55, grow: 1.6,
       desc: (l) => `Level clear bonus +${(l + 1) * 15}%.` },
     { id: 'bonds', at: 20, cat: 'eco', icon: '📜', name: 'Bazaar Bonds', max: 8, base: 220, grow: 1.45,
@@ -288,7 +292,7 @@
   // Relic fusion (Upstairs): two owned relics become one. keep = the fused relic also does what its two parts did.
   const FUSE_SEALS = 3;
   const FUSIONS = [
-    { id: 'tectonic', a: 'aftershock', b: 'seismic', keep: false, icon: '🗻', name: 'Tectonic', desc: 'Every 4th aimed paddle bounce cracks the bricks in a cone above the paddle, with half the ball damage.' },
+    { id: 'tectonic', a: 'aftershock', b: 'seismic', keep: false, icon: '🗻', name: 'Tectonic', desc: 'Every 4th paddle bounce cracks the bricks in a cone above the paddle, with half the ball damage.' },
     { id: 'brood', a: 'hydra', b: 'twinfever', keep: true, icon: '🪺', name: 'Brood', desc: 'Hydra Ball and Fever Twins. A ball from a split is a fireball for 2 seconds.' },
     { id: 'motherlode', a: 'chain', b: 'bombardier', keep: true, icon: '⛏️', name: 'Mother Lode', desc: 'Chain Reaction and Bombardier. A gold brick that breaks blasts the gold and bomb bricks next to it.' },
     { id: 'payday', a: 'coinshot', b: 'overload', keep: true, icon: '💵', name: 'Payday', desc: 'Coin Cannon and Coin Storm. The free shots fly to the nearest gold brick or chest.' },
@@ -341,20 +345,22 @@
     grease: { icon: '🧈', name: 'Greasy Paddle', text: 'The paddle is 50% wider, but it slides slowly.' },
     bouncy: { icon: '🏀', name: 'Bouncy Castle', text: 'The ball is 25% faster and hits 50% harder.' },
     tiny: { icon: '🔬', name: 'Shrink Ray', text: 'The balls are half the size. They fit through any gap.' },
-    jitter: { icon: '☕', name: 'Too Much Coffee', text: 'Pip is 60% faster, but his shots spread three times as wide.' },
+    jitter: { icon: '☕', name: 'Too Much Coffee', text: 'Pip pins a new brick every 2 seconds, but a pin lasts only 4.' },
   };
   // A dare is a free bet on the next level. ok() says if the level allows it, done() if the player did it.
   const DARES = {
-    sharp: { text: `Score ${DARE_BULLS} bullseyes`, ok: () => true, done: () => G.bulls >= DARE_BULLS },
+    clean: { text: 'Lose no ball', ok: () => true, done: () => G.flawless },
+    holster: { text: 'Clear the level in time with guns and drones switched off', ok: () => run.level >= HOLSTER_FROM && (ownsAnyGun() || DRONE_IDS.some((d) => lv(d) > 0)), done: () => !G.timeUp },
+    sharp: { text: `Score ${DARE_BULLS} bullseyes`, ok: () => run.level >= FROM.pin && !levelDef(run.level).boss, done: () => G.bulls >= DARE_BULLS },
     streak: { text: 'Break 30 bricks in one streak', ok: () => !levelDef(run.level).boss, done: () => G.comboBest >= 30 },
     blimps: { text: 'Pop 2 blimps', ok: () => !levelDef(run.level).boss && run.level >= FROM.blimp, done: () => G.popped >= 2 },
-    dings: { text: 'Score 3 bullseyes in a row', ok: () => true, done: () => G.dingBest >= 3 },
+    dings: { text: 'Hit the sweet spot 3 times in a row', ok: () => run.level >= FROM.sweet, done: () => G.dingBest >= 3 },
     smash: { text: 'Land 5 smashes', ok: () => run.level >= FROM.smash, done: () => G.smashes >= 5 },
   };
   const SAND_S = 8, EDGE_S = 8, BET_PAYS = 2.5, SAFARI_S = 20;
   // Heat: the game adapts to the player. A fast clear adds heat, a slow clear removes heat.
   // Each point makes bricks, monsters and bosses 25% tougher, and the level bonuses 6% bigger, up to 30%.
-  const HEAT_MIN = -8, HEAT_HP = 1.25, HEAT_PAY = 0.06, HEAT_PAY_MAX = 0.3;
+  const HEAT_MIN = -6, HEAT_HP = 1.25, HEAT_PAY = 0.06, HEAT_PAY_MAX = 0.3;
   const heatMult = () => Math.pow(HEAT_HP, run.heat);
   // The change of Heat after a level. share = the part of the clock that the level took. A level that takes
   // HEAT_TARGET of its clock changes nothing; a faster or slower level moves Heat in proportion, so that one very
@@ -364,9 +370,9 @@
   const heatStep = (share, late) => (late ? -3 : clamp(Math.round((HEAT_GAIN * Math.log(HEAT_TARGET / Math.max(share, 0.03))) / Math.log(HEAT_HP)), -3, 3));
   const heatPay = () => 1 + Math.min(HEAT_PAY_MAX, HEAT_PAY * Math.max(0, run.heat));
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
-  const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, bull: 11, heat: 12, specials: 13, smash: 16 };
+  const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, pin: 14, smash: 16 };
   // The first level on which each capsule can drop.
-  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, storm: 14, gold: 17, nuke: 20, potato: 28 };
+  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, pip: 12, storm: 14, gold: 17, nuke: 20, jar: 25, potato: 28 };
   const unlocked = (it) => (run.level >= it.at || lv(it.id) > 0) && (!it.seals || run.sealsEver > 0) && (!it.show || it.show());
   // upgrades that can still go up: the pool for sales and the Mystery Box
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
@@ -374,7 +380,7 @@
   const SETS = [
     { id: 'gunsmith', icon: '🔫', name: 'Gunsmith', items: ['belt', 'factory', 'recycler', 'echo'], text: 'The last shot of each clip fires three times.' },
     { id: 'baron', icon: '🎩', name: 'Blimp Baron', items: ['bait', 'cargo', 'hull', 'goldtix'], text: 'Every fifth blimp that you pop calls a convoy.' },
-    { id: 'juggler', icon: '🤹', name: 'Juggler', items: ['twin', 'dmg', 'crit'], text: 'A bullseye gives that ball +1 pierce until its next bounce.' },
+    { id: 'juggler', icon: '🤹', name: 'Juggler', items: ['twin', 'dmg', 'crit'], text: 'A sweet-spot hit gives that ball +1 pierce until its next bounce.' },
   ];
   const setHave = (s) => s.items.filter((id) => lv(id) >= maxOf(ITEM_BY_ID[id])).length;
   const setOn = (s) => run.level >= SET_FROM && setHave(s) === s.items.length;
@@ -454,6 +460,7 @@
     else if (idx <= 0.9 && Math.random() < 0.6) quip('discount', pct);
     else if (!ITEMS.some((it) => unlocked(it) && itemState(it) === 'ok')) quip('broke');
     else if (run.coins > 6 * betStake() && Math.random() < 0.4) quip('rich');
+    else if (run.level >= PARCEL_FROM && run.level < PARCEL_AT && !run.daily && Math.random() < 0.1) quip('parcelWait');
     else if (Math.random() < 0.12) quip('pipShop');
     else quip('open');
   }
@@ -509,9 +516,11 @@
     return { level: 1, coins: 0, lives: 3, up: {}, lifeBought: 0, relicsBought: 0, score: 0,
       relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats(),
       heat: 0, bet: 0, offer: null, nextSpecial: null, safariAt: 0, pendingSafari: false,
-      spent: 0, kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0, seals: 0, sealsEver: 0 };
+      spent: 0, kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0, seals: 0, sealsEver: 0, quill: newQuill() };
   }
   const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0, blimps: 0 });
+  // bands = the QUILL_BANDS that Quill Cheapwing has visited, beaten = the visits that ended with him driven off
+  const newQuill = () => ({ bands: [], beaten: 0 });
   function saveRun() { if (run && !run.daily) store.set(SAVE_KEY, run); }
   function loadRun() {
     const r = store.get(SAVE_KEY, null);
@@ -528,7 +537,7 @@
     if (!DARES[r.dare]) r.dare = null;
     if (!DARES[r.dareOffer]) r.dareOffer = null;
     r.heat = r.heat || 0; r.bet = r.bet || 0; r.tips = r.tips || 0; r.banked = r.banked || {}; r.star3 = r.star3 || 0;
-    r.seals = r.seals || 0; r.sealsEver = r.sealsEver || 0;
+    r.seals = r.seals || 0; r.sealsEver = r.sealsEver || 0; r.quill = r.quill || newQuill();
     // The Big Ball upgrade is gone. A save that has it gets the coins back.
     for (let i = 0; i < (r.up.bigball || 0); i++) r.coins += Math.round(85 * Math.pow(1.8, i));
     delete r.up.bigball;
@@ -543,7 +552,7 @@
   const STICKERS = [
     { id: 'first', icon: '🧱', name: 'First Brick', hint: 'Clear level 1.' },
     { id: 'runner', icon: '🏃', name: 'Tag, You Are It', hint: 'Catch a runaway brick.' },
-    { id: 'perfect', icon: '🔔', name: 'Ding Dong', hint: 'From level 11: score 5 bullseyes in a row.' },
+    { id: 'perfect', icon: '🔔', name: 'Ding Dong', hint: 'Hit the sweet spot 5 times in a row.' },
     { id: 'boss1', icon: '👑', name: 'Regicide', hint: 'Beat the Crate King.' },
     { id: 'late', icon: '⏰', name: 'Fashionably Late', hint: 'Let the clock run out.' },
     { id: 'broke', icon: '🕳️', name: 'Tax Evasion', hint: 'Start a level with 0 coins.' },
@@ -567,6 +576,7 @@
     { id: 'seal', icon: '🦭', name: 'Arf Arf', hint: 'Earn 5 Bazaar Seals in one run.' },
     { id: 'fusion', icon: '⚗️', name: 'Frankenrelic', hint: 'Fuse two relics.' },
     { id: 'loose', icon: '🔩', name: 'Loose Change', hint: 'Hit the loose coin counter 10 times.' },
+    { id: 'crow', icon: '🐦‍⬛', name: 'Scarecrow', hint: 'Drive off Quill Cheapwing three times in one run.' },
     { id: 'crash', icon: '💾', name: 'Error 0xSNAIL', hint: 'Break the game. It gets better.' },
   ];
   const stickerCount = () => STICKERS.filter((k) => meta.stickers[k.id]).length;
@@ -770,7 +780,8 @@
     { id: 'wind', name: 'WINDY DAY', text: 'Gusts push the ball and the coins' },
     { id: 'night', name: 'NIGHT MARKET', text: 'Lights out. Coins are worth 50% more' },
     { id: 'bill', name: 'YOU BREAK IT, YOU BUY IT', text: 'Every brick goes on your bill' },
-    { id: 'dayoff', name: "PIP'S DAY OFF", text: 'Mortimer drives the paddle. Slowly. Bullseyes pay double' },
+    { id: 'wrap', name: 'ROUND THE WORLD', text: 'The side walls are open. The ball comes back in on the other side' },
+    { id: 'dayoff', name: "PIP'S SHIFT", text: 'Let go, and Pip steers. Your own bullseyes pay double', from: 14 },
     { id: 'slide', name: 'LANDSLIDE', text: 'Bricks slide down into every gap', from: 26, fixed: true },
     { id: 'insomnia', name: 'INSOMNIA MARKET', text: 'The bricks are asleep. Coins are worth 50% more', from: 26, clock: true },
     { id: 'cuckoo', name: 'CUCKOO', text: 'Fever now, and the fever fills twice as fast', from: 26, clock: true },
@@ -1064,11 +1075,113 @@
     sfx.bossHit(); shake(4); dropCoin(clamp(C.x, 30, W - 30), C.y + C.h, CAMEO_PAY, true);
   }
 
+  // ---------- Quill Cheapwing ----------
+  // A crow trader, Mortimer's rival. He visits once in each band of QUILL_BAND_N levels that starts at a QUILL_BANDS
+  // level; the last level of a band always has him if he did not come before. He flies between ledges and to the coins
+  // that lie on the floor, and keeps the coins that he reaches. A ball hurts him only while he sits: he spills his sack
+  // and flies on. After QUILL_HITS hits he drops a purse and leaves; after QUILL_S seconds he leaves with the sack.
+  // He never costs a ball or a life. He is not a foe: guns, drones, lightning and the goal of the level ignore him.
+  const QUILL_BANDS = [21, 31, 41], QUILL_BAND_N = 9, QUILL_AT = 8, QUILL_S = 25, QUILL_HITS = 3, QUILL_PURSE = 12;
+  const QUILL_FLY = 300, QUILL_SIT = 2.5, QUILL_PECK = 1, QUILL_R = 12, QUILL_FOOT = 8, QUILL_REACH = 18, QUILL_TALK = 5, QUILL_EDGE = 40;
+  // The band whose visit is due at level n: the first band that has started and has had no visit. -1 = none.
+  // A visit that did not happen in its band (a level that was skipped or cleared too fast) comes on the next level.
+  const quillBand = (n) => QUILL_BANDS.findIndex((a, k) => n >= a && !run.quill.bands.includes(k));
+  function quillDue() {
+    const k = quillBand(run.level);
+    return k >= 0 && !run.daily && Math.random() * Math.max(1, QUILL_BANDS[k] + QUILL_BAND_N - run.level) < 1;
+  }
+  function startQuill() {
+    if (G.safari || G.clearT >= 0 || G.quill) return;
+    const k = quillBand(run.level);
+    if (k >= 0) run.quill.bands.push(k);
+    G.quill = { x: exit(Math.random() < 0.5 ? 0 : W), y: TOP, t: 0, hits: 0, sack: [], talkT: QUILL_TALK, sitT: 0, out: false };
+    quillPerch(G.quill);
+    G.heckled.quill = G.heckled.quillFlee = G.heckled.quillWin = false;
+    heckle('quill', 'Quill Cheapwing! Watch the floor coins.'); sfx.squawk();
+  }
+  // A coin on the floor comes first; else a free ledge; else a place on the floor.
+  function quillPerch(Q) {
+    const coins = G.coins.filter((c) => !c.dead && c.rest != null);
+    const spots = coins.length ? [] : ledges(new Set([...G.birds.map((o) => o.on), Q.on]));
+    Q.coin = coins.length ? pick(coins) : null;
+    Q.on = spots.length ? pick(spots) : null;
+    Q.tx = Q.coin ? Q.coin.x : Q.on ? Q.on.x + Q.on.w / 2 : rand(QUILL_EDGE, W - QUILL_EDGE);
+    Q.ty = (Q.on ? Q.on.y : FLOOR_Y) - QUILL_FOOT;
+    Q.fly = true;
+  }
+  function quillLeave(Q) {
+    Q.out = true; Q.fly = true; Q.on = Q.coin = null;
+    Q.tx = exit(Q.x); Q.ty = TOP;
+  }
+  function updateQuill(dt) {
+    const Q = G.quill;
+    if (!Q) return;
+    Q.t += dt;
+    if (!Q.out && G.clearT >= 0) quillLeave(Q);
+    if (!Q.out && Q.t >= QUILL_S) { quillLeave(Q); heckle('quillWin', 'He got away with the coins.'); }
+    if (!Q.out) {
+      if (Q.coin && !Q.coin.dead) Q.tx = Q.coin.x;
+      for (const c of G.coins) {
+        if (c.dead || c.rest == null || Math.hypot(c.x - Q.x, c.y - Q.y) > QUILL_REACH) continue;
+        c.dead = true; Q.sack.push(c.val); sfx.steal();
+      }
+      if ((Q.talkT -= dt) <= 0) { Q.talkT = QUILL_TALK; say(clamp(Q.x, QUILL_EDGE, W - QUILL_EDGE), Q.y - 24, snailSay('quillSay'), '#c9b6ff', 1.6); }
+    }
+    if (Q.fly) {
+      if (!walkTo(Q, QUILL_FLY, dt)) return;
+      if (Q.out) { G.quill = null; return; }
+      Q.fly = false; Q.sitT = Q.on ? QUILL_SIT : QUILL_PECK;
+      return;
+    }
+    if (Q.on && (!Q.on.alive || Q.on.row > 90)) { quillPerch(Q); return; }
+    if (Q.on) Q.y = Q.on.y - QUILL_FOOT;
+    if ((Q.sitT -= dt) <= 0) quillPerch(Q);
+  }
+  function quillHit(Q) {
+    Q.hits++; burst(Q.x, Q.y, '#3a3f55', 10, 160); sfx.squawk(Q.hits);
+    say(clamp(Q.x, QUILL_EDGE, W - QUILL_EDGE), Q.y - 22, 'SQUAWK!', '#ffffff', 0.8);
+    // dropCoin makes coins of the current value; the coins from the sack keep the value that they had
+    const n = Q.sack.length;
+    if (n) { dropCoin(Q.x, Q.y, n, true); G.coins.slice(-n).forEach((c, i) => { c.val = Q.sack[i]; }); Q.sack = []; }
+    if (Q.hits < QUILL_HITS) { quillPerch(Q); return; }
+    dropCoin(Q.x, Q.y, QUILL_PURSE, true); quillLeave(Q);
+    heckle('quillFlee', 'Off you go, Cheapwing!');
+    if (++run.quill.beaten !== QUILL_BANDS.length) return;
+    if (relicChoices().length) run.pendingRelic = true;
+    sticker('crow');
+  }
+  function drawQuill(t) {
+    const Q = G.quill;
+    if (!Q) return;
+    const ball = G.balls[0], dir = Q.fly ? Math.sign(Q.tx - Q.x) || 1 : ball && ball.x < Q.x ? -1 : 1, x = Q.x, y = Q.y;
+    // the coin bag on his back grows with the sack
+    const bag = 4 + Math.min(Q.sack.length, 6);
+    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(x - dir * 8, y - 2, bag, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(x - dir * 8, y - 2, bag * 0.4, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#23263a'; ctx.beginPath(); ctx.ellipse(x, y, 11, 7, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + dir * 7, y - 7, 5.5, 0, TAU); ctx.fill();
+    if (Q.fly) {
+      const flap = Math.sin(t * 24) * 7;
+      ctx.beginPath(); ctx.moveTo(x - 4, y - 2); ctx.lineTo(x - 18, y - 8 - flap); ctx.lineTo(x - 2, y + 3);
+      ctx.moveTo(x + 4, y - 2); ctx.lineTo(x + 18, y - 8 - flap); ctx.lineTo(x + 2, y + 3); ctx.fill();
+    }
+    ctx.fillStyle = '#d8b04a'; ctx.beginPath(); ctx.moveTo(x + dir * 11, y - 8); ctx.lineTo(x + dir * 18, y - 6); ctx.lineTo(x + dir * 11, y - 5); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x + dir * 8.5, y - 8.5, 1.8, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(x + dir * 9, y - 8.5, 0.9, 0, TAU); ctx.fill();
+    // top hat
+    ctx.fillStyle = '#111320'; ctx.fillRect(x + dir * 7 - 6, y - 13, 12, 2); ctx.fillRect(x + dir * 7 - 4, y - 21, 8, 8);
+    ctx.fillStyle = '#b04a6a'; ctx.fillRect(x + dir * 7 - 4, y - 15, 8, 2);
+    for (let i = 0; i < QUILL_HITS; i++) {
+      ctx.fillStyle = i < Q.hits ? '#ff5c5c' : '#5a5f78'; ctx.beginPath(); ctx.arc(x + (i - (QUILL_HITS - 1) / 2) * 7, y - 28, 2.5, 0, TAU); ctx.fill();
+    }
+  }
+
   function updateCritters(dt) {
     updateFrogs(dt);
     updateWalkers(dt);
     updatePeeks(dt);
     updateCameo(dt);
+    updateQuill(dt);
   }
   // ---------- the game talks back ----------
   // The shopkeeper comments on how you play. Each line comes at most once per level.
@@ -1082,8 +1195,9 @@
   function updateHeckle(dt) {
     if (G.heckle && (G.heckle.t -= dt) <= 0) G.heckle = null;
     if (!G.started || G.clearT >= 0 || G.safari) return;
-    G.wallT = G.grip != null && (paddle.x <= paddle.w / 2 + 2 || paddle.x >= W - paddle.w / 2 - 2) ? G.wallT + dt : 0;
-    if (G.time - G.inputT > IDLE_HECKLE_S) heckle('idle', 'Still there? 🧻');
+    G.idleT = Math.abs(paddle.vx) < 4 ? G.idleT + dt : 0;
+    G.wallT = paddle.x <= paddle.w / 2 + 2 || paddle.x >= W - paddle.w / 2 - 2 ? G.wallT + dt : 0;
+    if (G.idleT > 6) heckle('idle', 'Still there? 🧻');
     if (G.wallT > 5) heckle('wall', 'Wall-hugger detected.');
     if (G.dry >= 8 && !G.boss) heckle('dry', 'The ball is bored.');
     if (!said10 && performance.now() - sessionT0 > 600000) { said10 = true; heckle('ten', '10 minutes. Legs still awake?'); dropCoin(paddle.x, PADDLE_Y - 200, 10, true); }
@@ -1160,9 +1274,9 @@
   function startLevel(safari = false) {
     G = {
       safari, fever0: run.fever, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
-      lost: 0, dingBest: 0, smashes: 0, ding3: 0, bulls: 0, bullN: 0, spilled: 0, marks: [], grip: null, aimI: 0, autoBall: null, inputT: 0, pipT: -9, slept: false, hits: 0, skillHits: 0, boy: null, boyLeft: BOY_SAVES, loose: null, trophies: {}, cuckooT: -9, cuckooFever: false, cone: null,
-      portals: [], wind: 0, lastBounceT: -9, birds: [], frogs: [], walkers: [], peeks: [], cameo: null, bellies: 0, bribe: false, heckled: {}, heckle: null, wallT: 0, dry: 0, toasts: [], bill: 0,
-      tapT: -9, cam: null, eventAt: -1, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
+      lost: 0, dingBest: 0, smashes: 0, ding3: 0, bulls: 0, bullN: 0, spilled: 0, marks: [], pinT: PIN_GAP, autoBall: null, inputT: -9, down: false, drove: false, pipT: -9, boy: null, boyLeft: BOY_SAVES, loose: null, trophies: {}, cuckooT: -9, cuckooFever: false, cone: null,
+      portals: [], wind: 0, lastBounceT: -9, birds: [], frogs: [], walkers: [], peeks: [], cameo: null, quill: null, bellies: 0, bribe: false, heckled: {}, heckle: null, idleT: 0, wallT: 0, dry: 0, toasts: [], bill: 0,
+      sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, event: null, bingo: null, card: null, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
       bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
@@ -1184,7 +1298,10 @@
         fav.type = 'pinata'; fav.hp = fav.maxhp = PINATA_HITS;
       }
       if (run.level >= MIMIC_FROM && rest.length > 6 && Math.random() < 0.5) pick(rest).mimic = true;
-      if (run.level >= PANIC_FROM && Math.random() < 0.2) G.eventAt = rand(6, 18);
+      const events = EVENTS.filter((e) => run.level >= e.from);
+      if (events.length && Math.random() < EVENT_CHANCE) { G.eventAt = rand(6, 18); G.event = pick(events); }
+      if (run.dare === 'holster') after(1.2, () => heckle('holster', 'No guns. No drones. Just you. Brave. Silly, but brave.'));
+      if (run.level === PARCEL_AT && !run.daily) after(2, () => heckle('parcel', 'My parcel is here! It is a smaller snail. He sells nothing.'));
       if (run.level >= PANIC_FROM && Math.random() < 0.35) after(rand(12, 30), spawnSnail);
       G.bribe = run.level >= 8 && Math.random() < 0.2;
       for (let i = 0; run.level >= BIRD_FROM && i < 2 + ((Math.random() * 3) | 0); i++) {
@@ -1196,6 +1313,7 @@
       for (let i = crowd(WALKER_FROM, 0.33, 3); i > 0; i--) addWalker();
       for (let i = crowd(PEEK_FROM, 0.25, 2); i > 0; i--) addPeek();
       if (run.level >= CAMEO_FROM && Math.random() < CAMEO_CHANCE) after(rand(8, 25), startCameo);
+      if (quillDue()) after(QUILL_AT, startQuill);
     }
     if (!safari) setupField();
     G.brick0 = destructibleLeft();
@@ -1237,20 +1355,20 @@
     hideOverlay();
     pauseBtn.style.display = 'block';
     if (!safari && run.coins === 0 && run.level > 3) sticker('broke');
-    if (special('dayoff')) after(1.5, () => heckle('dayoff', 'Pip is off today. I drive. Hold on. Loosely.'));
+    if (special('dayoff')) after(1.5, () => heckle('dayoff', 'Pip has a shift today. Let go of the paddle. Trust the bug.'));
     else if (!safari && run.level >= 4 && Math.random() < 0.35) after(2.5, () => heckle('levelStart'));
     hud.coins = run.coins;
     A.fever(false); A.rush(99); A.streak(0);
     A.tune(run.level); A.music(G.boss || safari ? 2 : 1);
     if (G.boss) sfx.warn();
   }
-  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0 });
+  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0, pip: 0, jar: 0, film: 0, coffee: 0 });
 
   const MAX_BALLS = 8;
   const CHICKEN_FROM = 12, WANTED_S = 15;
   function makeBall(x, y, vx, vy) {
     const r0 = odd('tiny') ? 4 : 7;
-    return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, banks: 0, spin: 0, smash: false, inside: new Set(), trail: [], serve: false, held: false, shotT: -1, aimed: false, goal: null, bull: false, blocked: false };
+    return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, banks: 0, spin: 0, smash: false, inside: new Set(), trail: [], serve: false, bull: false, auto: false };
   }
   function serve() {
     const b = makeBall(paddle.x, PADDLE_Y - 8, 0, 0);
@@ -1261,18 +1379,7 @@
     }
     if (!ROUNDS[G.safari]) pip('pipServe');
   }
-  // The mark that ball b was sent at still waits for it.
-  const waits = (b) => !!b.goal && !!b.goal.ref && !b.goal.paid && !b.bull && !b.blocked && G.marks.includes(b.goal);
-  // Ball b leaves the paddle. aimed = the autopilot sent it at a mark.
-  function shot(b, aimed) {
-    // it came back and touched nothing: a miss ends the chain of bullseyes
-    if (waits(b)) { G.bullN = 0; pip('pipMiss'); }
-    b.shotT = G.time; b.aimed = aimed; b.goal = aimed ? aimMark() : null; b.bull = b.blocked = false;
-    if (aimed) G.aimI++;
-  }
   function launchAngle(b) {
-    const m = handsOn() ? null : aimMark();
-    if (m) return aimAngle(b.x, m);
     if (b.serve) return clamp(-(paddle.x - W / 2) / (W / 2) * 0.55, -0.55, 0.55) || 0.12;
     return clamp((b.off / (paddle.w / 2)) * 1.0, -1.05, 1.05);
   }
@@ -1282,9 +1389,8 @@
       if (!b.stuck) continue;
       any = true;
       const a = launchAngle(b), s = ballSpeed();
-      b.stuck = b.held = false; b.vx = Math.sin(a) * s; b.vy = -Math.cos(a) * s;
+      b.stuck = false; b.vx = Math.sin(a) * s; b.vy = -Math.cos(a) * s;
       b.pierce = lv('pierce');
-      shot(b, !handsOn() && G.marks.length > 0);
       if (b.serve) {
         b.serve = false;
         for (let i = 0; i < lv('twin') + (special('twins') || G.safari ? 2 : 0); i++) {
@@ -1313,10 +1419,10 @@
     life: { c: '#ff5c8a', l: '♥', w: 0.45 }, cash: { c: '#ffd700', l: '$', w: 1.8 }, net: { c: '#6ee7ff', l: 'N', w: 1 },
     mega: { c: '#ff7ad9', l: 'B', w: 1.6 }, storm: { c: '#fff27a', l: '⚡', w: 1.4 }, x2: { c: '#ffb02e', l: '×2', w: 1.4 },
     freeze: { c: '#a8e6ff', l: '❄', w: 1.3 }, gold: { c: '#ffd23f', l: '★', w: 1.1 }, nuke: { c: '#ff5c5c', l: '☢', w: 0.5 },
-    blimp: { c: '#ffb0e6', l: '🎈', w: 1 }, potato: { c: '#d9a066', l: '🥔', w: 1 },
+    blimp: { c: '#ffb0e6', l: '🎈', w: 1 }, potato: { c: '#d9a066', l: '🥔', w: 1 }, pip: { c: '#8fb4ff', l: 'P', w: 1.2 }, jar: { c: '#ff5c8a', l: '📌', w: 0.9 },
   };
   const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
-    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!', potato: 'HOT POTATO!' };
+    mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!', potato: 'HOT POTATO!', pip: 'PIP DRIVES! Let go', jar: 'TACK JAR!' };
   // Hot Potato: the lowest ball becomes a fuse ball. Each paddle bounce adds a charge; the next brick that it touches
   // explodes, bigger with each charge, and the charge is gone.
   const POTATO_MAX = 6, POTATO_S = 15;
@@ -1331,7 +1437,7 @@
   function rollPU() {
     const foes = G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
-      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato'));
+      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato' && k !== 'pip' && k !== 'jar'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
@@ -1386,6 +1492,8 @@
     else if (k === 'gold') setFx('gold', puDur(8));
     else if (k === 'nuke') nuke();
     else if (k === 'blimp') spawnBlimp();
+    else if (k === 'pip') setFx('pip', puDur(PIP_S));
+    else if (k === 'jar') { setFx('jar', puDur(JAR_S)); G.pinT = 0; }
     else if (k === 'potato') { const b = G.balls.reduce((a, o) => (!a || o.y > a.y ? o : a), null); if (b) b.potato = { n: 0, t: puDur(POTATO_S) }; }
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
@@ -1458,6 +1566,7 @@
     if (special('slide')) landslide(b);
     if (special('cuckoo')) cuckoo(cx, cy);
     if (G.noLoot) return;
+    if (b.bingo) bingoBrick(b, cx, cy);
     if (G.fx.panic > 0) dropCoin(cx, cy, 1, true);
     if (special('bill')) {
       G.bill += Math.max(1, Math.round(coinVal() * 0.6));
@@ -1528,6 +1637,82 @@
     say(W / 2, H * 0.42, 'THE BRICKS CAN SEE YOU!', '#ffffff', 2, true); sfx.taunt(); flashScreen('#ffffff', 0.2);
     say(W / 2, H * 0.42 + 30, 'Every brick drops a coin', '#ffd84a', 2);
   }
+  // Mid-level events. A level has one with the chance EVENT_CHANCE, at a random moment. from = the first level.
+  const EVENTS = [
+    { id: 'panic', from: PANIC_FROM, start: startPanic },
+    { id: 'coffee', from: 11, start: startCoffee },
+    { id: 'film', from: 12, start: startFilm },
+    { id: 'bingo', from: 13, start: startBingo },
+  ];
+  // Channel Flip: for FILM_S seconds the game is a silent film with title cards, and coins count double.
+  function startFilm() {
+    setFx('film', FILM_S); G.card = null;
+    say(W / 2, H * 0.42, 'CHANNEL FLIP!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'Coins count double', '#ffd84a', 2);
+    sfx.teleport(); flashScreen('#ffffff', 0.3);
+  }
+  // Coffee Break: for COFFEE_S seconds a ball hit deals double damage.
+  function startCoffee() {
+    setFx('coffee', COFFEE_S);
+    say(W / 2, H * 0.42, 'COFFEE BREAK!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'The bricks relax. Balls hit them twice as hard', '#ffd84a', 2);
+    sfx.taunt(); heckle('coffee', 'Union rules. Eight seconds.');
+  }
+  // Brick Bingo: three bricks get a number. Break all three in BINGO_S seconds for a jackpot.
+  function startBingo() {
+    const all = G.bricks.filter(hurtable);
+    if (all.length < 6) return;
+    for (let i = 0; i < 3; i++) { const k = all.splice(Math.floor(Math.random() * all.length), 1)[0]; k.bingo = 1 + Math.floor(Math.random() * 75); }
+    G.bingo = { t: BINGO_S, left: 3 };
+    say(W / 2, H * 0.42, 'BRICK BINGO!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'Break the three numbered bricks', '#ffd84a', 2);
+    sfx.warn(); heckle('bingo', 'Eyes down. Three numbers. No cheating.');
+  }
+  function bingoBrick(b, x, y) {
+    b.bingo = 0;
+    if (!G.bingo) return;
+    sfx.ding(3 - G.bingo.left); say(x, y - 14, --G.bingo.left ? G.bingo.left + ' to go' : 'BINGO!', '#ffffff', 1, !G.bingo.left);
+    if (G.bingo.left) return;
+    G.bingo = null; dropCoin(x, y, BINGO_PAY, true); sfx.jackpot(); flashScreen('#ffd84a', 0.25); shake(8);
+    G.heckled.bingoWin = false; heckle('bingoWin', 'Full card. I pay. I do not smile.');
+  }
+  function updateEvents(dt) {
+    if (G.fx.film > 0 && (!G.card || (G.card.t -= dt) <= 0)) G.card = { s: snailSay('film') || 'The ball. It approaches.', t: 2.4 };
+    if (!G.bingo || G.clearT >= 0 || (G.bingo.t -= dt) > 0) return;
+    G.bingo = null;
+    for (const k of G.bricks) k.bingo = 0;
+    say(W / 2, H * 0.42, 'No bingo', '#c9d0ff', 1.4); heckle('bingoLose', 'So close. Bingo is a cruel sport.');
+  }
+  // The numbers of Brick Bingo and the cups of the Coffee Break, on top of the bricks.
+  function drawEvents(t) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (G.fx.coffee > 0) {
+      ctx.font = '13px system-ui, sans-serif';
+      G.bricks.forEach((k, i) => { if (k.alive && i % 3 === 0) ctx.fillText('☕', k.x + k.w / 2, k.y - 3 + Math.sin(t * 3 + i) * 2); });
+    }
+    if (!G.bingo) return;
+    for (const k of G.bricks) {
+      if (!k.alive || !k.bingo) continue;
+      const x = k.x + k.w / 2, y = k.y + k.h / 2;
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, 11 + Math.sin(t * 6) * 1.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ff2a4d'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#1b1f33'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillText(k.bingo, x, y + 0.5);
+    }
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillText('BINGO  ' + Math.ceil(G.bingo.t) + ' s', W / 2, HUD_H + 14);
+  }
+  // Channel Flip: grey picture, sepia tint, scratches, and a title card.
+  function drawFilm(t) {
+    if (!G || G.fx.film <= 0 || mode !== 'play') return;
+    ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#e9cf9f'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(0,0,0,${0.05 + 0.05 * Math.sin(t * 37)})`; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    for (let i = 0; i < 3; i++) ctx.fillRect((Math.sin(t * (3 + i) + i * 9) * 0.5 + 0.5) * W, 0, 1, H);
+    if (!G.card) return;
+    ctx.fillStyle = 'rgba(8,8,8,0.88)'; rr(W / 2 - 170, H * 0.6, 340, 58, 4); ctx.fill();
+    ctx.strokeStyle = '#e9dcc0'; ctx.lineWidth = 2; rr(W / 2 - 164, H * 0.6 + 6, 328, 46, 2); ctx.stroke();
+    ctx.fillStyle = '#f3e9d2'; ctx.font = 'italic 17px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(G.card.s, W / 2, H * 0.6 + 29);
+  }
   // Streaks pay out every STREAK_STEP bricks; each payout is bigger than the last.
   const STREAK_STEP = 5;
   function streakCoins(combo) {
@@ -1581,34 +1766,21 @@
   canvas.addEventListener('pointerdown', (e) => {
     audio();
     if (mode !== 'play' || e.button === 2) return;
-    const p = toGame(e);
-    if (G.time - G.inputT > SMASH_GAP) G.tapT = G.time;
-    G.inputT = G.time;
-    e.preventDefault();
+    const p = toGame(e); paddle.tx = p.x;
+    G.tapT = G.inputT = G.time; G.down = true;
     if (G.api && ROUNDS[G.safari].tap) ROUNDS[G.safari].tap(G.api, p.x, p.y);
-    if (G.boy) { boyThrow(); return; }
-    if (handsOn()) { paddle.tx = p.x; launch(); return; }
-    // a tap just before a bounce is only a smash: it does not move the mark or the paddle
-    const inc = incoming();
-    if (G.level >= FROM.smash && inc && inc[2] < SMASH_S) return;
-    if (p.y >= GRIP_Y) {
-      if (G.grip == null) pip('pipGrab');
-      G.grip = e.pointerId; paddle.tx = p.x; launch();
-      return;
-    }
-    tapMark(p.x, p.y);
+    if (G.boy) boyThrow();
     launch();
+    e.preventDefault();
   });
-  window.addEventListener('pointermove', (e) => {
-    if (mode !== 'play' || !(handsOn() || G.grip === e.pointerId)) return;
+  canvas.addEventListener('pointermove', (e) => {
+    if (mode !== 'play') return;
     paddle.tx = toGame(e).x; G.inputT = G.time;
   });
-  function letGo(e) {
-    if (!G || G.grip !== e.pointerId) return;
-    G.grip = null; pip('pipBack');
-  }
-  window.addEventListener('pointerup', letGo);
-  window.addEventListener('pointercancel', letGo);
+  // Pip must know when the finger leaves the screen: he steers only while nobody holds the paddle
+  function pointerGone() { if (G) G.down = false; }
+  window.addEventListener('pointerup', pointerGone);
+  window.addEventListener('pointercancel', pointerGone);
   pauseBtn.addEventListener('click', (e) => { e.stopPropagation(); audio(); if (mode === 'play') showPause(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') showPause(); });
   // Right click or Escape pauses (Escape again resumes)
@@ -1666,7 +1838,7 @@
     paddle.vx = (paddle.x - (paddle.px == null ? paddle.x : paddle.px)) / dt; paddle.px = paddle.x;
 
     updateBalls(dt);
-    updateMarks(dt);
+    updatePins(dt);
     updateBoy(dt);
     updateLoose(dt);
     updateFoes(dt);
@@ -1682,7 +1854,8 @@
     updateCritters(dt);
     updateHeckle(dt);
     if (G.api && G.clearT < 0) ROUNDS[G.safari].tick(G.api, dt);
-    if (G.eventAt > 0 && G.clock >= G.eventAt && G.clearT < 0) { G.eventAt = -1; startPanic(); }
+    if (G.eventAt > 0 && G.clock >= G.eventAt && G.clearT < 0) { G.eventAt = -1; G.event.start(); }
+    updateEvents(dt);
     if (special('insomnia') && Math.random() < dt * 4) snore();
 
     updateOvertime(dt);
@@ -1707,7 +1880,7 @@
       if (b.stuck) {
         b.x = clamp(paddle.x + b.off, b.r, W - b.r); b.y = PADDLE_Y - b.r - 1;
         b.stuckT += dt;
-        if (!b.serve && !b.held && b.stuckT > 2.2) { b.stuckT = 0; launchOne(b); }
+        if (!b.serve && b.stuckT > 2.2) { b.stuckT = 0; launchOne(b); }
         continue;
       }
       // normalise speed, keep it from going too flat
@@ -1732,37 +1905,35 @@
         if (b.spin) { const c = Math.cos(b.spin * sdt), sn = Math.sin(b.spin * sdt), vx = b.vx; b.vx = vx * c - b.vy * sn; b.vy = vx * sn + b.vy * c; }
         b.x += b.vx * sdt; b.y += b.vy * sdt;
         // walls
-        if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); sfx.wall(); b.banks++; }
-        if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); sfx.wall(); b.banks++; }
+        if (special('wrap')) {
+          if (b.x < -b.r) { b.x = W + b.r; b.trail = []; } else if (b.x > W + b.r) { b.x = -b.r; b.trail = []; }
+        } else {
+          if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); sfx.wall(); b.banks++; }
+          if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); sfx.wall(); b.banks++; }
+        }
         if (b.y < HUD_H + b.r) { b.y = HUD_H + b.r; b.vy = Math.abs(b.vy); sfx.wall(); b.banks++; }
         // paddle (and its mirror image, with the Mirror Paddle relic)
         const P = b.vy > 0 && b.y + b.r >= PADDLE_Y && b.y - b.r <= PADDLE_Y + PADDLE_H ? paddles().find((p) => Math.abs(b.x - p.x) <= p.w / 2 + b.r) : null;
         if (P) {
-          // hand = the player has the paddle; aimed = the autopilot sends the ball at a mark
-          const hand = manual(), aimed = P === paddle && !hand && !!aimMark();
-          // a sleeping autopilot catches the ball and holds it until the player taps
-          if (!hand && asleep()) {
-            b.stuck = b.held = true; b.off = clamp(b.x - paddle.x, -paddle.w / 2, paddle.w / 2); b.stuckT = 0;
-            G.combo = 0; A.streak(0);
-            break;
-          }
           const off = clamp((b.x - P.x) / (P.w / 2), -1, 1);
-          const a = off * BOUNCE_K + rand(-1, 1) * (aimed ? aimSpread(lv('glasses')) * (odd('jitter') ? JITTER_SPREAD : 1) : 0.07);
+          const a = off * BOUNCE_K + rand(-1, 1) * (G.autoBall === b ? AIM_SPREAD : 0.07);
           b.vx = Math.sin(a) * sp; b.vy = -Math.cos(a) * sp; b.y = PADDLE_Y - b.r;
-          const skill = hand || !!aimMark();
-          b.pierce = skill ? lv('pierce') : 0; b.banks = 0; b.smash = false;
-          // a ball that made a bullseye after its last bounce keeps the streak
-          if (!b.bull) { G.combo = 0; A.streak(0); }
-          shot(b, aimed);
+          b.pierce = lv('pierce'); b.banks = 0; b.smash = b.whip = false;
+          // a hit on the sweet spot keeps the streak, and so does a ball that made a bullseye after its last bounce
+          b.auto = G.autoBall === b;
+          const sweet = P === paddle && !b.auto && G.level >= FROM.sweet && Math.abs(b.x - sweetX()) <= 10;
+          if (!sweet) G.sweetN = 0;
+          if (!sweet && !b.bull) { G.combo = 0; A.streak(0); }
+          b.bull = false;
           sfx.paddle(); burst(b.x, PADDLE_Y, '#bff8ff', 4, 110);
-          if (P === paddle) { paddle.squish = 1; paddleSkill(b, hand); } else if (hand && relic('mirrorspin')) b.spin = clamp(-paddle.vx / 300, -2, 2);
-          paddleBounce(b, skill || b.smash);
-          if (G.fx.glue > 0 && P === paddle) { b.stuck = true; b.off = b.x - paddle.x; b.stuckT = 0; b.goal = null; break; }
+          if (P === paddle) { paddle.squish = 1; paddleSkill(b, sweet); } else if (relic('mirrorspin')) b.spin = clamp(-paddle.vx / 300, -2, 2);
+          paddleBounce(b);
+          if (G.fx.glue > 0 && P === paddle) { b.stuck = true; b.off = b.x - paddle.x; b.stuckT = 0; break; }
           continue;
         }
         // goalie
         const goalie = G.drones.find((d) => d.type === 'goalie');
-        if (goalie && G.goalieCd <= 0 && b.vy > 0 && b.y + b.r >= GOALIE_Y && b.y < GOALIE_Y + 10 && Math.abs(b.x - goalie.x) < 38) {
+        if (goalie && !holstered() && G.goalieCd <= 0 && b.vy > 0 && b.y + b.r >= GOALIE_Y && b.y < GOALIE_Y + 10 && Math.abs(b.x - goalie.x) < 38) {
           b.vy = -Math.abs(b.vy); b.y = GOALIE_Y - b.r; G.goalieCd = goalieRecharge(lv('d_goalie')) / overclock();
           sfx.net(); burst(b.x, GOALIE_Y, '#7cf2a8', 10);
         }
@@ -1778,13 +1949,15 @@
         const dmgE = dmg;
         for (const f of G.foes) {
           if (f.dead || !ballVsCircle(b, f.x, f.y, f.r)) continue;
-          if (f.hitCd <= 0) { damageFoe(f, dmgE * markTouch(b, f), true); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
+          if (f.hitCd <= 0) { damageFoe(f, dmgE * pinTouch(b, f), true); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
         }
         const C = G.cameo;
         if (C && !C.out && ballVsRect(b, C.x - C.w / 2, C.y, C.w, C.h)) cameoHit(C);
+        const Q = G.quill;
+        if (Q && !Q.fly && !Q.out && ballVsCircle(b, Q.x, Q.y, QUILL_R)) quillHit(Q);
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
-          if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE * markTouch(b, B)); }
+          if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
           if (B.hat && ballVsRect(b, B.hat.x - HAT_W / 2, B.hat.y - 24, HAT_W, 26)) hatHit(B);
           // a ball in the Auditor's tractor beam turns the beam around
           if (B.state === 'tractor' && Math.abs(b.x - B.x) < 40 && b.y > B.y + B.h && b.y < PADDLE_Y - 60) {
@@ -1833,7 +2006,6 @@
       b.trail.push(b.x, b.y); if (b.trail.length > 22) b.trail.splice(0, 2);
     }
     const before = G.balls.length, gone = G.balls.find((b) => b.dead);
-    if (G.balls.some((b) => b.dead && waits(b))) G.bullN = 0;
     G.balls = G.balls.filter((b) => !b.dead);
     if (!before || G.balls.length || G.clearT >= 0) return;
     if (lv('ballboy') && G.boyLeft > 0 && !G.safari) { G.boy = { t: BOY_S, x: clamp(gone ? gone.x : paddle.x, 30, W - 30) }; sfx.warn(); }
@@ -1858,34 +2030,44 @@
   function paddles() {
     return relic('mirror') ? [paddle, { x: W - paddle.x, w: paddle.w * 0.7 }] : [paddle];
   }
+  // Skill shots on the player's own paddle.
+  // Sweet spot: a bright mark that moves after each bounce. A hit on it rings, pays, and keeps the streak. Five in a row give a fireball.
   // Smash: a tap just before the bounce doubles the damage and adds pierce until the next bounce.
-  // hand = the player has the paddle.
-  function paddleSkill(b, hand) {
-    if (G.level >= FROM.smash && G.time - G.tapT < SMASH_S) {
+  const sweetX = () => paddle.x + G.sweet * paddle.w / 2;
+  function paddleSkill(b, sweet) {
+    if (sweet) {
+      const n = ++G.sweetN;
+      G.dingBest = Math.max(G.dingBest, n);
+      if (n === 3) G.ding3++;
+      if (setById('juggler')) b.pierce++;
+      sfx.ding(n); ring(b.x, PADDLE_Y, 30 + n * 8, '#fff27a', 0.35); dropCoin(b.x, PADDLE_Y - 24, n, true);
+      say(b.x, PADDLE_Y - 30, n >= 5 ? 'PERFECT!' : 'DING ×' + n, '#fff27a', 0.9, n >= 5);
+      if (n >= 5) { G.sweetN = 0; sticker('perfect'); setFx('fire', 3); flashScreen('#fff27a', 0.2); sfx.cheer(3); }
+    }
+    G.sweet = rand(-0.7, 0.7);
+    if (G.level >= FROM.smash && G.time - G.tapT < 0.2) {
       G.tapT = -9; b.smash = true; b.pierce += 3; G.smashes++;
       say(b.x, PADDLE_Y - 46, 'SMASH!', '#ff9a3d', 0.8, true); ring(b.x, PADDLE_Y, 70, '#ff9a3d', 0.3, 4); sfx.whack(); shake(5);
     }
-    if (hand && relic('spin')) b.spin = clamp(paddle.vx / 300, -2, 2);
+    if (relic('spin')) b.spin = clamp(paddle.vx / 300, -2, 2);
+    if (relic('whip') && !G.drove && Math.abs(paddle.vx) > WHIP_V) {
+      b.whip = true; say(b.x, PADDLE_Y - 62, 'WHIP!', '#7cf2ff', 0.7); sfx.whack();
+    }
   }
   // The damage of one ball hit on brick k. The smash, the Bank Shot relic and a bullseye multiply it.
   function ballHit(b, dmg, k) {
-    const m = (b.smash ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0)) * markTouch(b, k);
-    // the first brick that the ball meets is not its mark: the way was blocked, and the chain of bullseyes ends
-    if (waits(b)) { b.blocked = true; G.bullN = 0; say(b.x, b.y + 18, 'blocked', '#aab2d6', 0.6); }
+    const m = (b.smash ? 2 : 1) * (b.whip ? 2 : 1) * (G.fx.coffee > 0 ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0)) * pinTouch(b, k);
     if (k && b.banks > 0 && relic('rebound')) popNeighbour(k, dmg);
     b.banks = 0;
     if (b.chicken) { sfx.squawk((G.combo / 5) | 0); burst(b.x, b.y, '#ffffff', 2, 90); }
     return dmg * m;
   }
   const HYDRA_MAX = 5;
-  // What a paddle bounce gives: gun reloads, the parrot, and the relics that count bounces.
-  // skill = the player aimed the bounce: by hand, with a mark or with a smash. A bounce that the autopilot makes alone gives nothing.
-  function paddleBounce(b, skill) {
-    G.dry++; G.hits++;
-    if (!skill) return;
-    G.skillHits++; G.paddleHits++; G.lastBounceT = G.time;
+  // relics that trigger on a paddle bounce
+  function paddleBounce(b) {
+    G.paddleHits++; G.dry++; G.lastBounceT = G.time;
     if (b.potato) b.potato.n = Math.min(POTATO_MAX, b.potato.n + 1);
-    if (lv('d_parrot') && G.paddleHits % PARROT_EVERY === 0) parrotPeck();
+    if (lv('d_parrot') && !holstered() && G.paddleHits % PARROT_EVERY === 0) parrotPeck();
     for (const g in GUNS) if (G.reload[g] > 0) G.reload[g] = Math.max(0.01, G.reload[g] - RELOAD_HIT);
     if (relic('hydra') && G.balls.length < HYDRA_MAX && Math.random() < 0.15) splitBall(b.x, b.y, b.vx, b.vy);
     if (relic('tectonic') && G.paddleHits % 4 === 0) tectonic(b.x);
@@ -1910,7 +2092,6 @@
   function launchOne(b) {
     const a = launchAngle(b), s = ballSpeed();
     b.stuck = false; b.vx = Math.sin(a) * s; b.vy = -Math.cos(a) * s; b.pierce = lv('pierce');
-    shot(b, !handsOn() && G.marks.length > 0);
   }
   function loseLife() {
     G.combo = 0; G.flawless = false; G.lost++; A.streak(0); pip('pipLost', true);
@@ -1961,8 +2142,7 @@
   // The last fifth of a level's bricks (at least 5) pulls the balls, so that the end of a level does not drag.
   const seekFrom = () => (G.level <= 3 ? 8 : Math.max(5, Math.ceil(G.brick0 * 0.2)));
   function steerBall(b, dt) {
-    // a ball on its way to a mark is not pulled off its line
-    if (G.seekT < (G.level <= 3 ? 0.5 : 1.5) || b.y > PADDLE_Y - 120 || waits(b)) return;
+    if (G.seekT < (G.level <= 3 ? 0.5 : 1.5) || b.y > PADDLE_Y - 120) return;
     // a turtle takes no damage from below: the balls go for other bricks first, and for the air above a turtle last
     const all = G.bricks.filter((k) => k.alive && k.type !== 'stone'), plain = all.filter((k) => k.type !== 'turtle');
     let best = null, bd = Infinity;
@@ -2008,8 +2188,10 @@
   const clipSize = (g) => Math.round(GUNS[g].clip * (1 + 0.25 * lv('belt')));
   const reloadTime = (g) => GUNS[g].reload * Math.pow(RELOAD_CUT, lv('factory'));
   const overdrive = () => G.fx.over > 0;
+  // The holster dare: guns and drones stay off for the level.
+  const holstered = () => run.dare === 'holster' && !G.safari;
   function updateGuns(dt) {
-    const active = G.balls.some((b) => !b.stuck) && G.clearT < 0;
+    const active = G.balls.some((b) => !b.stuck) && G.clearT < 0 && !holstered();
     const px = paddle.x, py = PADDLE_Y - 4;
     for (const g in GUNS) {
       const l = lv('gun_' + g); if (!l) continue;
@@ -2190,6 +2372,7 @@
   function updateDrones(dt) {
     const oc = overclock();
     if (G.goalieCd > 0) G.goalieCd -= dt;
+    if (holstered()) return;
     const active = G.balls.some((b) => !b.stuck) && G.clearT < 0;
     for (const d of G.drones) {
       if (d.type === 'orbit') {
@@ -2273,9 +2456,7 @@
         hitBrick(k, Math.ceil(k.maxhp * 0.5), false);
       } else if (d.type === 'goalie') {
         let tx = paddle.x, lowest = -1;
-        // the goalie takes a ball that the autopilot does not go for; with one ball it backs up the autopilot
-        for (const b of G.balls) if (!b.stuck && b.vy > 0 && b.y > lowest && b !== G.autoBall) { lowest = b.y; tx = b.x; }
-        if (lowest < 0 && G.autoBall) tx = G.autoBall.x;
+        for (const b of G.balls) if (!b.stuck && b.vy > 0 && b.y > lowest) { lowest = b.y; tx = b.x; }
         d.x += clamp(tx - d.x, -420 * oc * dt, 420 * oc * dt);
         d.x = clamp(d.x, 36, W - 36);
       }
@@ -2301,11 +2482,11 @@
         c.vy -= 1300 * dt; c.x += (G.boss.x - c.x) * Math.min(1, dt * 3);
         if (c.y < G.boss.y + G.boss.h) { c.dead = true; say(c.x, c.y + 20, 'TAXED!', '#ff5c5c', 0.6); sfx.steal(); continue; }
       }
-      // a coin that reaches the floor lies there for a moment, so that a paddle that passes can sweep it up
+      // a coin that reaches the floor lies there for a moment, so that the paddle can sweep it up
       const resting = c.rest != null;
       if (resting && (c.rest -= dt) <= 0) {
         c.dead = true; G.spilled += c.val; burst(c.x, c.y, '#8a8fa3', 3, 60);
-        if (G.spilled >= SPILL_HECKLE * coinVal()) heckle('spill', 'Coins on the floor! Drag the paddle down there.');
+        if (G.spilled >= SPILL_HECKLE * coinVal()) heckle('spill', 'Coins on the floor! Sweep them up.');
         continue;
       }
       c.vy = resting ? 0 : Math.min(c.vy + 420 * dt, 330); c.vx *= 1 - dt * (resting ? 5 : 1.5); c.vx += G.wind * dt;
@@ -2315,8 +2496,11 @@
       }
       c.x += c.vx * dt; c.y += c.vy * dt; c.spin += dt * 8;
       if (c.x < 6) { c.x = 6; c.vx = Math.abs(c.vx); } if (c.x > W - 6) { c.x = W - 6; c.vx = -Math.abs(c.vx); }
-      if (onPaddle(c.x, c.y, 8)) { c.dead = true; collectCoin(c); }
-      else if (handsOn()) c.dead = c.y > H + 10;
+      if (onPaddle(c.x, c.y, 8)) {
+        c.dead = true;
+        if (resting && lv('rake')) { const raw = c.val * (1 + RAKE_K * lv('rake')); c.val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
+        collectCoin(c);
+      } else if (handsOn()) c.dead = c.y > H + 10;
       else if (c.y >= FLOOR_Y) { c.y = FLOOR_Y; if (!resting) c.rest = COIN_REST; }
     }
     for (const p of G.pus) {
@@ -2430,6 +2614,7 @@
     say(W / 2, f.y - 34, d.call, d.body, 1.4); sfx.blimp();
     if (Math.random() < 0.4) heckle('blimp');
     if (G.level === FROM.blimp) say(W / 2, f.y - 12, 'Hit it with the ball for coins!', '#ffffff', 2.4);
+    pinBlimp(f);
     return f;
   }
   function blimpHit(f) {
@@ -2512,7 +2697,7 @@
     if (f.hp > 0) return;
     f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
     run.score += 50; run.stats.foes++; addFever(0.06);
-    if (f.type === 'blimp') dropCoin(f.x, f.y, f.small ? 3 : BLIMPS[f.kind].coins, true);
+    if (f.type === 'blimp') dropCoin(f.x, f.y, (f.small ? 3 : BLIMPS[f.kind].coins) * (f.double ? 2 : 1), true);
     else dropCoin(f.x, f.y, FOE[f.type].coins + f.loot * 2);
     if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
     if (G.clearT >= 0) return;
@@ -3136,12 +3321,10 @@
       saveRun(); showTally(); return;
     }
     const lvl = run.level, late = G.timeUp, timed = clockOn();
-    // one star each for: clearing, beating the clock, BULL_STAR bullseyes
-    const stars = 1 + (G.clock <= G.par ? 1 : 0) + (G.bulls >= BULL_STAR ? 1 : 0);
-    // played = how much of the level the player aimed. The autopilot alone earns no speed bonus and cools no Heat.
-    const played = G.hits ? Math.min(1, G.skillHits / G.hits / PLAYED_FULL) : 1;
+    // one star each for: clearing, beating the clock, losing no ball
+    const stars = 1 + (G.clock <= G.par ? 1 : 0) + (G.flawless ? 1 : 0);
     const clear = Math.round((15 + lvl * 4) * COIN_MULT * levelVal() * (1 + 0.15 * lv('bounty')));
-    const speed = timed ? Math.round(clear * clamp(1 - G.clock / G.par, 0, 1) * played) : 0;
+    const speed = timed ? Math.round(clear * clamp(1 - G.clock / G.par, 0, 1)) : 0;
     const starPay = Math.round(stars * (3 + lvl) * levelVal());
     const heatBonus = Math.round((clear + speed + starPay) * (heatPay() - 1));
     // a level that ends after the clock pays no bonus
@@ -3178,11 +3361,10 @@
     let heat = 0;
     if (lvl >= FROM.heat && !G.def.boss) {
       const r = G.clock / G.par, was = run.heat;
-      const step = heatStep(r * Math.pow(HEAT_BRICKS / Math.max(10, G.brick0), 0.6), late);
-      run.heat = clamp(run.heat + (played < 1 ? Math.max(step, 0) : step), HEAT_MIN, 99);
+      run.heat = clamp(run.heat + heatStep(r * Math.pow(HEAT_BRICKS / Math.max(10, G.brick0), 0.6), late), HEAT_MIN, 99);
       heat = run.heat - was;
     }
-    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, spilled: G.spilled, played, aimed: Math.round((100 * G.skillHits) / Math.max(1, G.hits)), ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance, alley,
+    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, spilled: G.spilled, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance, alley,
       wage: boyQuit ? 0 : wage, boyQuit, seals,
       combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.clock), par: G.par, flawless: G.flawless, late, timed, boss: !!G.def.boss };
     run.bet = 0; run.nextSpecial = null; run.wanted = false; run.dare = null; run.odd = null; if (!G.def.boss) run.favourite = false;
@@ -3238,10 +3420,13 @@
   function showMenu() {
     mode = 'menu'; pauseBtn.style.display = 'none'; G = null; A.music(0); A.fever(false);
     const saved = loadRun();
+    // the shopkeeper counts the days that the player was away
+    const away = meta.seen ? Math.floor((Date.now() - meta.seen) / 864e5) : 0;
+    meta.seen = Date.now(); saveMeta();
     showOverlay(`<div class="center">
       <div class="logo">BRICK<br>BAZAAR</div>
       <div class="tag">Smash bricks. Grab coins. Shop for silly hardware.</div>
-      ${snailBubble('menu')}
+      ${(away >= 1 && snailBubble('away', away)) || snailBubble('menu')}
       ${saved ? `<button class="big gold" data-act="resume">Continue · level ${saved.level} · ${saved.coins} 🪙</button>` : ''}
       <button class="big" data-act="newrun">${saved ? 'New run' : 'Play'}</button>
       ${stickerCount() >= DAILY_STICKERS ? `<button class="big alt" data-act="daily">🗓️ Bazaar of the Day${meta.dailyBest ? ` · best ${meta.dailyBest}` : ''}${meta.dailyDays ? ` · ${meta.dailyDays} day${meta.dailyDays > 1 ? 's' : ''}` : ''}</button>` : ''}
@@ -3250,7 +3435,7 @@
       ${soundBtns()}
       ${meta.bricks ? `<div class="stat life">You have smashed <b>${meta.bricks.toLocaleString('en')}</b> bricks. That is ${brickFact(meta.bricks)}.</div>` : ''}
       ${best.level ? `<div class="stat" style="margin-top:1em">Best: level <b>${best.level}</b> · score <b>${best.score}</b></div>` : ''}
-      <div class="hint">Tap a brick to mark it: Pip, the driver, aims the ball at it<br>Drag at the bottom to steer by hand and catch coins<br>Right click or Esc pauses. One hand is enough.</div>
+      <div class="hint">Drag or move the mouse to steer · tap or click to launch<br>Right click or Esc pauses. Guns and drones fire on their own. One hand is enough.</div>
     </div>`, 'see');
   }
   function showAlbum() {
@@ -3274,10 +3459,11 @@
       <div class="hint">More stickers open more kits.</div></div>`, 'see');
   }
   function showPause() {
-    mode = 'pause'; A.music(0); G.grip = null;
+    mode = 'pause'; A.music(0);
     const owned = RELICS.filter((r) => run.relics[r.id]);
     showOverlay(`<div class="center">
       <h2>Paused</h2>
+      ${snailSay('bugle') ? `<div class="stat">📰 <i>The Bazaar Bugle:</i> <b>${snailSay('bugle')}</b></div>` : ''}
       <div class="stat">Level <b>${run.level}</b> · <b>${run.coins}</b> 🪙 · ${'❤️'.repeat(run.lives)}${run.heat ? ` · ${heatTag()}` : ''}</div>
       ${owned.length ? `<div class="owned">${owned.map((r) => `<div><span>${r.icon}</span> <b>${r.name}</b> ${r.desc}</div>`).join('')}</div>` : ''}
       <div style="height:1em"></div>
@@ -3468,7 +3654,7 @@
   // ---------- fever ----------
   // Breaking bricks fills the gauge. A full gauge starts a fever: double coins and double ball damage.
   const feverOn = () => G.feverT > 0;
-  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') || special('insomnia') ? 0.5 : 0);
+  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.fx.film > 0 ? 1 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') || special('insomnia') ? 0.5 : 0);
   function addFever(v) {
     if (feverOn() || G.clearT >= 0 || G.level < FROM.fever) return;
     G.feverIdle = 0;
@@ -3554,26 +3740,27 @@
   // ---------- relics ----------
   // One of three is offered after every 5th level. Each changes a rule instead of a number.
   const RELICS = [
-    { id: 'mirror', icon: '🪞', name: 'Mirror Paddle', desc: 'A ghost paddle copies the paddle on the opposite side.' },
+    { id: 'mirror', icon: '🪞', name: 'Mirror Paddle', desc: 'A ghost paddle copies your moves on the opposite side.' },
     { id: 'chain', icon: '🧨', name: 'Chain Reaction', desc: 'Every brick destroyed by an explosion explodes too.' },
-    { id: 'hydra', icon: '🐍', name: 'Hydra Ball', desc: 'Each aimed paddle bounce has a 15% chance to split the ball, up to 5 balls.' },
+    { id: 'hydra', icon: '🐍', name: 'Hydra Ball', desc: 'Each paddle bounce has a 15% chance to split the ball, up to 5 balls.' },
     { id: 'popcorn', icon: '🍿', name: 'Popcorn', desc: 'A destroyed brick has a 20% chance to pop a neighbour.' },
     { id: 'midas', icon: '👑', name: 'Midas Touch', desc: 'Every 12th brick you break turns another brick to gold.' },
     { id: 'coinshot', icon: '💸', name: 'Coin Cannon', desc: 'Each coin you grab has a 30% chance to fire a free shot.' },
     { id: 'engine', icon: '🔥', name: 'Fever Engine', desc: 'Fever fills 40% faster and lasts 4 seconds longer.' },
-    { id: 'aftershock', icon: '🌋', name: 'Aftershock', desc: 'Every 4th aimed paddle bounce launches a free rocket.' },
+    { id: 'aftershock', icon: '🌋', name: 'Aftershock', desc: 'Every 4th paddle bounce launches a free rocket.' },
     { id: 'leech', icon: '🧛', name: 'Brick Leech', desc: 'Every 60 bricks broken restores a life. Full lives pay 15 coins.' },
+    { id: 'whip', icon: '🪢', name: 'Whip Bounce', at: 21, desc: 'A paddle that moves fast when it hits the ball gives the ball double damage on bricks until its next bounce.' },
     { id: 'boomerang', icon: '🪃', name: 'Boomerang', desc: 'A lost ball has a 35% chance to come back from the top.' },
     { id: 'twinfever', icon: '👯', name: 'Fever Twins', desc: 'When a fever starts, every ball splits in two.' },
     { id: 'bombardier', icon: '💣', name: 'Bombardier', desc: 'Gold bricks explode when they break.' },
     { id: 'overload', icon: '🌩️', name: 'Coin Storm', desc: 'Every 30 coins you grab call down 3 lightning strikes.' },
     { id: 'frost', icon: '🧊', name: 'Frostbite', desc: 'A ball hit freezes a monster for 2 seconds.' },
-    { id: 'seismic', icon: '🥁', name: 'Seismic Paddle', desc: 'Every 6th aimed paddle bounce cracks every brick.' },
+    { id: 'seismic', icon: '🥁', name: 'Seismic Paddle', desc: 'Every 6th paddle bounce cracks every brick.' },
     { id: 'pirate', at: 10, icon: '🏴‍☠️', name: 'Sky Pirates', desc: 'Popping a blimp calls an air strike of 6 bombs.' },
     { id: 'balloons', at: 10, icon: '🎈', name: 'Balloon Party', desc: 'Every 40 bricks you break call a blimp.' },
     { id: 'stopwatch', at: 10, icon: '⏱️', name: 'Stopwatch', desc: 'The clock stops during a fever.' },
     { id: 'bank', icon: '🎱', name: 'Bank Shot', desc: 'Each wall bounce since the paddle adds +100% damage to the next brick hit, up to +300%.' },
-    { id: 'spin', icon: '🌀', name: 'Curveball', desc: 'When you steer by hand, a moving paddle puts spin on the ball, and the ball curves.' },
+    { id: 'spin', icon: '🌀', name: 'Curveball', desc: 'A moving paddle puts spin on the ball, and the ball curves.' },
   ];
   for (const f of FUSIONS) RELICS.push({ id: f.id, icon: f.icon, name: f.name, desc: f.desc, fused: true });
   const relicById = (id) => RELICS.find((r) => r.id === id);
@@ -3658,96 +3845,87 @@
     G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() }); say(f.x, f.y - 26, '🏆 TROPHY!', '#ffd23f', 1);
   }
 
-  // ---------- the autopilot and the marks ----------
-  // Pip, the autopilot, moves the paddle. He returns balls and does nothing else: he does not go for coins or capsules.
-  // A tap on the field sets a mark. Pip then puts the paddle where the bounce sends the ball to the mark.
-  // A mark on a brick, a monster or a boss holds on to it. A second tap on a mark removes it. A mark lasts MARK_S seconds.
-  // A ball that left the paddle after the tap and hits the marked thing makes a bullseye: BULL_K times the damage for that
-  // hit, and the streak goes on. From level FROM.bull a chain of bullseyes pays coins, and five in a row give a fireball.
-  // A mark in open space is only a point to aim at. A mark on a boss stays after its bullseye, so that the aim holds.
-  // A touch from GRIP_Y down takes the paddle from Pip. He has it back when the touch ends.
-  // In the rounds where the paddle is the tool (Stock Toss and the plug-in rounds) the player has the paddle all the time.
+  // ---------- Pip and his pins ----------
+  // Pip, a woodlouse in a cap, rides on the paddle. The player steers; Pip talks.
+  // From level FROM.pin he pins a tack on a brick. A ball that hits the pinned brick makes a bullseye: BULL_K times the
+  // damage for that hit, coins that grow with each bullseye in a row, and the streak goes on over the next paddle
+  // bounce. Each BULL_CAPSULE-th bullseye of a level drops a capsule. A pin lasts pinLife() seconds; a pin that runs
+  // out ends the row. The next pin comes after pinGap() seconds.
+  // Pip at the wheel: while the capsule "Pip drives" runs, and on the special PIP'S SHIFT, Pip steers the paddle
+  // when the player gives no input for PIP_WAIT seconds. He returns the ball and aims it at a pin. He does not go
+  // for coins or capsules, and a bullseye or a sweet-spot hit of a ball that he returned pays nothing. In the rounds where the paddle is the tool (Stock Toss and the plug-in rounds) he never steers.
   const handsOn = () => G.safari === 'stock' || !!G.api;
-  const manual = () => G.grip != null || handsOn();
-  const asleep = () => G.started && G.time - G.inputT > SLEEP_S;
-  const markMax = () => 1 + lv('tack2');
-  const markPos = (m) => (m.ref ? centerOf(m.ref) : [m.x, m.y]);
-  const markLive = (m) => !m.ref || (m.ref.r || m.ref.kind ? !m.ref.dead : m.ref.alive);
-  // Sticky Tack: a mark on a brick stays after its bullseye, until its time is over.
-  const sticky = (m) => lv('tack') > 0 && m.ref && !m.ref.r && !m.ref.kind;
-  const aimMark = () => (G.marks.length ? G.marks[G.aimI % G.marks.length] : null);
-  const dropMark = (m) => { G.marks = G.marks.filter((q) => q !== m); };
-  // The brick, monster or boss under a tap, or null. A stone brick is not a target: a bullseye must hurt something.
-  function markable(x, y) {
-    let best = null, bd = MARK_SNAP;
-    for (const f of G.foes) { const d = Math.hypot(f.x - x, f.y - y) - f.r; if (!f.dead && d < bd) { bd = d; best = f; } }
-    if (best) return best;
-    const B = G.boss;
-    if (B && !B.dead && y >= B.y - MARK_SNAP && y <= B.y + B.h + MARK_SNAP && bossXs(B).some((bx) => Math.abs(x - bx) <= B.w / 2 + MARK_SNAP)) return B;
-    for (const k of G.bricks) {
-      const d = Math.hypot(x - clamp(x, k.x, k.x + k.w), y - clamp(y, k.y, k.y + k.h));
-      if (k.alive && k.type !== 'stone' && d < bd) { bd = d; best = k; }
-    }
-    return best;
+  const pinsOn = () => G.level >= FROM.pin && !G.safari && G.started && G.clearT < 0;
+  // A pin on a loot blimp comes with the blimp and does not count for pinMax; it stays as long as the blimp does.
+  // A called pin (from CALL_FROM) pays double if the ball touched a wall after its last paddle bounce.
+  // The capsule Tack Jar gives JAR_PINS more pins for a short time.
+  const pinMax = () => 1 + lv('tack2') + (G.fx.jar > 0 ? JAR_PINS : 0);
+  const pinGap = () => (G.fx.jar > 0 ? JAR_GAP : PIN_GAP * Math.pow(1 - COFFEE_K, lv('coffee')) * (odd('jitter') ? JITTER_K : 1));
+  const pinLife = () => PIN_S * (odd('jitter') ? JITTER_K : 1);
+  const onBlimp = (m) => !!m.ref.r;
+  const pinPos = (m) => (onBlimp(m) ? [m.ref.x, m.ref.y] : [m.ref.x + m.ref.w / 2, m.ref.y + m.ref.h / 2]);
+  const pinLive = (m) => (onBlimp(m) ? !m.ref.dead : m.ref.alive && G.time - m.t <= pinLife());
+  function pinBlimp(f) {
+    if (!pinsOn() || Math.random() >= BLIMP_PIN) return;
+    G.marks.push({ ref: f, t: G.time, call: false }); pip('pipMark');
   }
-  function tapMark(x, y) {
-    if (G.clearT >= 0) return;
-    const ref = markable(x, y);
-    // a tap on a target looks only for the mark on that target, so that a tap on the next brick does not remove a mark
-    const old = G.marks.find((m) => (ref ? m.ref === ref : Math.hypot(markPos(m)[0] - x, markPos(m)[1] - y) <= MARK_R));
-    if (old) dropMark(old);
-    // a second tap removes a mark; a tap on a mark that already paid its bullseye sets a new one
-    if (old && !old.paid) { sfx.wall(); return; }
-    const m = { x, y: clamp(y, HUD_H + 8, GRIP_Y - 8), ref, t: G.time, paid: false, vx: 0, vy: 0, px: null, py: null };
+  const dropPin = (m) => { G.marks = G.marks.filter((q) => q !== m); };
+  function addPin() {
+    const all = G.bricks.filter((k) => hurtable(k) && !G.marks.some((m) => m.ref === k));
+    // a brick with nothing below it, so that a ball can reach it
+    const open = all.filter((k) => !G.bricks.some((q) => q.alive && q !== k && q.y > k.y && q.x < k.x + k.w && q.x + q.w > k.x));
+    const from = open.length ? open : all;
+    if (!from.length) return;
+    const m = { ref: pick(from), t: G.time, call: G.level >= CALL_FROM && Math.random() < CALL_CHANCE };
     G.marks.push(m);
-    if (G.marks.length > markMax()) G.marks.shift();
-    const [mx, my] = markPos(m);
-    sfx.ping(3); ring(mx, my, 30, '#fff27a', 0.3); pip('pipMark');
+    const [x, y] = pinPos(m);
+    sfx.ping(3); ring(x, y, 30, '#fff27a', 0.3); pip('pipMark');
   }
-  // Ball b touched o. If o has a mark that waits for this ball, the hit is a bullseye. Returns the damage factor.
-  function markTouch(b, o) {
-    const m = G.marks.find((q) => q.ref === o && !q.paid && b.shotT >= q.t);
+  function updatePins(dt) {
+    if (!pinsOn()) { G.marks = []; return; }
+    for (const m of G.marks.slice()) {
+      if (pinLive(m)) continue;
+      if (!onBlimp(m) && m.ref.alive) { G.bullN = 0; pip('pipMiss'); }
+      dropPin(m);
+    }
+    if (G.marks.filter((m) => !onBlimp(m)).length < pinMax() && (G.pinT -= dt) <= 0) { G.pinT = pinGap(); addPin(); }
+  }
+  // Ball b hits brick or blimp k. If Pip pinned k, the hit is a bullseye. Returns the damage factor.
+  // A pinned blimp pops at once and drops double cargo.
+  function pinTouch(b, k) {
+    const m = G.marks.find((q) => q.ref === k);
     if (!m) return 1;
+    if (onBlimp(m) && !b.auto) { k.hp = 1; k.double = true; }
     bullseye(b, m);
-    return BULL_K;
+    return b.auto ? 1 : BULL_K + lv('glasses');
   }
   function bullseye(b, m) {
-    const [x, y] = markPos(m), n = ++G.bullN, chain = G.level >= FROM.bull && !G.safari;
-    if (!sticky(m) && m.ref !== G.boss) dropMark(m);
-    m.paid = true; b.bull = true; G.bulls++;
-    G.dingBest = Math.max(G.dingBest, n);
-    if (n === 3) G.ding3++;
-    if (n >= 5) G.bullN = 0;
-    if (setById('juggler')) b.pierce++;
+    const [x, y] = pinPos(m);
+    dropPin(m); G.pinT = pinGap();
+    // a bullseye that Pip steered is his, not the player's: it pays nothing and counts for nothing
+    if (b.auto) { sfx.ding(0); ring(x, y, 26, '#8fb4ff', 0.35); say(clamp(x, 70, W - 70), y - 18, "Pip's bullseye", '#8fb4ff', 0.9); return; }
+    const n = Math.min(++G.bullN, 5), called = m.call && b.banks > 0;
+    b.bull = true; G.bulls++;
     sfx.ding(n); ring(x, y, 26 + n * 6, '#fff27a', 0.35); ring(x, y, 12, '#ffffff', 0.25, 2); burst(x, y, '#fff27a', 8, 150);
-    say(clamp(x, 70, W - 70), y - 18, chain && n >= 5 ? 'PERFECT!' : n > 1 ? 'BULLSEYE ×' + n : 'BULLSEYE!', '#fff27a', 0.9, chain && n >= 5);
+    say(clamp(x, 70, W - 70), y - 18, called ? 'CALLED IT! ×2' : n > 1 ? 'BULLSEYE ×' + n : 'BULLSEYE!', called ? '#7cf2ff' : '#fff27a', 0.9, n >= 5 || called);
     pip('pipBull');
-    if (!chain) return;
-    for (let i = 0; i < n * (special('dayoff') ? 2 : 1); i++) collectCoin({ x, y, val: coinWorth() });
-    if (n >= 5) { sticker('perfect'); setFx('fire', 3); flashScreen('#fff27a', 0.2); sfx.cheer(3); }
+    for (let i = 0; i < n * (special('dayoff') ? 2 : 1) * (called ? 2 : 1); i++) collectCoin({ x, y, val: coinWorth() });
+    if (G.bulls % BULL_CAPSULE === 0 && G.fx.jar <= 0) { G.pus.push({ x, y, vy: 110, k: rollPU() }); say(clamp(x, 70, W - 70), y - 38, "PIP'S TIP!", '#8fb4ff', 1.1); }
+    if (lv('tack')) after(0.06, () => explode(x, y, TACK_RAD, Math.max(1, Math.round(ballDmg())), '#ff5c8a', true));
   }
-  function updateMarks(dt) {
-    for (const m of G.marks) {
-      const [x, y] = markPos(m);
-      if (m.px != null && dt > 0) { m.vx = clamp((x - m.px) / dt, -300, 300); m.vy = clamp((y - m.py) / dt, -300, 300); }
-      m.px = x; m.py = y;
-      if (m.ref) continue;
-      // a mark in open space is only a point to aim at: the ball that reaches it removes it
-      if (G.balls.some((q) => !q.stuck && q.shotT >= m.t && Math.hypot(q.x - x, q.y - y) <= MARK_HIT + q.r)) { dropMark(m); ring(x, y, 18, '#fff27a', 0.25); sfx.ping(1); }
-    }
-    G.marks = G.marks.filter((m) => markLive(m) && G.time - m.t <= MARK_S);
-    const z = asleep() && !manual();
-    if (z !== G.slept) pip(z ? 'pipSleep' : 'pipWake', true);
-    G.slept = z;
+  // Spotter's Flare: the aiming weapons go for a brick that Pip pinned.
+  function flared() {
+    const m = lv('flare') ? G.marks.find((q) => !onBlimp(q) && hurtable(q.ref)) : null;
+    return m ? m.ref : null;
   }
-  // The bounce angle that sends a ball from x = lx on the paddle line to mark m. A mark that moves gets a lead.
+  const pipOn = () => !handsOn() && (G.fx.pip > 0 || special('dayoff'));
+  const pipDrives = () => pipOn() && !G.down && G.time - G.inputT > PIP_WAIT;
+  // The bounce angle that sends a ball from x = lx on the paddle line to pin m.
   function aimAngle(lx, m) {
-    const [mx, my] = markPos(m), t = Math.hypot(mx - lx, PADDLE_Y - my) / ballSpeed();
-    const dx = clamp(mx + m.vx * t, 8, W - 8) - lx, dy = Math.max(30, PADDLE_Y - 8 - my - m.vy * t);
-    return clamp(Math.atan2(dx, dy), -AIM_MAX, AIM_MAX);
+    const [mx, my] = pinPos(m);
+    return clamp(Math.atan2(mx - lx, Math.max(30, PADDLE_Y - 8 - my)), -AIM_MAX, AIM_MAX);
   }
-  // The ball that reaches the paddle line first, the x where it does, and the seconds until then: [ball, x, t].
-  // The side walls fold its path.
+  // The ball that reaches the paddle line first, and the x where it does: [ball, x]. The side walls fold its path.
   function incoming() {
     let ball = null, bt = Infinity;
     for (const b of G.balls) {
@@ -3756,83 +3934,69 @@
       if (t < bt) { bt = t; ball = b; }
     }
     if (!ball) return null;
+    if (special('wrap')) return [ball, (((ball.x + ball.vx * bt) % W) + W) % W];
     const span = W - 2 * ball.r;
     let u = (ball.x + ball.vx * bt - ball.r) % (2 * span);
     if (u < 0) u += 2 * span;
-    return [ball, ball.r + (u > span ? 2 * span - u : u), bt];
+    return [ball, ball.r + (u > span ? 2 * span - u : u)];
   }
+  // Pip at the wheel. G.autoBall is the ball that he goes for.
   function autopilot(dt) {
+    const on = pipDrives();
+    if (on !== G.drove) { G.drove = on; pip(on ? 'pipBack' : 'pipGrab'); }
     G.autoBall = null;
-    if (G.grip != null) G.inputT = G.time;
-    if (manual()) return;
+    if (!on) return;
     const half = paddle.w / 2, inc = incoming();
     paddle.tx = clamp(paddle.tx, half, W - half);
     if (!inc) return;
-    const [ball, lx] = inc, m = aimMark();
+    const [ball, lx] = inc, m = G.marks[0];
     G.autoBall = ball;
-    // with no mark: the smallest move that returns the ball, but not straight up
+    // with no pin: the smallest move that returns the ball, but not straight up
     let off = m ? clamp(aimAngle(lx, m) / BOUNCE_K, -AIM_OFF, AIM_OFF) : clamp((lx - paddle.tx) / half, -LAZY, LAZY);
     if (!m && Math.abs(off) < 0.15) off = lx < W / 2 ? 0.15 : -0.15;
     const want = clamp(lx - off * half, half, W - half);
-    const v = AUTO_SPEED * (1 + COFFEE_K * lv('coffee')) * (special('dayoff') ? DAYOFF_K : 1) * (odd('jitter') ? JITTER_SPEED : 1);
-    paddle.tx += clamp(want - paddle.tx, -v * dt, v * dt);
+    paddle.tx += clamp(want - paddle.tx, -AUTO_SPEED * dt, AUTO_SPEED * dt);
   }
   // Pip says a line above the paddle. After a line he is quiet for PIP_GAP seconds, unless now is set.
   function pip(key, now = false) {
-    if (handsOn() || special('dayoff') || (!now && G.time - G.pipT < PIP_GAP)) return;
+    if (handsOn() || (!now && G.time - G.pipT < PIP_GAP)) return;
     const line = snailSay(key);
     if (!line) return;
-    G.pipT = G.time; say(clamp(paddle.x, 110, W - 110), GRIP_Y - 12, line, '#cfe8ff', 1.8);
+    G.pipT = G.time; say(clamp(paddle.x, 110, W - 110), PADDLE_Y - 34, line, '#cfe8ff', 1.8);
   }
-  // Spotter's Flare: the aiming weapons go for the brick that has a mark.
-  function flared() {
-    const m = lv('flare') ? G.marks.find((q) => q.ref && hurtable(q.ref)) : null;
-    return m ? m.ref : null;
-  }
-  // The floor line where coins come to rest, and the grip zone.
+  // The floor line where coins come to rest.
   function drawFloor() {
     if (handsOn()) return;
-    ctx.fillStyle = G.grip != null ? 'rgba(124,242,255,0.09)' : 'rgba(124,242,255,0.03)';
-    ctx.fillRect(0, GRIP_Y, W, H - GRIP_Y);
     ctx.fillStyle = 'rgba(124,242,255,0.18)';
     for (let x = 4; x < W; x += 16) ctx.fillRect(x, FLOOR_Y + 9, 8, 2);
   }
-  function drawMarks(t) {
-    const aim = manual() ? null : aimMark();
+  function drawPins(t) {
     for (const m of G.marks) {
-      const [x, y] = markPos(m), p = (t * 1.5) % 1, left = clamp(1 - (G.time - m.t) / MARK_S, 0, 1);
-      if (m === aim) {
+      const [x, y] = pinPos(m), p = (t * 1.5) % 1, left = onBlimp(m) ? 1 : clamp(1 - (G.time - m.t) / pinLife(), 0, 1);
+      if (G.drove && m === G.marks[0]) {
         ctx.strokeStyle = 'rgba(255,242,122,0.3)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 7]); ctx.lineDashOffset = -t * 30;
         ctx.beginPath(); ctx.moveTo(paddle.x, PADDLE_Y); ctx.lineTo(x, y); ctx.stroke(); ctx.setLineDash([]);
       }
       ctx.strokeStyle = `rgba(255,242,122,${(1 - p) * 0.9})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8 + 16 * p, 0, TAU); ctx.stroke();
-      // the white arc shows the time that the mark has left
+      // the white arc shows the time that the pin has left
       ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(x, y, 13, -Math.PI / 2, -Math.PI / 2 + TAU * left); ctx.stroke();
       // the tack
       ctx.strokeStyle = '#dfe6ff'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 5, y - 9); ctx.stroke();
-      ctx.fillStyle = m.paid ? '#ffb347' : '#ff2a4d'; ctx.beginPath(); ctx.arc(x + 6, y - 11, 5.5, 0, TAU); ctx.fill();
+      ctx.fillStyle = m.call ? '#2f9bff' : '#ff2a4d'; ctx.beginPath(); ctx.arc(x + 6, y - 11, 5.5, 0, TAU); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(x + 4.5, y - 12.5, 1.8, 0, TAU); ctx.fill();
+      if (m.call) { ctx.fillStyle = '#7cf2ff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('OFF A WALL ×2', clamp(x, 44, W - 44), y + 22); }
     }
   }
-  // Pip on the paddle: a woodlouse in a cap. The cap points backward while the player has the paddle;
-  // a stun rolls him up; with no input he sleeps.
+  // Pip on the paddle. His cap points forward while he steers and backward while the player does. A stun rolls him up.
   function drawPip(t, x, y) {
-    const px = x + 22, hand = G.grip != null, m = aimMark();
-    if (special('dayoff')) { ctx.font = '20px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('🐌', px, y + 4); return; }
+    const px = x + 22, low = G.balls.reduce((a, b) => (!b.stuck && (!a || b.y > a.y) ? b : a), null);
     ctx.fillStyle = G.stun > 0 ? '#7d8a6a' : '#8d93ad'; ctx.beginPath(); ctx.ellipse(px, y + 1, 10, 8, 0, Math.PI, 0); ctx.fill();
     ctx.strokeStyle = 'rgba(30,34,60,0.45)'; ctx.lineWidth = 1;
     for (const dx of [-4, 0, 4]) { ctx.beginPath(); ctx.moveTo(px + dx, y - 7 + Math.abs(dx) * 0.4); ctx.lineTo(px + dx, y + 1); ctx.stroke(); }
     if (G.stun > 0) return;
-    if (asleep() && !hand) {
-      ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(px - 5, y - 3); ctx.lineTo(px - 1.5, y - 3); ctx.moveTo(px + 1.5, y - 3); ctx.lineTo(px + 5, y - 3); ctx.stroke();
-      ctx.fillStyle = '#cfe8ff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText('z', px + 9 + ((t * 6) % 8), y - 13 - ((t * 9) % 12));
-    } else {
-      const to = m && !hand ? markPos(m)[0] : G.autoBall ? G.autoBall.x : px;
-      eyes(px, y - 3, 3.2, 2.2, clamp((to - px) / 60, -1.5, 1.5));
-    }
-    ctx.fillStyle = '#2f6bff'; ctx.beginPath(); ctx.ellipse(px, y - 7, 6.5, 3.5, 0, Math.PI, 0); ctx.fill();
-    ctx.fillRect(hand ? px - 10 : px + 3, y - 8, 7, 1.8);
+    eyes(px, y - 3, 3.2, 2.2, clamp(((low ? low.x : px) - px) / 60, -1.5, 1.5));
+    ctx.fillStyle = pipOn() ? '#ffb02e' : '#2f6bff'; ctx.beginPath(); ctx.ellipse(px, y - 7, 6.5, 3.5, 0, Math.PI, 0); ctx.fill();
+    ctx.fillRect(G.drove ? px + 3 : px - 10, y - 8, 7, 1.8);
   }
 
   // ---------- the loose HUD ----------
@@ -3884,7 +4048,7 @@
     run.deals = [];
     run.dareOffer = pick(Object.keys(DARES).filter((k) => DARES[k].ok()));
     const next = levelDef(run.level), fixed = next.boss || next.wheel || next.map.some((row) => /[X()]/.test(row));
-    run.oddOffer = pick(Object.keys(ODDS).filter((k) => k !== 'flip' || !fixed));
+    run.oddOffer = pick(Object.keys(ODDS).filter((k) => (k !== 'flip' || !fixed) && (k !== 'jitter' || run.level >= FROM.pin)));
     run.offer = pick(specialPool(next, run.level)).id;
     if (run.level < FROM.sales) return;
     const pool = upgradePool();
@@ -3925,8 +4089,7 @@
       </div>
       ${snailBubble(verdict)}
       ${s.heat > 0 ? chip(`🌶️ Heat ${run.heat}: tougher bricks, bonuses +${Math.round((heatPay() - 1) * 100)}%`, 'hot') : s.heat < 0 ? chip(`🧊 Heat cools to ${run.heat}: softer bricks`) : ''}
-      ${s.played < 1 && !s.late ? chip(`🎯 You aimed ${s.aimed}% of the bounces. From ${PLAYED_FULL * 100}% the speed bonus is whole.`) : ''}
-      ${s.spilled >= Math.max(5, s.picked * 0.15) ? chip(`🪙 ${s.spilled} coins stayed on the floor. Drag the paddle to sweep them up.`) : ''}
+      ${s.spilled >= Math.max(5, s.picked * 0.15) ? chip(`🪙 ${s.spilled} coins stayed on the floor. Sweep them up with the paddle.`) : ''}
       ${s.bet && !s.betWon ? chip(`🎟️ Speed bet lost: −${s.bet} coins`, 'bad') : ''}
       ${s.dare && !s.darePay ? chip(`🤞 Dare failed: ${s.dare.toLowerCase()}`) : ''}
       ${s.seals ? chip(`🦭 +${s.seals} Bazaar Seal${s.seals > 1 ? 's' : ''}. You have ${run.seals}. Spend them Upstairs.`, 'new') : ''}
@@ -4042,7 +4205,7 @@
   function beginDaily() {
     const day = today(), rnd = mulberry32(dayHash(day));
     // the special must fit every map of the list
-    const specials = SPECIALS.filter((x) => !x.clock && !x.open && !x.fixed), relics = RELICS.filter((r) => !r.fused && !r.at);
+    const specials = SPECIALS.filter((x) => !x.clock && !x.open && !x.fixed && !x.from), relics = RELICS.filter((r) => !r.fused && !r.at);
     run = newRun(); lastSummary = null; shopLevel = 0;
     run.daily = { day, i: 0, special: specials[(rnd() * specials.length) | 0].id };
     run.relics[relics[(rnd() * relics.length) | 0].id] = true;
@@ -4290,8 +4453,13 @@
     const center = ['laser', 'rocket', 'scatter', 'arc'].filter((g2) => lv('gun_' + g2));
     center.forEach((g2, i) => { ctx.fillStyle = GUNS[g2].color; ctx.fillRect(paddle.x - center.length * 4 + i * 8 + 1, y - 6, 6, 7); });
     if (fire) { ctx.fillStyle = '#ff8a3d'; ctx.fillRect(x + 10, y + PADDLE_H - 3, w - 20, 2); }
+    if (G.level >= FROM.sweet && !stun) {
+      const sx = clamp(sweetX(), x + 7, x + w - 7), pulse = 0.6 + 0.4 * Math.sin(t * 8);
+      ctx.globalCompositeOperation = 'lighter'; glow(sx, y + 2, 12 + G.sweetN * 3, '#fff27a', 0.5 * pulse); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.fillStyle = '#fff27a'; rr(sx - 5, y - 3, 10, PADDLE_H + 3, 3); ctx.fill();
+      ctx.fillStyle = '#ffffff'; rr(sx - 2, y - 2, 4, PADDLE_H + 1, 2); ctx.fill();
+    }
     if (!handsOn()) drawPip(t, x, y);
-    if (G.grip != null) { ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; rr(x - 3, y - 3, w + 6, PADDLE_H + 6, 9); ctx.stroke(); }
     if (lv('d_parrot')) { ctx.font = '18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('🦜', x + w - 10, y + 3); }
     const ml = lv('magnet');
     if (ml) {
@@ -4336,14 +4504,12 @@
       ctx.fillStyle = '#5a3200'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(b.potato.n, b.x, b.y + 0.5);
     }
   }
-  // Trick Sight: the path of a ball that waits on the paddle, and of the next shot of the autopilot at a mark.
   function drawAim() {
     if (!lv('aim')) return;
-    const starts = G.balls.filter((b) => b.stuck).map((b) => [b.x, b.y, launchAngle(b)]);
-    const inc = manual() || !aimMark() ? null : incoming();
-    if (inc) starts.push([inc[1], PADDLE_Y - inc[0].r, aimAngle(inc[1], aimMark())]);
-    for (const [x0, y0, a] of starts) {
-      let x = x0, y = y0, vx = Math.sin(a), vy = -Math.cos(a), bounced = false;
+    for (const b of G.balls) {
+      if (!b.stuck) continue;
+      const a = launchAngle(b);
+      let x = b.x, y = b.y, vx = Math.sin(a), vy = -Math.cos(a), bounced = false;
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       // after the first brick or ceiling bounce the path goes on, fainter, to the next one
       for (let i = 0, n = 46; i < n; i++) {
@@ -4529,7 +4695,7 @@
     ctx.globalAlpha = 1;
   }
 
-  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A']];
+  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A'], ['pip', 'P'], ['jar', '📌'], ['film', '🎞'], ['coffee', '☕']];
   const fxColor = (k) => (PU[k] || PU.ammo).c;
   function drawHUD(t) {
     const g = ctx.createLinearGradient(0, 0, 0, HUD_H);
@@ -4589,6 +4755,12 @@
       const fw = W * run.fever;
       ctx.fillStyle = '#ff9a3d'; ctx.fillRect(0, fy, fw, 5);
       ctx.fillStyle = '#fff3c0'; ctx.fillRect(Math.max(0, fw - 4), fy, 4, 5);
+    }
+    // the slow parcel: it crawls along the HUD from level PARCEL_FROM and arrives at level PARCEL_AT as a small snail
+    if (run.level >= PARCEL_FROM && !run.daily) {
+      const k = clamp((run.level - PARCEL_FROM) / (PARCEL_AT - PARCEL_FROM), 0, 1);
+      ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(k < 1 ? '📦' : '🐌', 70 + 340 * k, HUD_H - 5 + (k < 1 ? 0 : Math.abs(Math.sin(t * 2)) * -1.5));
     }
   }
 
@@ -4668,13 +4840,18 @@
       ctx.globalAlpha = 0.22; ctx.fillStyle = G.safari ? '#ffd23f' : '#ff6b3d'; ctx.font = '900 190px system-ui, sans-serif';
       ctx.fillText(Math.ceil(timeLeft()), W / 2, H * 0.5); ctx.globalAlpha = 1;
     }
-    const hint = (text, rgb) => {
-      ctx.fillStyle = `rgba(${rgb},${0.55 + 0.35 * Math.sin(t * 5)})`; ctx.font = 'bold 16px system-ui, sans-serif';
-      ctx.fillText(text, W / 2, PADDLE_Y + 50);
-    };
-    if (G.balls.some((b) => b.stuck && b.held)) hint('tap to wake Pip', '255,255,255');
-    else if (G.balls.some((b) => b.stuck && b.serve)) hint(handsOn() ? 'tap to launch' : G.level <= 3 ? 'tap a brick: Pip aims the ball at it' : 'tap a target to launch', '255,255,255');
-    else if (G.level <= 3 && !handsOn() && G.grip == null && G.coins.length) hint('drag down here to catch the coins', '255,216,74');
+    if (G.level === 1 && !G.started) {
+      ctx.fillStyle = 'rgba(124,242,255,' + (0.6 + 0.3 * Math.sin(t * 4)) + ')'; ctx.font = 'bold 15px system-ui, sans-serif';
+      const dx = Math.sin(t * 3) * 8;
+      ctx.fillText('◀', paddle.x - paddle.w / 2 - 22 - dx, PADDLE_Y + 8); ctx.fillText('▶', paddle.x + paddle.w / 2 + 22 + dx, PADDLE_Y + 8);
+    }
+    if (G.balls.some((b) => b.stuck && b.serve)) {
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + 0.35 * Math.sin(t * 5)) + ')'; ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillText('tap to launch', W / 2, PADDLE_Y + 50);
+    } else if (pipOn() && !G.drove && G.clearT < 0) {
+      ctx.fillStyle = 'rgba(143,180,255,' + (0.55 + 0.35 * Math.sin(t * 5)) + ')'; ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillText('let go: Pip steers', W / 2, PADDLE_Y + 50);
+    }
   }
   const vignette = () => sprite('vignette', 120, 200, (c) => {
     const g = c.createRadialGradient(60, 100, 50, 60, 100, 125);
@@ -4743,8 +4920,10 @@
     if (G.wind) drawWind(t);
     drawPeeks();
     drawBricks(t);
+    drawEvents(t);
     if (G.portals.length) drawPortals(t);
     drawBirds(t);
+    drawQuill(t);
     drawFrogs(t);
     drawWalkers();
     drawNet(t);
@@ -4757,7 +4936,7 @@
     drawLoose(t);
     if (G.api) ROUNDS[G.safari].draw(G.api, ctx, t);
     if (special('night') && G.clearT < 0) drawNight();
-    drawMarks(t);
+    drawPins(t);
     drawDrones(t);
     if (!(G.api && ROUNDS[G.safari].hidePaddle)) drawPaddle(t);
     drawBoy(t);
@@ -4769,6 +4948,7 @@
     drawHUD(t);
     drawBossBar();
     drawBanner(t);
+    drawFilm(t);
     if (playing && feverOn()) {
       ctx.globalCompositeOperation = 'lighter';
       const a = Math.min(1, G.feverT) * (0.35 + 0.1 * Math.sin(t * 9));
@@ -4797,13 +4977,13 @@
     give(n) { if (run) { run.coins += n; } },
     step(dt) { update(dt); }, draw() { draw(tAcc); },
     paddle, launch() { launch(); },
-    mark(x, y) { G.inputT = G.time; tapMark(x, y); launch(); }, grip(x) { G.grip = -1; G.inputT = G.time; paddle.tx = x; }, release() { G.grip = null; },
     buyId(id) { return buy(ITEM_BY_ID[id]); },
     next() { lastSummary = null; startLevel(); },
     skip() { if (mode === 'tally' || mode === 'victory') afterTally(); if (mode === 'relic') takeRelic(relicChoices()[0].id); },
     relic(id) { run.relics[id] = true; }, fever() { startFever(); }, capsule(k) { collectPU({ k, x: paddle.x, y: PADDLE_Y }); },
     blimp(kind) { return spawnBlimp(kind); }, panic() { startPanic(); }, safari(kind) { startSafari(kind); },
     critter(kind) { ({ frog: addFrog, walker: addWalker, peek: addPeek, cameo: startCameo })[kind](); },
+    quill() { if (G) startQuill(); },
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
     get summary() { return lastSummary; },
@@ -4811,12 +4991,10 @@
     seals(n) { run.seals += n; run.sealsEver += n; },
     special(id) { run.nextSpecial = id; },
     set(id) { for (const i of SETS.find((s) => s.id === id).items) run.up[i] = maxOf(ITEM_BY_ID[i]); },
+    pin() { addPin(); }, pipDrive(sec = PIP_S) { setFx('pip', sec); }, event(id) { EVENTS.find((e) => e.id === id).start(); },
     loose() { if (G) knockHud(); }, slide(b) { landslide(b); },
     starRun(keep) { beginStarRun(keep); }, daily() { beginDaily(); }, victory() { showVictory(); },
-    open() { openShop(); }, tap(x, y) {
-      const at = { bubbles: true, clientX: canvas.getBoundingClientRect().left + x * scale, clientY: canvas.getBoundingClientRect().top + y * scale };
-      canvas.dispatchEvent(new PointerEvent('pointerdown', at)); canvas.dispatchEvent(new PointerEvent('pointerup', at));
-    },
+    open() { openShop(); }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: canvas.getBoundingClientRect().left + x * scale, clientY: canvas.getBoundingClientRect().top + y * scale })); },
   };
 
   showMenu();
