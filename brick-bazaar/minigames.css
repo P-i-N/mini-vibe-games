@@ -1,0 +1,90 @@
+/* Brick Bazaar arcade mini-games. All sizes in em: the host font size scales everything. */
+
+.mg-root { display: flex; flex-direction: column; height: 100%; width: 100%; padding: 0.8em; gap: 0.35em;
+  color: #e8ecff; text-align: center; overflow: hidden; touch-action: manipulation;
+  user-select: none; -webkit-user-select: none; }
+.mg-root button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+
+.mg-head { display: flex; align-items: center; justify-content: center; gap: 0.35em; flex-shrink: 0; }
+.mg-ic { font-size: 1.8em; line-height: 1; }
+.mg-title { font-size: 1.6em; font-weight: 900; color: #ffe680; line-height: 1.1; }
+.mg-rules { color: #b8c0f0; font-size: 0.95em; min-height: 1.3em; flex-shrink: 0; }
+.mg-stake { font-size: 0.9em; color: #9aa3d6; background: #ffffff0d; border-radius: 0.7em; padding: 0.35em 0.7em;
+  align-self: center; max-width: 100%; flex-shrink: 0; }
+.mg-stake b { color: #ffe680; }
+
+.mg-area { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; justify-content: center; }
+.mg-foot { flex-shrink: 0; min-height: 4.2em; display: flex; flex-direction: column; justify-content: flex-end; }
+
+.mg-big { display: block; width: 100%; max-width: 18em; margin: 0.5em auto 0.3em; padding: 0.9em 1em;
+  font-size: 1.15em; font-weight: 800; border-radius: 1em; border: 0; cursor: pointer;
+  background: linear-gradient(180deg, #5ef0ff, #2f8cff); color: #041021; box-shadow: 0 0.3em 0 #1b4fa0; }
+.mg-root .mg-big.mg-gold { background: linear-gradient(180deg, #ffe680, #ffb02e); color: #2a1700; box-shadow: 0 0.3em 0 #a86a00; }
+.mg-big:active { transform: translateY(0.2em); box-shadow: 0 0.1em 0 #a86a00; }
+
+.mg-result { font-size: 1.05em; color: #ff9aa8; animation: mg-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.mg-result b { color: #ffffff; }
+.mg-result.mg-won { color: #ffe680; }
+.mg-keeper { display: flex; align-items: center; gap: 0.5em; margin-top: 0.45em; text-align: left; }
+.mg-snail { font-size: 1.7em; line-height: 1; filter: drop-shadow(0 0 0.2em #ffd84a66); }
+.mg-bubble { position: relative; flex: 1; padding: 0.4em 0.7em; border-radius: 0.8em; background: #f4f6ff; color: #1b1f33;
+  font-size: 0.85em; font-weight: 600; line-height: 1.25; }
+.mg-bubble::before { content: ""; position: absolute; left: -0.4em; top: 50%; margin-top: -0.35em;
+  border: 0.35em solid transparent; border-right-color: #f4f6ff; border-left: 0; }
+
+@keyframes mg-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes mg-pulse { from { box-shadow: 0 0 0 0 #ffe68000; } to { box-shadow: 0 0 0 0.25em #ffe68055; } }
+@keyframes mg-wobble { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+
+/* Shell Game */
+.mg-shells { position: relative; height: 10em; width: 100%; max-width: 24em; margin: 0 auto; }
+.mg-shell { position: absolute; top: 2.5em; width: 33.333%; height: 6em; padding: 0; border: 0; background: none;
+  cursor: pointer; transition: left var(--mg-d, 300ms) ease-in-out, transform var(--mg-d, 300ms) ease-in-out; }
+.mg-cup { position: absolute; left: 0; right: 0; bottom: 0.5em; font-size: 3.4em; line-height: 1; z-index: 1;
+  transition: transform 0.3s ease; filter: drop-shadow(0 0.1em 0.1em #0008); }
+.mg-pearl { position: absolute; left: 50%; bottom: 0.6em; width: 1.4em; height: 1.4em; margin-left: -0.7em; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #e6e2ff 40%, #a9a3d6); box-shadow: 0 0 0.6em #ffffffaa; opacity: 0; transition: opacity 0.2s; }
+.mg-shell.mg-has.mg-up .mg-pearl { opacity: 1; }
+.mg-shell.mg-up .mg-cup { transform: translateY(-0.75em); }
+.mg-shell::after { content: ""; position: absolute; left: 15%; right: 15%; bottom: 0.2em; height: 0.5em; border-radius: 50%; background: #0006; }
+.mg-pick .mg-shell .mg-cup { animation: mg-wobble 0.5s ease-in-out infinite alternate; }
+.mg-shell.mg-chosen::after { background: #ffe68088; }
+
+/* Snail Race */
+.mg-lanes { display: flex; flex-direction: column; gap: 0.45em; width: 100%; }
+.mg-lane { display: flex; flex-direction: column; gap: 0.2em; width: 100%; padding: 0.45em 0.55em; border-radius: 0.9em;
+  border: 1px solid #ffffff14; background: #161a36; cursor: pointer; text-align: left; }
+.mg-pick .mg-lane { animation: mg-pulse 0.7s ease-in-out infinite alternate; }
+.mg-lane.mg-bet { border-color: #ffe680; background: #2a2410; }
+.mg-lane.mg-lead .mg-track { background: #ffffff14; }
+.mg-lane.mg-winner { border-color: #7cf2a8; box-shadow: 0 0 1em #7cf2a855; }
+.mg-lane-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1em 0.6em; font-size: 0.9em; }
+.mg-lane-info b { flex: 1; min-width: 6em; }
+.mg-odds { font-weight: 900; color: #5ef0ff; }
+.mg-pays { color: #ffe680; font-size: 0.85em; }
+.mg-track { position: relative; height: 3.1em; border-radius: 0.6em; background: #ffffff08;
+  border-right: 0.25em dashed #ffffffaa; }
+.mg-runner { position: absolute; left: 0; bottom: 0.1em; width: 2em; text-align: center; }
+.mg-body { display: inline-block; font-size: 1.6em; line-height: 1.1; transform: scaleX(-1); }
+.mg-sleep .mg-body { opacity: 0.6; }
+.mg-say { position: absolute; bottom: 2.7em; left: 0; white-space: nowrap; padding: 0.1em 0.45em; border-radius: 0.6em;
+  background: #f4f6ff; color: #1b1f33; font-size: 0.7em; font-weight: 700; opacity: 0; transition: opacity 0.15s; z-index: 2;
+  pointer-events: none; }
+.mg-say.mg-on { opacity: 1; }
+
+/* Whack-a-Thief */
+.mg-whack-bar { display: flex; align-items: center; gap: 0.6em; width: 100%; max-width: 22em; margin: 0 auto; }
+.mg-score { font-weight: 900; color: #ffe680; white-space: nowrap; }
+.mg-timebox { flex: 1; height: 0.6em; border-radius: 0.3em; background: #ffffff14; overflow: hidden; }
+.mg-time { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, #ff4f8b, #ffe680); }
+.mg-cry { min-height: 1.4em; font-size: 0.85em; color: #ff9aa8; font-weight: 700; margin: 0.2em 0; }
+.mg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5em; width: 100%; max-width: 22em; margin: 0 auto; }
+.mg-crate { position: relative; aspect-ratio: 1; padding: 0; border-radius: 0.9em; border: 1px solid #ffffff14;
+  background: #161a36; cursor: pointer; overflow: hidden; touch-action: none; }
+.mg-box { position: absolute; left: 0; right: 0; bottom: 0.05em; font-size: 2.6em; line-height: 1; z-index: 1; pointer-events: none; }
+.mg-pop { position: absolute; left: 0; right: 0; bottom: 0.4em; font-size: 2.8em; line-height: 1; pointer-events: none;
+  transform: translateY(1.2em); transition: transform 0.12s ease-out; }
+.mg-crate.mg-out .mg-pop { transform: translateY(-0.15em); z-index: 2; }
+.mg-crate.mg-out { background: #2a1d3a; }
+.mg-crate.mg-out.mg-is-snail { background: #13302a; }
+.mg-crate.mg-hit { background: #4a1530; }
