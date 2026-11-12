@@ -7,7 +7,7 @@ Play: https://p-i-n.github.io/mini-vibe-games/
 | Game | Folder |
 | --- | --- |
 | Brick Bazaar: brick breaker with 50 levels, five bosses, a coin shop, self-reloading guns, drones, fever mode, relics and synth music | [`brick-bazaar/`](brick-bazaar/) |
-| Strata Siege: three-layer tower defense with a weather cloud, digging hamsters and a gem shop | [`strata-siege/`](strata-siege/) |
+| Strata Siege: isometric tower defense on three layers (sky, garden, mine) with cloud mixing, a stomping Boot, digging hamsters, bosses, relics and a gnome's gem shop | [`strata-siege/`](strata-siege/) |
 
 Every game is plain HTML/CSS/JS with no build step. Pushing to `main` deploys to GitHub Pages.
 
@@ -93,3 +93,23 @@ To add a bonus round, add an entry to `window.BBRounds` in rounds.js; game.js ne
 Data that outlives a run is in `meta` (`localStorage` key `brickbazaar.meta.v1`): the sticker album (`STICKERS`, `sticker(id)`) and the lifetime totals. Stickers open starting kits (`KITS`). To reset them, remove that key.
 
 The shop has a keeper, Mortimer. His lines are in `QUIPS` and change nothing in the game. The tip jar, the haggle, double or nothing, the Dare (`DARES`) and the Oddity (`ODDS`) are in the same section as `buy`.
+
+## Strata Siege notes
+
+| File | Contents |
+| --- | --- |
+| `game.js` | Game rules for the three layers, the shop, screens, input and drawing |
+| `levels.js` | The ten base maps (`SS_LEVELS.maps`), the 30 level names and the tips. Levels 11-20 use the maps mirrored. |
+| `art.js` | Isometric drawing (`SSArt`): tile painters (`groundTile`, `ugTile`, `skyTile`) and sprites (`paint(kind, ctx, options)`, `box(kind, options)`) for towers, props, clouds, loot, icons and the gnome. |
+| `foeart.js` | The enemies, the bosses and the hamsters (`SSFoeArt`), with the same `paint` and `box`. The boxes are a measured table in the file. |
+| `audio.js` | Sound effects and music (`SSAudio`). The Brick Bazaar engine with a different band, and `layer(name)`, which changes the mix for the sky, the garden and the mine. |
+| `keeper.js` | The lines of Gnorman, the gnome who keeps the shop (`SS_KEEPER.lines[key]`). Data only. |
+| `style.css` | Menus, shop, results screens, the build popup |
+
+The view is a 2:1 isometric projection of a 9 x 9 map. All rules use world units (one tile is 1 x 1); `toScreen` and `toWorld` convert. Only one layer is on screen, and all three keep running. The terrain of a layer is painted once into a canvas (`buildLayer`); set `cacheDirty[layer]` after a change to the terrain. Sprites are painted once per kind and option set (`spr`).
+
+`FROM` is the first level of each feature and `at` is the first level of each shop item. A new feature needs a tip in `levels.js` that starts with `NEW:`.
+
+The balance was tested with simple bots only. The main numbers are `hpMul`, `coinMul`, `genWaves`, `TOWERS` and `FOES`. For tests and tuning, `window.__ss` can start a level (`start(n, upgrades)`), run time (`step(seconds)`), and build, dig, stomp and merge.
+
+A saved run of the first version of the game gets the gems for its upgrades back (`OLD_PRICES`).
