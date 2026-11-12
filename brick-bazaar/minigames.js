@@ -296,6 +296,50 @@
     return Math.abs(st.tilt) >= 1 ? 'fall' : 'ok';
   }
 
+  // Wobbly Wire: Pip walks a wire in legs of WIRE_LEG_MS. The lean is a fraction of the fall angle: at 1 he falls.
+  // Gravity tips him more the more he leans, gusts push him, the player pushes back. Each leg has a wind of WIRE_WINDS,
+  // shown before the leg. The flag after a leg is safe: float off to cash out its WIRE_PAY, or walk on. A fall pays 0.
+  const WIRE_PAY = [0.6, 1.2, 2.5];
+  const WIRE_LEG_MS = 5000;
+  const WIRE_DT = 15;
+  const WIRE_PUSH = 5;
+  const WIRE_DRAG = 2.5;
+  const WIRE_TIP = 4.1;
+  const WIRE_WINDS = [
+    { icon: '🌤️', name: 'calm', gust: 1.5 },
+    { icon: '💨', name: 'breezy', gust: 3.5 },
+    { icon: '🌪️', name: 'stormy', gust: 7 },
+  ];
+  // The winds that each leg can get, equally likely.
+  const WIRE_LEG_WINDS = [[0, 1], [0, 1, 2], [1, 2]];
+
+  function wirePlan(level, rand) {
+    return {
+      tip: WIRE_TIP * Math.min(1.3, 1 + Math.max(0, level - 46) * 0.004),
+      legs: WIRE_LEG_WINDS.map(winds => {
+        const wind = pick(winds, rand);
+        const gusts = [];
+        for (let at = 400 + rand() * 600; at < WIRE_LEG_MS; at += 700 + rand() * 900) {
+          gusts.push({ at, ms: 300 + rand() * 500, f: (rand() < 0.5 ? -1 : 1) * WIRE_WINDS[wind].gust * (0.6 + rand() * 0.4) });
+        }
+        return { wind, gusts, lean: (rand() < 0.5 ? -1 : 1) * (0.15 + rand() * 0.1) };
+      }),
+    };
+  }
+
+  const wireGust = (leg, ms) => leg.gusts.reduce((a, g) => a + (ms >= g.at && ms < g.at + g.ms ? g.f : 0), 0);
+
+  // st: { lean, vel, ms } on the leg. push is -1 (left), 0 or 1. Returns 'fall', 'flag' or 'ok'.
+  function wireStep(st, plan, leg, push) {
+    const k = WIRE_DT / 1000;
+    st.vel += (plan.tip * st.lean + wireGust(leg, st.ms) + push * WIRE_PUSH) * k;
+    st.vel *= 1 - WIRE_DRAG * k;
+    st.lean += st.vel * k;
+    st.ms += WIRE_DT;
+    if (Math.abs(st.lean) >= 1) return 'fall';
+    return st.ms >= WIRE_LEG_MS ? 'flag' : 'ok';
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   // Session: owns every timer and listener of one game, calls done once.
 
@@ -1564,6 +1608,230 @@
   }
 
   ////////////////////////////////////////////////////////////////////////////
+  // Wobbly Wire
+
+  // Lean 1 (the fall) shows as this angle.
+  const WIRE_DEG = 60;
+  const WIRE_WAIT = 6000;
+  const WIRE_LEG_TALK = ['Calm air. Easy money.', 'A breeze. Hold on to your cap, Pip.', 'A STORM? Pip, you are brave. Or silly.'];
+  const WIRE_SCARE = ['Whoa whoa WHOA!', 'Lean back! The other back!', 'Pip! My soup is right there!'];
+  const WIRE_SPLASH = ['SPLOSH! Pip, that was my lunch!', 'Pip is in the soup. Again.', 'Glub. Now it is woodlouse soup.'];
+
+  function prepWire(api) {
+    api.plan = wirePlan(api.level, api.rand);
+    const legs = WIRE_PAY.length;
+    const pips = el('div', 'mg-pips', null, api.area);
+    WIRE_PAY.forEach((m, i) => el('span', 'mg-pip', (i < legs - 1 ? '🚩' : '🏁') + ' ×' + m, pips));
+    el('div', 'mg-tally', null, api.area);
+    const sky = el('div', 'mg-sky', null, api.area);
+    el('div', 'mg-wire', null, sky);
+    WIRE_PAY.forEach((_, i) => {
+      el('span', 'mg-flag', i < legs - 1 ? '🚩' : '🏁', sky).style.left = (6 + 88 * (i + 1) / legs) + '%';
+    });
+    el('div', 'mg-soup', "Mortimer's soup", sky);
+    el('span', 'mg-splash', '💦', sky);
+    const walker = el('div', 'mg-walker', null, sky);
+    el('span', 'mg-gust', '💨', walker);
+    el('span', 'mg-balloon', '🎈', walker);
+    const lean = el('div', 'mg-lean', null, walker);
+    el('span', 'mg-pole', null, lean);
+    el('span', 'mg-bug', '🪲', lean);
+    el('span', 'mg-cap', '🧢', lean);
+    el('span', 'mg-sweat', '💧', lean);
+    const btns = el('div', 'mg-btns', null, api.area);
+    el('button', 'mg-big mg-left', '◀', btns).disabled = true;
+    el('button', 'mg-big mg-right', '▶', btns).disabled = true;
+    el('button', 'mg-big mg-gold mg-cash', null, btns).hidden = true;
+    el('button', 'mg-big mg-go', 'Walk on ▶', btns).hidden = true;
+  }
+
+  function runWire(api) {
+    const { s, rand, rules, area, plan } = api;
+    const talk = keeper(api);
+    const legs = WIRE_PAY.length;
+    const pips = area.querySelectorAll('.mg-pip');
+    const tally = area.querySelector('.mg-tally');
+    const sky = area.querySelector('.mg-sky');
+    const walker = area.querySelector('.mg-walker');
+    const lean = area.querySelector('.mg-lean');
+    const gust = area.querySelector('.mg-gust');
+    const splash = area.querySelector('.mg-splash');
+    const left = area.querySelector('.mg-left');
+    const right = area.querySelector('.mg-right');
+    const cash = area.querySelector('.mg-cash');
+    const go = area.querySelector('.mg-go');
+    // Pointer id -> -1 (left) or 1 (right).
+    const holds = new Map();
+    let leg = 0;
+    let st = null;
+    let walking = false;
+    let scared = false;
+    let last = 0;
+    let acc = 0;
+    let waitId = 0;
+
+    const windOf = i => WIRE_WINDS[plan.legs[i].wind];
+    const push = () => Math.sign([...holds.values()].reduce((a, b) => a + b, 0));
+    const showHolds = () => {
+      const p = [...holds.values()];
+      left.classList.toggle('mg-on', p.includes(-1));
+      right.classList.toggle('mg-on', p.includes(1));
+    };
+    const place = () => {
+      const along = leg + (st ? st.ms / WIRE_LEG_MS : 0);
+      walker.style.left = (6 + 88 * along / legs).toFixed(2) + '%';
+      lean.style.transform = 'rotate(' + ((st ? st.lean : 0) * WIRE_DEG).toFixed(1) + 'deg)';
+    };
+    const showButtons = walk => {
+      left.hidden = right.hidden = !walk;
+      left.disabled = right.disabled = !walk;
+      cash.hidden = go.hidden = walk;
+    };
+
+    function startLeg() {
+      clearTimeout(waitId);
+      const w = windOf(leg);
+      st = { lean: plan.legs[leg].lean, vel: 0, ms: 0 };
+      scared = false;
+      walking = true;
+      last = Date.now();
+      acc = 0;
+      showButtons(true);
+      area.classList.add('mg-pick');
+      tally.textContent = 'Wind: ' + w.icon + ' ' + w.name;
+      rules.textContent = 'Pip leans left? Hold ▶. Leans right? Hold ◀.';
+      talk(WIRE_LEG_TALK[plan.legs[leg].wind]);
+      s.sfx('riser');
+    }
+
+    function stop() {
+      walking = false;
+      showHolds();
+      gust.className = 'mg-gust';
+      lean.classList.remove('mg-hot');
+      area.classList.remove('mg-pick');
+      left.disabled = right.disabled = true;
+    }
+
+    function fall() {
+      stop();
+      const dir = Math.sign(st.lean);
+      walker.classList.add('mg-plunge');
+      lean.style.transform = 'rotate(' + (dir * 200) + 'deg)';
+      splash.style.left = walker.style.left;
+      s.sfx('eek');
+      s.later(() => {
+        splash.classList.add('mg-on');
+        sky.classList.add('mg-shake');
+        talk(pick(WIRE_SPLASH, rand));
+        s.sfx('nope');
+      }, 650);
+      s.later(() => api.finish(0, 'Pip fell into the soup.'), 1900);
+    }
+
+    function flag() {
+      stop();
+      pips[leg].classList.add('mg-on');
+      s.sfx('ding');
+      if (leg === legs - 1) {
+        lean.style.transform = '';
+        walker.classList.add('mg-bow');
+        talk('The whole wire! Pip, take a bow.');
+        s.later(() => api.finish(WIRE_PAY[leg], 'Pip crossed the whole wire!'), 1300);
+        return;
+      }
+      const next = windOf(leg + 1);
+      st.lean = 0;
+      place();
+      showButtons(false);
+      cash.textContent = '🎈 Float off ' + api.coins(WIRE_PAY[leg]);
+      tally.textContent = 'Next: ' + next.icon + ' ' + next.name;
+      rules.textContent = 'Float off with the coins, or walk on?';
+      talk('Flag! The next stretch is ' + next.name + '. Float off, or walk on?');
+      // Nobody decides: Pip walks on, and nobody holds him.
+      waitId = s.later(() => {
+        talk('Pip got bored. He walks on. Alone.');
+        leg++;
+        startLeg();
+      }, WIRE_WAIT);
+    }
+
+    s.every(() => {
+      const now = Date.now();
+      if (!walking) {
+        last = now;
+        return;
+      }
+      acc += Math.min(100, now - last);
+      last = now;
+      const leg0 = plan.legs[leg];
+      while (walking && acc >= WIRE_DT) {
+        acc -= WIRE_DT;
+        const r = wireStep(st, plan, leg0, push());
+        if (r === 'fall') {
+          place();
+          fall();
+          return;
+        }
+        if (r === 'flag') {
+          place();
+          flag();
+          return;
+        }
+      }
+      place();
+      const g = wireGust(leg0, st.ms);
+      gust.className = 'mg-gust' + (g > 0 ? ' mg-l' : g < 0 ? ' mg-r' : '');
+      const hot = Math.abs(st.lean) > 0.6;
+      lean.classList.toggle('mg-hot', hot);
+      if (Math.abs(st.lean) > 0.8 && !scared) {
+        scared = true;
+        talk(pick(WIRE_SCARE, rand));
+        s.sfx('tick');
+      }
+    }, 30);
+
+    const press = (e, dir) => {
+      e.preventDefault();
+      holds.set(e.pointerId, dir);
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+      showHolds();
+    };
+    const lift = e => {
+      holds.delete(e.pointerId);
+      showHolds();
+    };
+    for (const [node, dir] of [[left, () => -1], [right, () => 1], [sky, e => {
+      const r = sky.getBoundingClientRect();
+      return e.clientX < r.left + r.width / 2 ? -1 : 1;
+    }]]) {
+      s.on(node, 'pointerdown', e => press(e, dir(e)));
+      s.on(node, 'pointerup', lift);
+      s.on(node, 'pointercancel', lift);
+      s.on(node, 'contextmenu', e => e.preventDefault());
+    }
+
+    s.on(go, 'click', () => {
+      if (walking || cash.hidden) return;
+      leg++;
+      startLeg();
+    });
+    s.on(cash, 'click', () => {
+      if (walking || cash.hidden) return;
+      clearTimeout(waitId);
+      cash.hidden = go.hidden = true;
+      walker.classList.add('mg-float');
+      talk('Bye, Pip! Smart bug. Here are the coins.');
+      s.sfx('coin');
+      s.later(() => api.finish(WIRE_PAY[leg], 'Pip floated off at flag ' + (leg + 1) + '.'), 1200);
+    });
+
+    place();
+    talk('Pip walks the wire. Do not drop him in my soup.');
+    s.later(startLeg, 900);
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
   // Registry
 
   const GAMES = {
@@ -1603,6 +1871,10 @@
       icon: '🪙', name: 'Coin Stack', rules: 'Stack coins. Every third is banked. A fall pays the bank.',
       win: coins => 'win up to ' + coins(STACK_PAY[STACK_MAX]), prep: prepStack, run: runStack,
     },
+    wire: {
+      icon: '🪢', name: 'Wobbly Wire', rules: 'Hold ◀ ▶ to keep Pip up. At a flag, float off or walk on.',
+      win: coins => 'win up to ' + coins(WIRE_PAY[WIRE_PAY.length - 1]), prep: prepWire, run: runWire,
+    },
   };
 
   window.BBMini = {
@@ -1616,6 +1888,7 @@
       { id: 'scratch', icon: '🧦', name: 'Scratch & Sniff', blurb: 'Rub a card. Mind the sock. Up to 3×.', at: 34 },
       { id: 'sling', icon: '🥬', name: 'Salad Sling', blurb: 'Feed the snails from afar. Up to 1.95×.', at: 38 },
       { id: 'stack', icon: '🪙', name: 'Coin Stack', blurb: 'Stack coins. Bank every third. Up to 2.3×.', at: 42 },
+      { id: 'wire', icon: '🪢', name: 'Wobbly Wire', blurb: 'Walk Pip over the soup. Up to 2.5×.', at: 46 },
     ],
 
     play(id, host, ctx) {
@@ -1638,6 +1911,7 @@
       SLING_W, SLING_H, SLING_FROM, SLING_PULL, SLING_REACH, SLING_WIND, SLING_SHOTS, SLING_ROWS,
       slingPlan, slingX, slingPull, slingLand, slingFlight, slingHit,
       STACK_PAY, STACK_MAX, STACK_BANK, STACK_DROP_MS, stackPlan, stackBanked, stackSwing, stackAngle, stackTop, stackLand,
+      WIRE_PAY, WIRE_LEG_MS, WIRE_DT, WIRE_WINDS, WIRE_LEG_WINDS, wirePlan, wireGust, wireStep,
     },
   };
 })();

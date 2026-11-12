@@ -956,5 +956,135 @@
     tap(api, x, y) { if (Math.abs(x - api.state.dx) < PUSH.tapR && y < PUSH.railY + PUSH.tapR) pushDrop(api); },
   };
 
-  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort, pusher };
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Balloon Stall: a tap pumps Mortimer's balloon, and a bigger balloon lifts him higher, where the coins pay more. The
+  // balloon leaks. Each balloon has a hidden limit: near it the balloon squeaks, and one pump too many pops it.
+  const BLOW = { ground: 660, top: 236, rise: 38, lift: 2, leak: 0.6, cd: 0.12, lim: [6, 13], warn: 1.3, dizzy: 1.4, grav: 1600, str: 34,
+    spawn: [0.34, 0.56], v: [60, 120], bands: [340, 460], low: 560, cake: 0.06, cakePay: 10, grabR: 30 };
+  const BLOW_COLORS = ['#ff5c5c', '#5ef0ff', '#ffd23f', '#9cff57', '#ff7ad9'];
+  const BLOW_LINES = {
+    start: ['Pump me up. Gently.', 'Up there the coins are bigger.'],
+    warn: ['It squeaks. Is that bad?', 'Easy... easy...', 'I hear a squeak.'],
+    pop: ['I am a snail, not a bird!', 'My good balloon!', 'Ow. The ground is hard.', 'Who had the pin? PIP?!'],
+    high: ['I can see my shop!', 'Hello, clouds!', 'The air is rich up here.'],
+    cake: ['A flying cake! Mine!', 'Cake in the sky! Best day!'],
+    end: ['Down we go. Gently, please.', 'Out of air. Out of breath.'],
+  };
+  const blowPay = (y) => (y < BLOW.bands[0] ? 4 : y < BLOW.bands[1] ? 2 : 1);
+  const blowR = (s) => 10 + s * 3.2;
+  function newBalloon(api) {
+    return { s: 0, lim: api.rand(BLOW.lim[0], BLOW.lim[1]), c: api.pick(BLOW_COLORS), puff: 0, warned: false };
+  }
+  // the balloon floats above Mortimer on its string and leans with the swing
+  function balloonAt(st) {
+    const L = BLOW.str + blowR(st.ball.s);
+    return { x: st.x + Math.sin(st.sw) * L, y: st.y - 18 - Math.cos(st.sw) * L };
+  }
+  function blowSpawn(api) {
+    const st = api.state, dir = api.pick([-1, 1]), cake = Math.random() < BLOW.cake;
+    const y = cake ? api.rand(BLOW.top + 10, BLOW.bands[0] - 40) : api.rand(BLOW.top + 10, BLOW.low);
+    st.coins.push({ x: dir > 0 ? -20 : api.W + 20, y, vx: dir * api.rand(BLOW.v[0], BLOW.v[1]), pay: cake ? BLOW.cakePay : blowPay(y), cake });
+  }
+  function pump(api) {
+    const st = api.state, b = st.ball;
+    if (st.fall || st.dizzy > 0 || st.cd > 0) return;
+    st.cd = BLOW.cd; b.s++; b.puff = 0.15;
+    if (b.s > b.lim) { blowPop(api); return; }
+    if (b.s <= b.lim - BLOW.warn) { api.sfx.tick(); return; }
+    api.sfx.eek();
+    if (!b.warned) { b.warned = true; talk(api, api.pick(BLOW_LINES.warn), 1.2); }
+  }
+  function blowPop(api) {
+    const st = api.state, p = balloonAt(st);
+    st.fall = true; st.vy = -180;
+    api.sfx.boom(); api.shake(6); api.burst(p.x, p.y, st.ball.c, 18, 260);
+    api.say(p.x, p.y, 'POP!', '#ffffff', true); talk(api, api.pick(BLOW_LINES.pop), 1.8);
+  }
+  function blowGrab(api, c) {
+    const st = api.state;
+    c.dead = true; bank(api, c.pay); api.score(1);
+    if (c.cake) {
+      api.sfx.jackpot(); api.flash('#ff7ad9', 0.2); api.burst(c.x, c.y, '#ff7ad9', 16, 220);
+      api.say(c.x, c.y - 30, 'CAKE +' + c.pay, '#ff7ad9', true); talk(api, api.pick(BLOW_LINES.cake));
+      return;
+    }
+    api.sfx.coin(c.pay); api.burst(c.x, c.y, '#ffd23f', 3 + c.pay, 100);
+    if (c.pay > 1) api.say(c.x, c.y - 24, '+' + c.pay, '#ffd23f');
+  }
+  const balloon = {
+    name: 'Balloon Stall', title: '🎈 BALLOON STALL 🎈', over: 'OUT OF AIR!', count: 'Sky coins grabbed 🎈',
+    tip: 'BONUS ROUND! Tap to pump. Higher pays more. Too much air: POP', seconds: 20, ball: false, hidePaddle: true,
+    start(api) {
+      Object.assign(api.state, { ball: newBalloon(api), x: api.W / 2, y: BLOW.ground, vx: 0, sw: 0, swv: 0, dir: 1, vy: 0, fall: false, dizzy: 0, cd: 0,
+        coins: [], spawnT: 0.6, high: false, ended: false });
+      talk(api, api.pick(BLOW_LINES.start), 3);
+    },
+    tick(api, dt) {
+      const st = api.state, b = st.ball;
+      settle(api, dt);
+      st.cd -= dt; st.dizzy = Math.max(0, st.dizzy - dt); b.puff = Math.max(0, b.puff - dt);
+      const v0 = st.vx, x0 = st.x;
+      st.x += (api.clamp(api.paddle.x, 40, api.W - 40) - st.x) * Math.min(1, dt * (st.dizzy > 0 ? 0 : 2.5));
+      st.vx = (st.x - x0) / Math.max(dt, 1e-3);
+      if (Math.abs(st.vx) > 30) st.dir = Math.sign(st.vx);
+      // the balloon trails the motion: a damped pendulum pushed by Mortimer's acceleration
+      const acc = (st.vx - v0) / Math.max(dt, 1e-3);
+      st.swv += (-acc * 0.0003 - st.sw * 20) * dt; st.swv *= Math.max(0, 1 - dt * 3); st.sw = api.clamp(st.sw + st.swv * dt, -0.7, 0.7);
+      if (st.fall) {
+        st.vy += BLOW.grav * dt; st.y += st.vy * dt;
+        if (st.y >= BLOW.ground) { st.y = BLOW.ground; st.fall = false; st.dizzy = BLOW.dizzy; st.ball = newBalloon(api); api.sfx.whack(); api.shake(4); }
+      } else {
+        b.s = Math.max(0, b.s - BLOW.leak * dt);
+        const ty = api.clamp(BLOW.ground - Math.max(0, b.s - BLOW.lift) * BLOW.rise, BLOW.top, BLOW.ground);
+        st.y += (ty - st.y) * Math.min(1, dt * 3);
+      }
+      if (!st.high && st.y < BLOW.bands[0]) { st.high = true; talk(api, api.pick(BLOW_LINES.high), 1.6); }
+      if (api.left > 0.8 && (st.spawnT -= dt) <= 0) { st.spawnT = api.rand(BLOW.spawn[0], BLOW.spawn[1]); blowSpawn(api); }
+      const p = balloonAt(st), r = st.fall ? 0 : blowR(st.ball.s);
+      for (const c of st.coins) {
+        c.x += c.vx * dt;
+        if (Math.hypot(c.x - st.x, c.y - st.y) < BLOW.grabR || (r && Math.hypot(c.x - p.x, c.y - p.y) < r + 10)) blowGrab(api, c);
+      }
+      st.coins = st.coins.filter((c) => !c.dead && c.x > -40 && c.x < api.W + 40);
+      if (!st.ended && api.left < 0.6) { st.ended = true; talk(api, api.pick(BLOW_LINES.end)); }
+    },
+    draw(api, ctx, t) {
+      const st = api.state, b = st.ball, W = api.W;
+      // the pay bands
+      ctx.fillStyle = 'rgba(255,210,63,0.07)'; ctx.fillRect(0, BLOW.top - 30, W, BLOW.bands[0] - BLOW.top + 30);
+      ctx.fillStyle = 'rgba(94,240,255,0.05)'; ctx.fillRect(0, BLOW.bands[0], W, BLOW.bands[1] - BLOW.bands[0]);
+      label(ctx, '×4', 22, (BLOW.top + BLOW.bands[0]) / 2, '#ffd23f', 16);
+      label(ctx, '×2', 22, (BLOW.bands[0] + BLOW.bands[1]) / 2, '#5ef0ff', 14);
+      label(ctx, '×1', 22, (BLOW.bands[1] + BLOW.low) / 2, '#c9d0ff', 12);
+      // the stall
+      const gy = BLOW.ground + 22;
+      ctx.fillStyle = '#7a4a1e'; ctx.fillRect(40, gy, W - 80, 10); ctx.fillRect(60, gy + 10, 8, 50); ctx.fillRect(W - 68, gy + 10, 8, 50);
+      for (let i = 0; i < 8; i++) { ctx.fillStyle = i & 1 ? '#f4f6ff' : '#ff5c5c'; ctx.fillRect(40 + i * 50, gy + 10, 50, 14); }
+      for (const [x, k] of [[70, 0], [W - 70, 3]]) emoji(ctx, '🎈', x, gy - 26, 30, Math.sin(t * 2 + k) * 0.15);
+      for (const c of st.coins) {
+        if (c.cake) { emoji(ctx, '🍰', c.x, c.y + Math.sin(t * 4 + c.x * 0.05) * 4, 32); continue; }
+        const sq = Math.abs(Math.cos(t * 5 + c.x * 0.02)), r = 7 + c.pay * 1.5;
+        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.ellipse(c.x, c.y, r * sq + 2, r, 0, 0, TAU); ctx.fill();
+        ctx.strokeStyle = '#b38600'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      // the balloon on its string; near the limit it shakes and stretches
+      if (!st.fall) {
+        const p = balloonAt(st), r = blowR(b.s) * (1 + b.puff), warn = b.s > b.lim - BLOW.warn, j = warn ? Math.sin(t * 60) * 2 : 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(st.x, st.y - 18);
+        ctx.quadraticCurveTo(st.x - st.vx * 0.04, (st.y - 18 + p.y + r) / 2, p.x, p.y + r); ctx.stroke();
+        ctx.fillStyle = b.c; ctx.beginPath(); ctx.ellipse(p.x + j, p.y, r * (warn ? 0.92 : 1), r * (warn ? 1.1 : 1), st.sw, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(p.x - 5, p.y + r + 6); ctx.lineTo(p.x + 5, p.y + r + 6); ctx.lineTo(p.x, p.y + r - 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(p.x + j - r * 0.35, p.y - r * 0.4, r * 0.18, r * 0.3, -0.5, 0, TAU); ctx.fill();
+        if (warn) label(ctx, '!', p.x + r + 12, p.y - r * 0.6, Math.sin(t * 20) > 0 ? '#ff5c5c' : '#ffffff', 22);
+      }
+      snail(api, ctx, st.x, st.y, 1.3, st.dir, st.fall, st.fall ? t * 9 : -st.sw * 0.4);
+      if (st.dizzy > 0) for (let i = 0; i < 3; i++) emoji(ctx, '💫', st.x + Math.cos(t * 6 + i * 2.1) * 26, st.y - 30 + Math.sin(t * 6 + i * 2.1) * 6, 16);
+      if (!st.fall && st.dizzy <= 0 && b.s < BLOW.lift + 1) label(ctx, 'TAP = PUMP', W / 2, api.H - 30, Math.sin(t * 6) > 0 ? '#7cf2a8' : '#ffffff', 16);
+      drawBank(api, ctx);
+      drawTalk(api, ctx, st.x, st.fall ? st.y - 34 : Math.max(api.HUD_H + 50, balloonAt(st).y - blowR(b.s) - 8));
+    },
+    tap(api) { pump(api); },
+  };
+
+  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort, pusher, balloon };
 })();

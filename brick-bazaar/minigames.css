@@ -218,3 +218,40 @@
 .mg-btns:has(.mg-cash[hidden]) .mg-drop { grid-column: 1 / -1; }
 @keyframes mg-squash { 40% { transform: scale(1.12, 0.7); } }
 @keyframes mg-shake { 25% { transform: translateX(-0.3em); } 50% { transform: translateX(0.3em); } 75% { transform: translateX(-0.15em); } }
+
+/* Wobbly Wire. The wire is 5em from the top of the sky; WIRE_DEG sets the lean angle. */
+.mg-sky { position: relative; flex-shrink: 0; width: 100%; max-width: 22em; height: 11em; margin: 0 auto; border-radius: 0.9em;
+  background: linear-gradient(180deg, #1d2350, #161a36); overflow: hidden; touch-action: none; -webkit-touch-callout: none; }
+.mg-wire { position: absolute; left: 0.8em; right: 0.8em; top: 5em; height: 0.15em; background: #b8c0f0; }
+.mg-wire::before, .mg-wire::after { content: ""; position: absolute; top: 0; width: 0.35em; height: 6em; background: #c58a4a; }
+.mg-wire::before { left: 0; }
+.mg-wire::after { right: 0; }
+.mg-flag { position: absolute; top: 2.85em; font-size: 1.3em; line-height: 1; transform: translateX(-20%); }
+.mg-soup { position: absolute; left: 0; right: 0; bottom: 0; height: 2.4em; padding-top: 0.9em; font-size: 0.75em; font-weight: 900;
+  color: #14603a; border-radius: 50% 50% 0 0 / 0.8em 0.8em 0 0; background: linear-gradient(180deg, #b8f08a, #2a9c62); }
+.mg-splash { position: absolute; bottom: 1em; font-size: 2.4em; line-height: 1; opacity: 0; transform: translateX(-50%) scale(0.3);
+  pointer-events: none; z-index: 3; }
+.mg-splash.mg-on { opacity: 1; transform: translateX(-50%) scale(1.3); transition: transform 0.25s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.mg-walker { position: absolute; top: 5em; left: 6%; width: 0; height: 0; z-index: 2; pointer-events: none; }
+.mg-lean { position: absolute; left: -2.5em; bottom: 0; width: 5em; height: 3.4em; transform-origin: 50% 100%; }
+.mg-pole { position: absolute; left: 0; right: 0; top: 1.3em; height: 0.2em; border-radius: 0.1em; background: #ffe680; }
+.mg-pole::before, .mg-pole::after { content: ""; position: absolute; top: -0.25em; width: 0.7em; height: 0.7em; border-radius: 50%;
+  background: #ff4f8b; }
+.mg-pole::before { left: -0.2em; }
+.mg-pole::after { right: -0.2em; }
+.mg-bug { position: absolute; left: 50%; bottom: 0; font-size: 1.9em; line-height: 1; transform: translateX(-50%); }
+.mg-cap { position: absolute; left: 50%; bottom: 1.45em; font-size: 1.1em; line-height: 1; transform: translateX(-35%) rotate(-12deg); }
+.mg-sweat { position: absolute; left: 66%; top: -0.2em; font-size: 0.9em; line-height: 1; opacity: 0; }
+.mg-lean.mg-hot .mg-sweat { opacity: 1; animation: mg-wobble 0.2s ease-in-out infinite alternate; }
+.mg-gust { position: absolute; bottom: 0.9em; font-size: 1.4em; line-height: 1; opacity: 0; transition: opacity 0.15s; }
+.mg-gust.mg-l { right: 2em; opacity: 1; transform: scaleX(-1); }
+.mg-gust.mg-r { left: 2em; opacity: 1; }
+.mg-balloon { position: absolute; left: -0.5em; bottom: 2.2em; font-size: 1.6em; line-height: 1; opacity: 0; }
+.mg-walker.mg-float .mg-balloon { opacity: 1; transition: opacity 0.2s; }
+.mg-walker.mg-float { animation: mg-float 1.2s ease-in 0.25s forwards; }
+.mg-walker.mg-plunge { top: 10em; transition: top 0.65s cubic-bezier(0.5, 0, 1, 0.6); }
+.mg-walker.mg-plunge .mg-lean { transition: transform 0.65s ease-in; }
+.mg-walker.mg-bow .mg-lean { animation: mg-wobble 0.3s ease-in-out 4 alternate; }
+.mg-sky.mg-shake { animation: mg-shake 0.4s ease-in-out; }
+.mg-btns .mg-big.mg-on { transform: translateY(0.2em); box-shadow: 0 0.1em 0 #1b4fa0; filter: brightness(1.2); }
+@keyframes mg-float { to { transform: translate(3em, -7em); } }

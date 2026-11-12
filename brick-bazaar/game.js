@@ -72,23 +72,37 @@
     arc: { name: 'Arc Coil', icon: '⚡', rate: 1.6, clip: 5, reload: 6, dmg: 2, color: '#9ab8ff' },
     saw: { name: 'Buzz Saw', icon: '🪚', rate: 3.5, clip: 2, reload: 8, dmg: 1, color: '#ffd6a0' },
     duck: { name: 'Duck Mortar', icon: '🦆', rate: 3.2, clip: 2, reload: 8, dmg: 2, color: '#ffe94a' },
+    yoyo: { name: 'Yo-Yo', icon: '🪀', rate: 4.2, clip: 2, reload: 8, dmg: 1, color: '#ff8fd0' },
   };
-  // What each gun does at level 1, and what it gains at level 3 and at level 5.
+  // What each gun does at level 1, what it gains at level 3 and at level 5, and its super shot.
   const GUN_TEXT = {
-    blaster: ['Twin shots from the paddle tips.', 'A third shot from the centre.', 'Shots pierce one brick.'],
-    scatter: ['Sprays a fan of pellets.', 'Pellets bounce off the walls.', 'Pellets pierce one brick.'],
-    laser: ['A beam that cuts through bricks.', 'Two beams.', 'Three beams.'],
-    rocket: ['Rockets blast everything near the impact.', 'Rockets steer to a target.', 'Each blast scatters three more.'],
-    arc: ['Chain lightning that never misses.', 'Two chains.', 'Three chains.'],
-    saw: ['A saw disc bounces around and cuts bricks.', 'A bigger disc that lasts longer.', 'Two discs.'],
-    duck: ['Lobs a rubber duck that explodes on every bounce.', 'One more bounce.', 'Bigger blasts and one more bounce.'],
+    blaster: ['Twin shots from the paddle tips.', 'A third shot from the centre.', 'Popcorn: a shot that breaks a brick splits in two.', 'Last Pea: a fat pea that bounces from brick to brick.'],
+    scatter: ['Sprays a fan of pellets.', 'Pellets bounce off the walls.', 'Pellets pierce one brick and knock coins off the bricks.', 'Sneeze: your ball sprays pellets all around.'],
+    laser: ['A beam that cuts through bricks.', 'Two beams.', 'Three beams. A beam that stops splits into two rays.', 'Prism: a beam hits your ball, and the ball throws eight rays.'],
+    rocket: ['Rockets blast everything near the impact.', 'Rockets steer to a target.', 'Firework: each blast throws five sparks.', 'Big Bertha: one huge, slow rocket.'],
+    arc: ['Chain lightning that never misses.', 'Two chains.', 'Three chains. Each second shot starts at your ball.', 'Coin Circuit: lightning runs through every coin that lies on a brick.'],
+    saw: ['A saw disc bounces around and cuts bricks.', 'A bigger disc that lasts longer.', 'Two discs. Catch a disc with the paddle to rev it up.', 'Mega Saw: a giant disc that cuts through everything but stone.'],
+    duck: ['Lobs a rubber duck that explodes on every bounce.', 'One more bounce.', 'Bigger blasts, one more bounce, and each bounce drops a duckling.', 'Duck Rider: a duck rides your ball. Each brick that the ball hits goes QUACK.'],
+    yoyo: ['A yo-yo on a string. It follows your paddle, grinds the first brick that it meets and brings coins back down.', 'A bigger yo-yo that grinds faster.', 'Sleeper: it grinds longer and carries more coins.', "Cat's Cradle: two yo-yos at once."],
   };
+  // From gun level SUPER_LV (the Gun Workshop) every second clip ends with the super shot of the gun. One level
+  // higher, every clip does.
+  const SUPER_LV = 6;
   function gunDesc(g, l) {
     const t = GUN_TEXT[g];
     if (!l) return t[0] + ' Fires by itself. Paddle bounces reload it.';
-    const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : '';
-    return `${t[0]} Paddle bounces reload it. Each level: faster and stronger.${next}${l >= 5 && l < gunMax() ? ' The Gun Workshop allows this level.' : ''}`;
+    const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : l < SUPER_LV ? ` Level ${SUPER_LV}: every second clip ends with a super shot. ${t[3]}` : l === SUPER_LV ? ' Next level: every clip ends with the super shot.' : '';
+    return `${t[0]} Paddle bounces reload it. Each level: faster and stronger.${next}${l >= 5 && l >= gunMax() && gunMax() < 7 ? ' The Gun Workshop allows a higher level.' : ''}`;
   }
+  // Two guns at level COMBO_LV work together.
+  const COMBO_LV = 5;
+  const COMBOS = [
+    { id: 'tesla', a: 'saw', b: 'arc', icon: '🌩️', name: 'Tesla Saw', text: 'Arc lightning goes through a saw disc first, and jumps two bricks farther.' },
+    { id: 'jetduck', a: 'duck', b: 'rocket', icon: '🛩️', name: 'Jet Duck', text: 'Every QUACK launches a small rocket that steers to a target.' },
+    { id: 'glitter', a: 'laser', b: 'scatter', icon: '🌈', name: 'Glitter Storm', text: 'Each shot of the Prism Lance comes with three rainbow pellets.' },
+  ];
+  const comboOn = (c) => lv('gun_' + c.a) >= COMBO_LV && lv('gun_' + c.b) >= COMBO_LV;
+  const combo = (id) => comboOn(COMBOS.find((c) => c.id === id));
   const CATS = [
     { id: 'weap', name: '🔫 Guns' }, { id: 'drone', name: '🛰️ Drones' }, { id: 'gear', name: '🧲 Gear' },
     { id: 'ball', name: '⚪ Ball' }, { id: 'eco', name: '🪙 Coins' }, { id: 'blimp', name: '🎈 Blimps' },
@@ -106,6 +120,14 @@
   const AUCTION_S = 12, AUCTION_BID = 3, AUCTION_STEP = 2, AUCTION_MAX = 20; // Going Once: length, first price, rise per second, top price (in coins)
   const STAMPEDE_S = 8, STAMPEDE_V = 70, STAMPEDE_MIN = 3; // Penny Stampede: length, walk speed, coins on bricks that it needs
   const HAPPY_EVERY = 15, HAPPY_S = 3; // HAPPY HOUR: seconds between bells, seconds of triple coins
+  // Penny Toss: a tap just before a fat coin lands on the paddle throws it back up and doubles it, TOSS_MAX times.
+  const TOSS_MAX = 3, TOSS_TAP = 0.25, TOSS_V = 430, TOSS_HINT = 170;
+  // Wall Thump: the paddle hits a side wall faster than THUMP_V px/s. The bricks in the THUMP_COLS columns at that
+  // wall crack and drop their coins. THUMP_S = seconds until the next one.
+  const THUMP_FROM = 10, THUMP_V = 650, THUMP_S = 3, THUMP_COLS = 2;
+  // A served ball has a name. A ball with GRAVE_HITS hits or more gets a gravestone when it is lost.
+  const GRAVE_HITS = 30, GRAVE_S = 5;
+  const BALL_NAMES = ['Gerald', 'Doris', 'Kevin', 'Mildred', 'Stanley', 'Brenda', 'Nigel', 'Agnes', 'Trevor', 'Maureen', 'Clive', 'Edna'];
   const PIN_S = 12, PIN_GAP = 6, COFFEE_K = 0.25, JITTER_K = 1 / 3; // pins: life, seconds until the next one, cut of that time per coffee, both times on Too Much Coffee
   const BULL_K = 3, BULL_CAPSULE = 5, DARE_BULLS = 3; // bullseye: damage factor, each n-th one drops a capsule, count for the dare
   const TACK_RAD = 46; // radius of the blast of a Blasting Tack
@@ -123,6 +145,14 @@
   const EVENT_CHANCE = 0.3, FILM_S = 9, BINGO_S = 15, BINGO_PAY = 12, COFFEE_S = 8; // mid-level events
   const PARCEL_FROM = 5, PARCEL_AT = 40; // the slow parcel: ordered at, arrives at
   const magnetR = (l) => (l ? 60 + 22 * l : 0); // reach of the coin magnet in px, from the centre of the paddle
+  // The capstones; see CAPS.
+  const TIP_OFF = 0.8, TIP_S = 2; // Spring Tips: the tip starts at this share of the half width; seconds of the fireball
+  const LODE_S = 2, LODE_V = 520; // Lodestone: seconds, speed of the coins in px/s
+  const LUCK_EVERY = 25, LUCK_FAT = 6; // Lucky Brick: each n-th brick, value of the fat coin in coins
+  const CRIT_JUMP = 80, COMET_AT = 20, DOSE_EVERY = 4, KICK_S = 2.5;
+  const CHILL_K = 0.12, CHILL_H = 130; // Chill Field: cut of the ball speed per level, height of the field above the paddle
+  // Ball and Chain: distance between links, reach of a link, share of the ball damage, seconds between two hits on one brick
+  const TAIL_LINK = 9, TAIL_R = 5, TAIL_K = 0.25, TAIL_CD = 0.3;
   const BOY_S = 1.5, BOY_SAVES = 2, BOY_WAGE = 0.06; // ball boy: the tap window, saves per level, wage share of the clear bonus
   // at = the level from which the shop stocks the item. A new player sees three items; two or three more arrive per level.
   // Normal items are upgrades: level lv(id), cost base * grow^level, up to max.
@@ -135,18 +165,15 @@
     { id: 'gun_arc', at: 16, cat: 'weap', gun: 'arc', max: 5, base: 230, grow: 1.9 },
     { id: 'gun_saw', at: 21, cat: 'weap', gun: 'saw', max: 5, base: 260, grow: 1.9 },
     { id: 'gun_duck', at: 26, cat: 'weap', gun: 'duck', max: 5, base: 300, grow: 1.9 },
+    { id: 'gun_yoyo', at: 30, cat: 'weap', gun: 'yoyo', max: 5, base: 380, grow: 1.9 },
     { id: 'rounds', at: 12, cat: 'weap', icon: '🎯', name: 'Hardened Rounds', max: 4, base: 150, grow: 2.2,
       desc: (l) => `All guns and drone shots deal +${(l + 1) * 35}% damage.`, req: () => ownsAnyGun() || lv('d_orbit') > 0, reqText: 'Needs a gun' },
-    { id: 'belt', at: 7, cat: 'weap', icon: '🎒', name: 'Ammo Belt', max: 4, base: 60, grow: 1.7,
-      desc: (l) => `Clips hold ${(l + 1) * 25}% more shots.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'factory', at: 9, cat: 'weap', icon: '🏭', name: 'Quick Hands', max: 4, base: 90, grow: 1.7,
-      desc: (l) => `Reloads are ${Math.round((1 - Math.pow(RELOAD_CUT, l + 1)) * 100)}% shorter.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'recycler', at: 14, cat: 'weap', icon: '♻️', name: 'Recycler', max: 4, base: 80, grow: 1.7,
-      desc: (l) => `${(l + 1) * 12}% chance a shot uses no ammo.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'belt', at: 7, cat: 'weap', icon: '🎒', name: 'Ammo Belt', max: 4, base: 70, grow: 1.8,
+      desc: (l) => `Clips hold ${(l + 1) * 25}% more shots, and reloads are ${Math.round((1 - Math.pow(RELOAD_CUT, l + 1)) * 100)}% shorter.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
     { id: 'echo', at: 22, cat: 'weap', icon: '📣', name: 'Echo Chamber', max: 4, base: 320, grow: 1.9,
-      desc: (l) => `${(l + 1) * 12}% chance that a gun fires twice.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
-    { id: 'workshop', at: 32, cat: 'weap', icon: '🛠️', name: 'Gun Workshop', max: 2, base: 1500, grow: 3,
-      desc: (l) => `Every gun can go one level higher. Now: up to level ${5 + l}.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+      desc: (l) => { const n = ECHO_BASE - Math.min(l + 1, 4); return `Every ${n}${n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'} shot fires twice.`; }, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
+    { id: 'workshop', at: 26, cat: 'weap', icon: '🛠️', name: 'Gun Workshop', max: 2, base: 900, grow: 3,
+      desc: (l) => `Every gun can go one level higher. Level ${SUPER_LV} gives a gun its super shot at the end of every second clip, level ${SUPER_LV + 1} at the end of every clip. Now: up to level ${5 + l}.`, req: () => ownsAnyGun(), reqText: 'Needs a gun' },
 
     { id: 'd_orbit', at: 6, cat: 'drone', icon: '🛰️', name: 'Orbiter', max: 3, base: 100, grow: 1.8,
       desc: (l) => `Circles your paddle and fires free shots. Owned: ${l}/3.` },
@@ -209,12 +236,14 @@
     { id: 'splash', at: 11, cat: 'ball', icon: '💥', name: 'Shatter Core', max: 4, base: 95, grow: 1.7,
       desc: (l) => `${(l + 1) * 15}% chance a ball hit also chips every brick around it.` },
     { id: 'chill', at: 13, cat: 'ball', icon: '❄️', name: 'Chill Field', max: 3, base: 60, grow: 1.7,
-      desc: () => 'Ball moves 7% slower. Easier to follow.' },
+      desc: (l) => `A ball that comes down slows by ${(l + 1) * Math.round(CHILL_K * 100)}% just above the paddle. Easier to catch.` },
+    { id: 'tail', at: 20, cat: 'ball', icon: '⛓️', name: 'Ball and Chain', max: 3, base: 240, grow: 2,
+      desc: (l) => `Each ball drags a chain of ${2 * (l + 1)} links. A link that sweeps a brick or a monster hits it.` },
 
     { id: 'luck', at: 2, cat: 'eco', icon: '🍀', name: 'Lucky Bricks', max: 6, base: 45, grow: 1.7,
       desc: (l) => `Coin drop chance ${Math.round(coinChance(l) * 100)}% → ${Math.round(coinChance(l + 1) * 100)}%.` },
     { id: 'value', at: 5, cat: 'eco', icon: '🪙', name: 'Gold Plating', max: 5, base: 90, grow: 2.3,
-      desc: (l) => `Every coin is worth ${(l + 1) * 10}% more.` },
+      desc: (l) => `Every coin is worth ${(l + 1) * 10}% more. The coins show it: bronze, silver, gold.` },
     { id: 'piggy', at: 7, cat: 'eco', icon: '🐷', name: 'Piggy Bank', max: 4, base: 80, grow: 1.7,
       desc: (l) => `Earn ${(l + 1) * 5}% interest on savings after each level (max ${(l + 1) * piggyCap()}).` },
     { id: 'streak', at: 8, cat: 'eco', icon: '🔗', name: 'Streak Bonus', max: 3, base: 70, grow: 2,
@@ -320,6 +349,24 @@
       desc: () => `${g.blurb} The price is your stake. One game per visit.`, use: () => { run.pendingMini = g.id; } });
   }
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
+  // A capstone: the rule that an upgrade gains at its top level. [name, text].
+  const CAPS = {
+    dmg: ['Wrecking Ball', 'A ball that breaks a brick with one hit flies on through it.'],
+    width: ['Spring Tips', `A ball that hits a tip of the paddle is a fireball for ${TIP_S} seconds.`],
+    magnet: ['Lodestone', `A sweet-spot hit pulls every coin to the paddle for ${LODE_S} seconds, also the coins that lie on bricks.`],
+    luck: ['Lucky Brick', `Every ${LUCK_EVERY}th brick that you break drops a fat coin.`],
+    crit: ['Chain Crit', 'A critical hit jumps to the nearest brick.'],
+    momentum: ['Comet', `At a streak of ${COMET_AT} bricks the ball is a fireball until the streak ends.`],
+    puluck: ['Double Dose', `Every ${DOSE_EVERY}th capsule that you catch gives a second, random effect.`],
+    rounds: ['Tungsten', 'Straight shots go through one more brick.'],
+    d_goalie: ["Keeper's Kick", 'A ball that the goalie saves comes back as a fireball.'],
+    glasses: ['Dead Centre', 'A bullseye breaks a plain brick with one hit.'],
+  };
+  for (const it of ITEMS) if (CAPS[it.id]) it.cap = { name: CAPS[it.id][0], text: CAPS[it.id][1] };
+  const capped = (id) => lv(id) >= ITEM_BY_ID[id].max;
+  const comet = () => capped('momentum') && G.combo >= COMET_AT;
+  // items that left the shop: [id, base, grow]. A saved run gets their price back.
+  const GONE = [['factory', 90, 1.7], ['recycler', 80, 1.7]];
   for (const it of ITEMS) {
     if (!it.gun) continue;
     it.icon = GUNS[it.gun].icon; it.name = GUNS[it.gun].name; it.gunItem = true; it.desc = (l) => gunDesc(it.gun, l);
@@ -339,7 +386,7 @@
   const goalieRecharge = (l) => [0, 12, 9, 6, 6][Math.min(l, 4)];
   const lv = (id) => (run && run.up[id]) || 0;
   const ownsAnyGun = () => Object.keys(GUNS).some((g) => lv('gun_' + g) > 0);
-  const RELOAD_CUT = 0.82; // reload time factor per Quick Hands level
+  const RELOAD_CUT = 0.82; // reload time factor per Ammo Belt level
   // A reload runs at RELOAD_IDLE of its speed by itself, and each paddle bounce takes RELOAD_HIT seconds off it.
   // So a player who keeps the balls in play reloads fast, and guns do little for a player who does not play.
   const RELOAD_IDLE = 0.5, RELOAD_HIT = 1.6;
@@ -386,7 +433,7 @@
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
   // Item sets: from SET_FROM, all items of a set at their maximum add one rule.
   const SETS = [
-    { id: 'gunsmith', icon: '🔫', name: 'Gunsmith', items: ['belt', 'factory', 'recycler', 'echo'], text: 'The last shot of each clip fires three times.' },
+    { id: 'gunsmith', icon: '🔫', name: 'Gunsmith', items: ['belt', 'echo', 'rounds'], text: 'The last shot of each clip fires three times.' },
     { id: 'baron', icon: '🎩', name: 'Blimp Baron', items: ['bait', 'cargo', 'hull', 'goldtix'], text: 'Every fifth blimp that you pop calls a convoy.' },
     { id: 'juggler', icon: '🤹', name: 'Juggler', items: ['twin', 'dmg', 'crit'], text: 'A sweet-spot hit gives that ball +1 pierce until its next bounce.' },
   ];
@@ -505,7 +552,7 @@
   }
   function buy(it) {
     if (itemState(it) !== 'ok') { sfx.nope(); quip('poor'); return false; }
-    const sale = onSale(it), cost = itemCost(it), setsBefore = SETS.filter(setOn);
+    const sale = onSale(it), cost = itemCost(it), setsBefore = SETS.filter(setOn), combosBefore = COMBOS.filter(comboOn);
     if (it.seals) run.seals -= cost;
     else { run.coins -= cost; run.spent = (run.spent || 0) + cost; lastPaid = cost; }
     shopMsg = ''; lastBox = null;
@@ -513,7 +560,10 @@
     else { run.up[it.id] = lv(it.id) + 1; if (priceLocked(it)) run.lock.id = '-'; }
     const set = SETS.find((s) => setOn(s) && !setsBefore.includes(s));
     if (set) shopMsg = `🧩 Set complete: ${set.icon} ${set.name}! ${set.text}`;
-    quip(QUIPS[it.id] ? it.id : !it.use && lv(it.id) >= maxOf(it) ? 'maxed' : sale ? 'sale' : it.gunItem ? 'gunBuy' : it.cat === 'drone' ? 'droneBuy'
+    if (it.cap && lv(it.id) >= it.max) shopMsg = `★ ${it.icon} ${it.cap.name}! ${it.cap.text}`;
+    const cb = COMBOS.find((c) => comboOn(c) && !combosBefore.includes(c));
+    if (cb) shopMsg = `🧩 Gun combo: ${cb.icon} ${cb.name}! ${cb.text}`;
+    quip(cb ? 'combo' : it.cap && lv(it.id) >= it.max ? 'capstone' : QUIPS[it.id] ? it.id : !it.use && lv(it.id) >= maxOf(it) ? 'maxed' : sale ? 'sale' : it.gunItem ? 'gunBuy' : it.cat === 'drone' ? 'droneBuy'
       : it.cat === 'blimp' ? 'blimpBuy' : it.id === 'relicbuy' ? 'relicBuy' : 'buy');
     sfx.buy(); buzz(12); saveRun(); return true;
   }
@@ -541,6 +591,10 @@
     if (r.spent == null) {
       r.spent = 0;
       for (const it of ITEMS) for (let i = 0; it.base && i < (r.up[it.id] || 0); i++) r.spent += Math.round(it.base * Math.pow(it.grow, i));
+    }
+    for (const [id, base, grow] of GONE) {
+      for (let i = 0; i < (r.up[id] || 0); i++) { const c = Math.round(base * Math.pow(grow, i)); r.coins += c; r.spent = Math.max(0, r.spent - c); }
+      delete r.up[id];
     }
     if (!DARES[r.dare]) r.dare = null;
     if (!DARES[r.dareOffer]) r.dareOffer = null;
@@ -706,7 +760,7 @@
         map.push(half.join('') + half.slice().reverse().join(''));
       }
     }
-    const kinds = ['drifter', 'shooter', 'mender', 'thief', 'splitter', 'bomber'];
+    const kinds = ['drifter', 'shooter', 'mender', 'thief', 'splitter', 'bomber', 'spook', 'jester', 'bulwark', 'zapper'];
     const foes = {};
     const count = Math.min(7, 4 + Math.floor(over / 4));
     for (let i = 0; i < count; i++) { const k = kinds[Math.floor(rnd() * kinds.length)]; foes[k] = (foes[k] || 0) + 1; }
@@ -836,7 +890,9 @@
   // The first level of each creature of the critters section, and of the boss cameo.
   const CAMEO_FROM = 12, PEEK_FROM = 14, WALKER_FROM = 18, FROG_FROM = 22;
   // Bricks with a free cell above them, where a creature can stand. taken = bricks that already have one.
-  const ledges = (taken) => G.bricks.filter((b) => b.alive && b.row < 90 && !b.slide && !taken.has(b) && !G.bricks.some((o) => o.alive && o.col === b.col && o.row === b.row - 1));
+  // The row of the cell of brick o. A brick that dances in the conga keeps its cell.
+  const cellRow = (o) => (o.conga ? o.row - CONGA_ROW : o.row);
+  const ledges = (taken) => G.bricks.filter((b) => b.alive && b.row < 90 && !b.slide && !taken.has(b) && !G.bricks.some((o) => o.alive && o.col === b.col && cellRow(o) === b.row - 1));
   // ---------- pigeons ----------
   // Birds sit on bricks and watch the ball. A ball that comes close scares a bird away; it drops a coin, three times at most.
   function perch(p) {
@@ -854,7 +910,7 @@
         if (d <= sp) { p.x = p.tx; p.y = p.ty; p.fly = false; p.gone = !p.on; } else { p.x += (dx / d) * sp; p.y += (dy / d) * sp; }
         continue;
       }
-      if (!p.on.alive || p.on.row > 90) { perch(p); continue; }
+      if (!p.on.alive || p.on.row >= 90) { perch(p); continue; }
       if (!G.balls.some((b) => !b.stuck && Math.hypot(b.x - p.x, b.y - p.y) < 46)) continue;
       if (p.paid++ < 3) dropCoin(p.x, p.y, 1, true);
       burst(p.x, p.y, '#e8ecff', 4, 90); sfx.eek(); perch(p);
@@ -961,7 +1017,7 @@
   // the air for a moment and falls. The paddle can catch it; a miss costs nothing.
   const WALKER_SPEED = 32, WALKER_OOPS = 0.4, WALKER_PAY = 6;
   // The brick of the given row under x that has a free cell above it, or undefined.
-  const floorAt = (row, x) => G.bricks.find((b) => b.alive && b.row === row && !b.slide && x >= b.x - GAP && x <= b.x + b.w + GAP && !G.bricks.some((o) => o.alive && o.col === b.col && o.row === row - 1));
+  const floorAt = (row, x) => G.bricks.find((b) => b.alive && b.row === row && !b.slide && x >= b.x - GAP && x <= b.x + b.w + GAP && !G.bricks.some((o) => o.alive && o.col === b.col && cellRow(o) === row - 1));
   function addWalker() {
     const spots = ledges(new Set());
     if (!spots.length) return;
@@ -1006,7 +1062,7 @@
   const PEEK_NEAR = 90, PEEK_PAY = 5, PEEK_HITS = 3;
   function hidePeek(p) {
     const taken = new Set(G.peeks.map((o) => o.on));
-    const open = (b, s) => b.col + s >= 0 && b.col + s < COLS && !G.bricks.some((o) => o.alive && o.row === b.row && o.col === b.col + s);
+    const open = (b, s) => b.col + s >= 0 && b.col + s < COLS && !G.bricks.some((o) => o.alive && cellRow(o) === b.row && o.col === b.col + s);
     const spots = G.bricks.filter((b) => b.alive && b.row < 90 && !b.slide && !taken.has(b) && (open(b, -1) || open(b, 1)));
     p.on = spots.length ? pick(spots) : null;
     if (p.on) p.side = open(p.on, -1) && open(p.on, 1) ? pick([-1, 1]) : open(p.on, -1) ? -1 : 1;
@@ -1060,7 +1116,7 @@
     if (!beaten.length) return;
     const kind = pick(beaten), d = BOSSES[kind], side = Math.random() < 0.5 ? -1 : 1;
     G.cameo = { kind, side, w: d.w, h: d.h, x: side < 0 ? -d.w / 2 - 10 : W + d.w / 2 + 10, y: clamp(brickBottom() + 30, 180, PADDLE_Y - 280),
-      t: 0, phase: 1, flash: 0, state: 'idle', talk: null, said: false, shot: false, out: false };
+      t: 0, phase: 1, flash: 0, state: 'idle', talk: null, said: false, shot: false, out: false, alt: bossAlt() };
     sfx.teleport();
   }
   function updateCameo(dt) {
@@ -1161,7 +1217,7 @@
       Q.fly = false; Q.sitT = Q.coin ? QUILL_PECK : QUILL_SIT;
       return;
     }
-    if (Q.on && (!Q.on.alive || Q.on.row > 90)) { quillPerch(Q); return; }
+    if (Q.on && (!Q.on.alive || Q.on.row >= 90)) { quillPerch(Q); return; }
     if (Q.on) Q.y = Q.on.y - QUILL_FOOT;
     if ((Q.sitT -= dt) <= 0) quillPerch(Q);
   }
@@ -1325,6 +1381,203 @@
     }
   }
 
+  // ---------- Rummage Raccoon ----------
+  // A mini-boss on the RACCOON_LEVELS of a normal run. He walks on the tops of the bricks to the capsules that fall
+  // and stacks each capsule that comes within his reach on his head. When no capsule comes for RACCOON_PULL seconds he
+  // takes one from his apron, so the stack grows to RACCOON_MAX. A ball hit knocks the stack over: the capsules fall
+  // side by side. RACCOON_HITS ball hits drive him off with a purse. After RACCOON_S seconds, or when the level ends,
+  // he leaves with the stack. He never costs a ball or a life. He is not a foe: guns, drones, lightning and the goal
+  // of the level ignore him.
+  const RACCOON_LEVELS = [16, 32, 44], RACCOON_AT = 4, RACCOON_S = 35, RACCOON_HITS = 3, RACCOON_PURSE = 12, RACCOON_MAX = 6, RACCOON_PULL = 5;
+  const RACCOON_SPEED = 90, RACCOON_RUN = 220, RACCOON_HOP = 16, RACCOON_REACH = 24, RACCOON_W = 26, RACCOON_H = 40, RACCOON_FOOT = 8;
+  // RACCOON_CAP = scale of a capsule in the stack; RACCOON_SPREAD = px between two capsules of a knocked-over stack
+  const RACCOON_CAP = 0.55, RACCOON_CAP_H = 20 * RACCOON_CAP, RACCOON_SPREAD = 44;
+  const RACCOON_HIT_CD = 0.3, RACCOON_FLINCH = 0.5, RACCOON_PULL_S = 0.5, RACCOON_IDLE = 2.5, RACCOON_TALK = 6, RACCOON_EDGE = 110;
+  const RACCOON_LINES = ['Ooh, shiny!', 'Mine. All mine.', 'Free samples!', 'Nobody saw that.', 'One more for the hat!'];
+  const raccoonTop = (R) => R.y - RACCOON_H - R.stack.length * RACCOON_CAP_H;
+  // The height of a hop between two bricks; drawing only.
+  function raccoonLift(R) {
+    if (!R.hop) return 0;
+    const all = Math.hypot(R.tx - R.fx, R.ty - R.fy), left = Math.hypot(R.tx - R.x, R.ty - R.y);
+    return all > 1 ? Math.sin(Math.PI * clamp(1 - left / all, 0, 1)) * RACCOON_HOP : 0;
+  }
+  // The ledges with room for him and a full stack below the HUD. If there is none, any ledge.
+  function raccoonLedges() {
+    const all = ledges(new Set()), low = all.filter((k) => k.y - RACCOON_H - RACCOON_MAX * RACCOON_CAP_H >= HUD_H + 10);
+    return low.length ? low : all;
+  }
+  function startRaccoon() {
+    if (G.safari || G.boss || G.clearT >= 0 || G.raccoon) return;
+    const spots = raccoonLedges();
+    if (!spots.length) return;
+    const k = pick(spots);
+    G.raccoon = { x: exit(k.x), y: k.y, t: 0, hits: 0, stack: [], on: null, cd: 0, flinch: 0, wob: 0, pull: 0, pullT: RACCOON_PULL, idleT: RACCOON_IDLE, talkT: RACCOON_TALK, out: false, hop: false, dir: 1 };
+    raccoonGo(G.raccoon, k);
+    G.heckled.raccoon = G.heckled.raccoonFlee = G.heckled.raccoonWin = false;
+    heckle('raccoon', 'Rummage Raccoon! He stacks every capsule that falls near him.'); sfx.eek();
+  }
+  // He goes to x on top of brick k. A move to another brick is a hop.
+  function raccoonGo(R, k, x = k.x + k.w / 2) {
+    R.hop = k !== R.on; R.on = k; R.fx = R.x; R.fy = R.y;
+    R.tx = clamp(x, k.x + RACCOON_FOOT, k.x + k.w - RACCOON_FOOT); R.ty = k.y;
+  }
+  // A ledge near him, else any ledge. Returns false when he has no brick to stand on.
+  function raccoonRoam(R) {
+    const all = raccoonLedges().filter((k) => k !== R.on);
+    if (!all.length) return moleSpot(R.on);
+    const near = all.filter((k) => Math.abs(k.x - R.x) <= 2 * (BW + GAP) && Math.abs(k.y - R.y) <= 2 * (BH + GAP));
+    raccoonGo(R, pick(near.length ? near : all));
+    return true;
+  }
+  // The falling capsule nearest to him that is still above his knees. He does not take back what he knocked over.
+  function raccoonWant(R) {
+    let best = null;
+    for (const p of G.pus) {
+      if (p.dead || p.spilt || p.y > R.y - RACCOON_REACH) continue;
+      if (!best || Math.abs(p.x - R.x) < Math.abs(best.x - R.x)) best = p;
+    }
+    return best;
+  }
+  // He goes below capsule p, on the ledge nearest to it. His own brick wins a tie.
+  function raccoonChase(R, p) {
+    const spots = raccoonLedges().filter((k) => k.y > p.y);
+    if (!spots.length) return;
+    const cost = (k) => Math.abs(clamp(p.x, k.x, k.x + k.w) - p.x) + Math.abs(k.y - R.y) * 0.5 - (k === R.on ? 1 : 0);
+    raccoonGo(R, spots.reduce((a, k) => (cost(k) < cost(a) ? k : a)), p.x);
+  }
+  function raccoonGrab(R) {
+    const top = raccoonTop(R) - RACCOON_REACH;
+    for (const p of G.pus) {
+      if (R.stack.length >= RACCOON_MAX) return;
+      if (p.dead || p.spilt || Math.abs(p.x - R.x) > RACCOON_REACH || p.y < top || p.y > R.y) continue;
+      p.dead = true; R.stack.push(p.k); R.pullT = RACCOON_PULL; R.wob = 1; sfx.steal();
+      say(clamp(R.x, RACCOON_EDGE, W - RACCOON_EDGE), raccoonTop(R) - 10, 'MINE!', '#e0d4b8', 0.8);
+    }
+  }
+  function raccoonPull(R) {
+    R.pullT = RACCOON_PULL;
+    if (R.stack.length >= RACCOON_MAX) return;
+    R.stack.push(rollPU()); R.pull = RACCOON_PULL_S; R.wob = 1; sfx.pu();
+  }
+  // The stack falls side by side, so that the paddle can catch more than one.
+  function raccoonKnock(R) {
+    const n = R.stack.length;
+    R.stack.forEach((k, i) => G.pus.push({ x: clamp(R.x + (i - (n - 1) / 2) * RACCOON_SPREAD, 16, W - 16), y: R.y - RACCOON_H - i * RACCOON_CAP_H, vy: 20 + i * 12, k, spilt: true }));
+    R.stack = []; R.pull = 0;
+  }
+  function raccoonLeave(R) {
+    R.out = true; R.on = null; R.hop = false;
+    R.tx = exit(R.x); R.ty = R.y; R.dir = Math.sign(R.tx - R.x);
+  }
+  function raccoonKeeps(R) {
+    if (R.stack.length) say(clamp(R.x, RACCOON_EDGE, W - RACCOON_EDGE), raccoonTop(R) - 12, 'Finders keepers!', '#e0d4b8', 1.6);
+    if (G.clearT < 0) heckle('raccoonWin', 'The raccoon kept the capsules.');
+    raccoonLeave(R);
+  }
+  function updateRaccoon(dt) {
+    const R = G.raccoon;
+    if (!R) return;
+    R.t += dt; R.wob = Math.max(0, R.wob - dt * 1.5); R.pull = Math.max(0, R.pull - dt);
+    if (R.cd > 0) R.cd -= dt;
+    if (R.flinch > 0) R.flinch -= dt;
+    if (R.out) { if (walkTo(R, RACCOON_RUN, dt)) G.raccoon = null; return; }
+    if (G.clearT >= 0 || R.t >= RACCOON_S) { raccoonKeeps(R); return; }
+    raccoonGrab(R);
+    if ((R.pullT -= dt) <= 0) raccoonPull(R);
+    if ((R.talkT -= dt) <= 0) { R.talkT = RACCOON_TALK; say(clamp(R.x, RACCOON_EDGE, W - RACCOON_EDGE), raccoonTop(R) - 12, snailSay('raccoonSay') || pick(RACCOON_LINES), '#e0d4b8', 1.6); }
+    if (!moleSpot(R.on) && !raccoonRoam(R)) { raccoonKeeps(R); return; }
+    if (!R.hop && R.flinch <= 0 && R.stack.length < RACCOON_MAX) { const p = raccoonWant(R); if (p) raccoonChase(R, p); }
+    R.ty = R.on.y;
+    if (Math.abs(R.tx - R.x) > 0.5) R.dir = Math.sign(R.tx - R.x);
+    if (!walkTo(R, RACCOON_SPEED * (R.hop ? 1.6 : 1), dt)) return;
+    R.hop = false;
+    if ((R.idleT -= dt) > 0) return;
+    R.idleT = RACCOON_IDLE;
+    raccoonRoam(R);
+  }
+  function raccoonHit(R) {
+    if (R.cd > 0) return;
+    R.cd = RACCOON_HIT_CD; R.hits++; R.flinch = RACCOON_FLINCH;
+    burst(R.x, R.y - RACCOON_H / 2, '#a0a0b0', 12, 160); sfx.eek();
+    say(clamp(R.x, RACCOON_EDGE, W - RACCOON_EDGE), raccoonTop(R) - 10, R.stack.length ? 'MY HAT!' : 'HEY!', '#ffffff', 0.9);
+    raccoonKnock(R);
+    if (R.hits < RACCOON_HITS) {
+      const far = raccoonLedges().filter((k) => Math.abs(k.x + k.w / 2 - R.x) > 2 * (BW + GAP));
+      if (far.length) raccoonGo(R, pick(far));
+      return;
+    }
+    dropCoin(R.x, R.y - RACCOON_H / 2, RACCOON_PURSE, true);
+    raccoonLeave(R);
+    heckle('raccoonFlee', 'Off you go, raccoon! The capsules stay here.');
+  }
+  function drawRaccoon(t) {
+    const R = G.raccoon;
+    if (!R) return;
+    const ball = G.balls[0], moving = Math.hypot(R.tx - R.x, R.ty - R.y) > 0.5;
+    const step = moving ? Math.sin(t * 16) : 0, flinch = R.flinch > 0 ? R.flinch / RACCOON_FLINCH : 0;
+    const dir = moving ? R.dir : ball && ball.x < R.x ? -1 : 1;
+    const ex = ball ? clamp((ball.x - R.x) / 60, -1, 1) : 0, ey = ball ? clamp((ball.y - R.y + 29) / 90, -1, 1) : 0;
+    ctx.save();
+    ctx.translate(R.x, R.y - raccoonLift(R) - Math.abs(step) * 1.5);
+    ctx.rotate(-dir * flinch * 0.25);
+    // striped tail, from the tip to the root
+    for (let i = 5; i >= 0; i--) {
+      const k = i / 5, sway = Math.sin(t * 3 + k * 2) * 3 * k;
+      ctx.fillStyle = i % 2 ? '#3a3a48' : '#8e8e9c';
+      ctx.beginPath(); ctx.arc(-dir * (8 + k * 13 + sway), -5 - k * 15 - k * k * 4, 4.6 - k * 1.2, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = '#3a3a48'; ctx.beginPath();
+    ctx.ellipse(-5 + step * 2, -2, 3.5, 2.5, 0, 0, TAU); ctx.ellipse(5 - step * 2, -2, 3.5, 2.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#8e8e9c'; ctx.beginPath(); ctx.ellipse(0, -13, 11, 10, 0, 0, TAU); ctx.fill();
+    // market apron: striped canvas with a pocket
+    ctx.fillStyle = '#f2e6c8'; ctx.beginPath(); ctx.moveTo(-8, -21); ctx.lineTo(8, -21); ctx.lineTo(9, -6); ctx.quadraticCurveTo(0, -3, -9, -6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#d0603a'; for (const sx of [-4.5, 0, 4.5]) ctx.fillRect(sx - 0.8, -20, 1.6, 14);
+    ctx.fillStyle = '#e0cfa4'; rr(-5, -13, 10, 6, 2); ctx.fill();
+    ctx.strokeStyle = '#b89a68'; ctx.lineWidth = 1; rr(-5, -13, 10, 6, 2); ctx.stroke();
+    // ears, head, mask
+    ctx.fillStyle = '#8e8e9c'; ctx.beginPath(); ctx.arc(-7.5, -36, 4, 0, TAU); ctx.arc(7.5, -36, 4, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#3a3a48'; ctx.beginPath(); ctx.arc(-7.5, -35.5, 2, 0, TAU); ctx.arc(7.5, -35.5, 2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#9a9aa8'; ctx.beginPath(); ctx.arc(0, -28, 10, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ececf2'; ctx.beginPath(); ctx.ellipse(0, -33, 7, 2.6, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(dir * 1.5, -23.5, 6.5, 4.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#2a2a36'; ctx.beginPath(); ctx.ellipse(-4.5, -28.5, 5, 3.6, 0.25, 0, TAU); ctx.ellipse(4.5, -28.5, 5, 3.6, -0.25, 0, TAU); ctx.fill();
+    if (flinch) {
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.3; ctx.beginPath();
+      ctx.moveTo(-6.5, -30); ctx.lineTo(-3.5, -28.5); ctx.lineTo(-6.5, -27); ctx.moveTo(6.5, -30); ctx.lineTo(3.5, -28.5); ctx.lineTo(6.5, -27); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-4.5 + ex * 0.5, -28.8, 2.2, 0, TAU); ctx.arc(4.5 + ex * 0.5, -28.8, 2.2, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(-4.5 + ex * 1.1, -28.8 + ey * 0.9, 1.2, 0, TAU); ctx.arc(4.5 + ex * 1.1, -28.8 + ey * 0.9, 1.2, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = '#f4b8c4'; ctx.beginPath(); ctx.arc(-6.5, -23.5, 1.4, 0, TAU); ctx.arc(6.5, -23.5, 1.4, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.ellipse(dir * 1.5, -25.5, 2, 1.4, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#3a3a48'; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.moveTo(dir * 1.5 - 2.5, -22.5); ctx.quadraticCurveTo(dir * 1.5 - 1.2, -21, dir * 1.5, -22.5); ctx.quadraticCurveTo(dir * 1.5 + 1.2, -21, dir * 1.5 + 2.5, -22.5); ctx.stroke();
+    // the stack on his head; the top sways most, more so just after a new capsule. A new one from the apron rises from the pocket.
+    R.stack.forEach((k, i) => {
+      const sway = Math.sin(t * 5 + i * 0.6) * (0.6 + R.wob * 2.5) * i * 0.6;
+      let y = -RACCOON_H - RACCOON_CAP_H * (i + 0.5);
+      if (R.pull > 0 && i === R.stack.length - 1) y += (-10 - y) * (R.pull / RACCOON_PULL_S);
+      ctx.save(); ctx.translate(sway, y); ctx.rotate(sway * 0.03); ctx.scale(RACCOON_CAP, RACCOON_CAP);
+      drawPU({ x: 0, y: 0, k }, t);
+      ctx.restore();
+    });
+    // arms: they hold the stack, or rest on the apron
+    const up = R.stack.length > 0;
+    const paw = (s) => (R.pull > 0 && s === dir ? [s * 3, -10] : up ? [s * 11, -RACCOON_H - 2] : [s * 7, -11]);
+    ctx.strokeStyle = '#7a7a88'; ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.beginPath();
+    for (const s of [-1, 1]) { const [px, py] = paw(s); ctx.moveTo(s * 9, -19); ctx.lineTo(px, py); }
+    ctx.stroke(); ctx.lineCap = 'butt';
+    ctx.fillStyle = '#3a3a48'; ctx.beginPath();
+    for (const s of [-1, 1]) { const [px, py] = paw(s); ctx.moveTo(px + 2.6, py); ctx.arc(px, py, 2.6, 0, TAU); }
+    ctx.fill();
+    ctx.restore();
+    if (R.out) return;
+    const top = raccoonTop(R) - raccoonLift(R) - 6;
+    for (let i = 0; i < RACCOON_HITS; i++) {
+      ctx.fillStyle = i < R.hits ? '#ff5c5c' : '#5a5f78'; ctx.beginPath(); ctx.arc(R.x + (i - (RACCOON_HITS - 1) / 2) * 7, top, 2.5, 0, TAU); ctx.fill();
+    }
+  }
+
   function updateCritters(dt) {
     updateFrogs(dt);
     updateWalkers(dt);
@@ -1332,6 +1585,7 @@
     updateCameo(dt);
     updateQuill(dt);
     updateMole(dt);
+    updateRaccoon(dt);
   }
   // ---------- the game talks back ----------
   // The shopkeeper comments on how you play. Each line comes at most once per level.
@@ -1427,17 +1681,20 @@
       lost: 0, dingBest: 0, smashes: 0, ding3: 0, bulls: 0, bullN: 0, spilled: 0, marks: [], pinT: PIN_GAP, autoBall: null, inputT: -9, down: false, drove: false, pipT: -9, boy: null, boyLeft: BOY_SAVES, loose: null, trophies: {}, cuckooT: -9, cuckooFever: false, cone: null,
       portals: [], wind: 0, lastBounceT: -9, birds: [], frogs: [], walkers: [], peeks: [], cameo: null, quill: null, mole: null, bellies: 0, bribe: false, heckled: {}, heckle: null, idleT: 0, wallT: 0, dry: 0, toasts: [], bill: 0,
       sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, event: null, bingo: null, card: null, auction: null, happy: false, lastHit: null, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
+      raccoon: null, conga: null,
       bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
       flash: 0, flashC: '#ffffff', flawless: true, paddleHits: 0, coinChain: 0, coinChainT: 0, celebT: 0, blimpT: -1,
       lasers: [], clip: {}, reload: {}, special: null, coinCount: 0,
-      levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7, saw: 1, duck: 1.2 },
+      levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7, saw: 1, duck: 1.2, yoyo: 1.4 }, clipN: {}, arcN: 0,
       shake: 0, banner: 3.2, started: false,
-      foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
+      foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, champs: 0, echoN: 0, lode: 0, luckN: 0, puN: 0, thumpT: 0, graves: [], boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
       def: safari ? { map: [], ...BONUS[safari] } : levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
     G.par = safari ? SAFARI_S : Math.max(30, parTime(run.level) + (G.def.boss ? BOSS_CLOCK_S : 0) + SAND_S * lv('sand') - EDGE_S * lv('edge'));
+    // Heat reads the clock without the Sand Timer and the Double Edge, so that bought time does not make the bricks tougher
+    G.par0 = Math.max(30, G.par - SAND_S * lv('sand') + EDGE_S * lv('edge'));
     G.special = safari ? null : rollSpecial(G.def, G.bricks);
     if (!safari && !G.def.boss) {
       const plain = G.bricks.filter((b) => b.type === 'normal');
@@ -1466,6 +1723,7 @@
       pinIou();
       if (quillDue()) after(QUILL_AT, startQuill);
       if (MOLE_LEVELS.includes(run.level) && !run.daily) after(MOLE_AT, startMole);
+      if (RACCOON_LEVELS.includes(run.level) && !run.daily) after(RACCOON_AT, startRaccoon);
     }
     if (!safari) setupField();
     G.brick0 = destructibleLeft();
@@ -1478,7 +1736,10 @@
     else if (G.def.boss) G.boss = makeBoss(G.def.boss);
     else if (run.level >= blimpFrom()) { G.blimpsLeft = 1 + lv('bait') + (run.kit === 'blimps' ? 1 : 0); G.blimpT = special('blimps') ? 4 : rand(6, 14); }
     const q = [];
-    for (const [k, n] of Object.entries(G.def.foes || {})) for (let i = 0; i < n; i++) q.push(k);
+    const late = Object.keys(FOE_FROM).filter((k) => run.level > FOE_FROM[k]);
+    for (const [k, n] of Object.entries(G.def.foes || {})) {
+      for (let i = 0; i < n; i++) q.push(run.level >= SWAP_FROM && late.length && !FOE_FROM[k] && Math.random() < SWAP_CHANCE ? pick(late) : k);
+    }
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
     G.foeQueue = q;
     for (const g in GUNS) { G.clip[g] = clipSize(g); G.reload[g] = 0; }
@@ -1520,11 +1781,12 @@
   const CHICKEN_FROM = 12, WANTED_S = 15;
   function makeBall(x, y, vx, vy) {
     const r0 = odd('tiny') ? 4 : 7;
-    return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, banks: 0, spin: 0, smash: false, inside: new Set(), trail: [], serve: false, bull: false, auto: false };
+    return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, banks: 0, spin: 0, smash: false, inside: new Set(), trail: [], serve: false, bull: false, auto: false, hits: 0 };
   }
   function serve() {
     const b = makeBall(paddle.x, PADDLE_Y - 8, 0, 0);
-    b.stuck = true; b.off = 0; b.serve = true;
+    b.stuck = true; b.off = 0; b.serve = true; b.hits = 0;
+    if (!G.safari) b.name = snailSay('ballNames') || pick(BALL_NAMES);
     G.balls.push(b);
     if (run.level >= CHICKEN_FROM && !G.safari && Math.random() < 0.1) {
       b.chicken = true; say(W / 2, PADDLE_Y - 70, 'RUBBER CHICKEN! Double coins', '#ffe94a', 2.2); sfx.squawk(2);
@@ -1558,7 +1820,6 @@
   function ballSpeed() {
     // A slow ball on the first levels. The speed stops rising at level 30, and it rises less during a level than before.
     let s = 343 + Math.min(run.level, 10) * 7 + clamp(run.level - 10, 0, 20) * 3 + Math.min(run.level < 4 ? 15 : 40, G.time * 0.6);
-    s *= 1 - 0.07 * lv('chill');
     if (odd('bouncy')) s *= 1.25;
     if (G.fx.slow > 0) s *= 0.68;
     return s;
@@ -1627,6 +1888,9 @@
   function collectPU(p) {
     sfx.pu(); buzz(15); ach('pu', 'Caught a capsule. Yum');
     const k = p.k;
+    if (capped('puluck') && !p.dose && ++G.puN % DOSE_EVERY === 0) {
+      after(0.35, () => { say(paddle.x, PADDLE_Y - 60, 'DOUBLE DOSE!', '#ffffff', 0.9, true); collectPU({ x: paddle.x, y: PADDLE_Y - 30, k: rollPU(), dose: true }); });
+    }
     say(p.x, p.y - 14, PU_TEXT[k], PU[k].c, 1.1);
     ring(p.x, p.y, 44, PU[k].c, 0.35);
     if (k === 'wide') setFx('wide', puDur(15));
@@ -1672,6 +1936,14 @@
     if (!c.on || c.fat) return;
     c.vy = -rand(0.7, 1.1) * COIN_HOP; c.vx = rand(-0.6, 0.6) * COIN_HOP; c.on = null;
   }
+  const tossOk = (c) => (c.tossN || 0) < TOSS_MAX && G.level >= FROM.smash && !handsOn();
+  function toss(c) {
+    G.tapT = -9; c.tossN = (c.tossN || 0) + 1; c.val *= 2;
+    c.y = PADDLE_Y - COIN_R - 2; c.vy = -TOSS_V; c.vx = rand(-50, 50); paddle.squish = 1;
+    say(clamp(c.x, 60, W - 60), PADDLE_Y - 44, `TOSS! ×${2 ** c.tossN}`, '#ffd84a', 0.9, true);
+    sfx.ding(c.tossN + 2); ring(c.x, PADDLE_Y, 40, '#ffd84a', 0.3, 3);
+    heckle('toss', 'Double or nothing, with gravity.');
+  }
   // A hit on brick b makes the coins that lie on it hop.
   function shakeCoins(b) {
     for (const c of G.coins) if (c.on === b) hop(c);
@@ -1697,6 +1969,19 @@
       sfx.jackpot(); ring(x, k.y, 30, '#ffd84a', 0.4); say(clamp(x, 60, W - 60), k.y - 22, 'FAT COIN!', '#ffd84a', 1.1, true);
       heckle('fatcoin', 'That coin ate four others. Respect.');
     }
+  }
+  // Chain Crit: the hit on brick b also goes to the nearest brick.
+  function critJump(b, dmg) {
+    const [x, y] = centerOf(b);
+    let best = null, bd = CRIT_JUMP;
+    for (const o of G.bricks) {
+      if (o === b || !hurtable(o) || o.mimic) continue;
+      const [ox, oy] = centerOf(o), d = Math.hypot(ox - x, oy - y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (!best) return;
+    G.bolts.push({ pts: [[x, y], centerOf(best)], t: 0.2, T: 0.2, c: '#fff27a' });
+    hitBrick(best, dmg, false);
   }
   function hitBrick(b, dmg, fromBall) {
     if (!b.alive) return false;
@@ -1724,6 +2009,7 @@
     if (G.fx.panic > 0 && Math.random() < 0.12) { say(b.x + b.w / 2, b.y - 4, pick(PANIC_CRIES), '#ffffff', 0.7); sfx.eek(); }
     if (fromBall && Math.random() < lv('crit') * 0.08) {
       dmg *= 3; say(b.x + b.w / 2, b.y, 'CRIT', '#fff27a', 0.6);
+      if (capped('crit')) critJump(b, dmg);
     }
     b.hp -= dmg; b.flash = 0.12; b.punch = 1;
     if (b.type === 'chest' && b.loot > 0) { b.loot--; dropCoin(b.x + b.w / 2, b.y + b.h, 1); }
@@ -1738,6 +2024,7 @@
     return false;
   }
   function destroyBrick(b) {
+    if (!b.alive) return;
     b.alive = false;
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     shards(b); burst(cx, cy, brickColor(b), 5);
@@ -1750,10 +2037,16 @@
     addFever(special('party') || special('cuckoo') ? 0.08 : 0.04);
     if (special('slide')) landslide(b);
     if (special('cuckoo')) cuckoo(cx, cy);
+    if (G.combo === COMET_AT && capped('momentum')) { say(clamp(cx, 60, W - 60), cy - 24, 'COMET!', '#ff8a3d', 1, true); sfx.fever(); }
     if (G.noLoot) return;
+    if (capped('luck') && !(G.boss && G.boss.dead) && ++G.luckN % LUCK_EVERY === 0) {
+      G.coins.push({ x: cx, y: cy, vx: 0, vy: -160, spin: 0, val: Math.round(coinWorth() * LUCK_FAT), fat: true, crackT: FAT_CRACK_S });
+      say(clamp(cx, 70, W - 70), cy - 24, 'LUCKY BRICK!', '#7cf2a8', 1, true); sfx.jackpot();
+    }
     if (b.bingo) bingoBrick(b, cx, cy);
     if (G.auction && G.auction.k === b) auctionSold(cx, cy);
     if (b.iou) payIou(cx, cy);
+    if (b.conga) congaPaid(cx, cy);
     if (G.fx.panic > 0) dropCoin(cx, cy, 1, true);
     if (special('bill')) {
       G.bill += Math.max(1, Math.round(coinVal() * 0.6));
@@ -1832,6 +2125,7 @@
     { id: 'bingo', from: 13, start: startBingo },
     { id: 'auction', from: 11, start: startAuction },
     { id: 'stampede', from: 14, start: startStampede },
+    { id: 'conga', from: 15, start: startConga },
   ];
   // Going Once: one brick gets a price that rises each second. The player who breaks it in AUCTION_S seconds gets the price.
   function startAuction() {
@@ -1885,6 +2179,7 @@
     G.heckled.bingoWin = false; heckle('bingoWin', 'Full card. I pay. I do not smile.');
   }
   function updateEvents(dt) {
+    updateConga(dt);
     if (G.fx.film > 0 && (!G.card || (G.card.t -= dt) <= 0)) G.card = { s: snailSay('film') || 'The ball. It approaches.', t: 2.4 };
     const A1 = G.auction;
     if (A1 && G.clearT < 0 && ((A1.t += dt) >= AUCTION_S || !A1.k.alive)) {
@@ -1904,6 +2199,7 @@
   }
   // The numbers of Brick Bingo and the cups of the Coffee Break, on top of the bricks.
   function drawEvents(t) {
+    drawConga(t);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const k of G.bricks) {
       if (!k.alive || !k.iou) continue;
@@ -1933,6 +2229,90 @@
     }
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px system-ui, sans-serif';
     ctx.fillText('BINGO  ' + Math.ceil(G.bingo.t) + ' s', W / 2, HUD_H + 14);
+  }
+  // ---------- Brick Conga ----------
+  // A mid-level event: one row of plain bricks leaves the wall and dances in a line below the formation for CONGA_S
+  // seconds, with a bob on each beat of the music. They stay bricks: the ball and the guns hit them where they are, and
+  // one that breaks in the dance drops CONGA_PAY coins more. Then the others go back to their cells. Not with a boss and
+  // not on levels where bricks move by themselves (wheel, conveyor rows, LANDSLIDE); there Googly Panic comes.
+  // A dancer is out of the grid (row >= 90, as runners and wheel bricks are), so that critters, splash damage and
+  // neighbour lookups leave it alone. CONGA_ROW is a multiple of the colour count, so that a dancer keeps its colour.
+  const CONGA_S = 12, CONGA_MIN = 4, CONGA_PAY = 2, CONGA_GO = 1.2, CONGA_V = 70, CONGA_R = 26, CONGA_WAVE = 10, CONGA_BOB = 6, CONGA_HOP = 22;
+  // CONGA_BPS = beats per second when the music is off
+  const CONGA_BPS = 2, CONGA_ROW = BRICK_COLORS.length * Math.ceil(90 / BRICK_COLORS.length);
+  // The dance floor is a loop: two straight lanes of CONGA_LEN px and two half circles of radius CONGA_R.
+  const CONGA_LEN = W - 2 * (CONGA_R + BW / 2 + 10), CONGA_LOOP = 2 * CONGA_LEN + 2 * Math.PI * CONGA_R;
+  function startConga() {
+    const moving = G.boss || special('slide') || G.bricks.some((k) => k.alive && (k.slide || k.wheel != null));
+    const plain = moving || G.conga ? [] : G.bricks.filter((k) => k.alive && k.type === 'normal' && !k.mimic && k.row < 90 && k.ty == null);
+    const rows = [...new Set(plain.map((k) => k.row))].filter((r) => plain.filter((k) => k.row === r).length >= CONGA_MIN);
+    if (!rows.length) { startPanic(); return; }
+    const row = pick(rows), dancers = plain.filter((k) => k.row === row).sort((a, b) => b.col - a.col);
+    const floor = G.bricks.reduce((y, k) => (k.alive && !dancers.includes(k) ? Math.max(y, k.y + k.h) : y), TOP);
+    G.conga = { t: 0, bricks: dancers, y: clamp(floor + 40, TOP + 80, PADDLE_Y - 290) };
+    for (const k of dancers) { k.conga = { x: k.x, y: k.y }; k.row += CONGA_ROW; shakeCoins(k); }
+    const gone = new Set(dancers);
+    for (const f of G.frogs) if (!f.gone && gone.has(f.on)) { letGo(f); seatFrog(f); }
+    for (const p of G.peeks) if (!p.gone && gone.has(p.on)) hidePeek(p);
+    say(W / 2, H * 0.42, 'BRICK CONGA!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'A dancer that breaks pays extra coins', '#ffd84a', 2);
+    sfx.taunt(); heckle('conga', 'Conga line! My bricks have rhythm. You have a paddle.');
+  }
+  // The centre of dancer i on the dance floor, with a wave and a bob on the beat (pulse 0..1).
+  function congaSpot(C, i, pulse) {
+    const gap = Math.min(BW + 8, CONGA_LOOP / C.bricks.length), x0 = (W - CONGA_LEN) / 2, half = Math.PI * CONGA_R;
+    let s = (((CONGA_LEN / 2 + ((C.bricks.length - 1) / 2 - i) * gap + C.t * CONGA_V) % CONGA_LOOP) + CONGA_LOOP) % CONGA_LOOP, x, y;
+    if (s < CONGA_LEN) { x = x0 + s; y = C.y; }
+    else if ((s -= CONGA_LEN) < half) { x = x0 + CONGA_LEN + Math.sin(s / CONGA_R) * CONGA_R; y = C.y + CONGA_R - Math.cos(s / CONGA_R) * CONGA_R; }
+    else if ((s -= half) < CONGA_LEN) { x = x0 + CONGA_LEN - s; y = C.y + 2 * CONGA_R; }
+    else { s -= CONGA_LEN; x = x0 - Math.sin(s / CONGA_R) * CONGA_R; y = C.y + CONGA_R + Math.cos(s / CONGA_R) * CONGA_R; }
+    return [x, y + Math.sin(x / 40 + C.t * 2) * CONGA_WAVE - pulse * CONGA_BOB];
+  }
+  // In the first and the last CONGA_GO seconds the dancers hop between their cells and the dance floor.
+  function updateConga(dt) {
+    const C = G.conga;
+    if (!C) return;
+    C.t += dt;
+    const back = C.t >= CONGA_S, k = clamp((back ? C.t - CONGA_S : C.t) / CONGA_GO, 0, 1), e = k * k * (3 - 2 * k);
+    const lift = k < 1 ? Math.sin(Math.PI * k) * CONGA_HOP : 0, f = (C.t * CONGA_BPS) % 1, pulse = A.beat() || (1 - f) * (1 - f);
+    C.bricks.forEach((b, i) => {
+      if (!b.alive) return;
+      const home = b.conga;
+      if (back) {
+        if (home.ex == null) { home.ex = b.x; home.ey = b.y; }
+        b.x = home.ex + (home.x - home.ex) * e; b.y = home.ey + (home.y - home.ey) * e - lift;
+        return;
+      }
+      const [cx, cy] = congaSpot(C, i, pulse);
+      b.x = home.x + (cx - b.w / 2 - home.x) * e; b.y = home.y + (cy - b.h / 2 - home.y) * e - lift;
+    });
+    if (C.t < CONGA_S + CONGA_GO) return;
+    for (const b of C.bricks) {
+      b.row -= CONGA_ROW; b.x = b.conga.x; b.y = b.conga.y; b.conga = null;
+      if (!b.alive) continue;
+      // a coin that came to rest in the cell of the brick now lies on the brick
+      for (const c of G.coins) if (c.x > b.x - COIN_R && c.x < b.x + b.w + COIN_R && c.y > b.y - COIN_R && c.y < b.y + b.h + COIN_R) { c.y = b.y - COIN_R; c.vy = 0; c.on = b; }
+    }
+    G.conga = null;
+  }
+  function congaPaid(x, y) {
+    dropCoin(x, y, CONGA_PAY);
+    say(clamp(x, 60, W - 60), y - 16, 'CHA-CHA!', '#ffd84a', 0.8);
+  }
+  // Legs under the dancers, and a note over the first one in the line.
+  function drawConga(t) {
+    const C = G.conga;
+    if (!C) return;
+    ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 2.5; ctx.beginPath();
+    C.bricks.forEach((b, i) => {
+      if (!b.alive) return;
+      const kick = Math.sin(C.t * 12 + i * 1.3) * 5, cx = b.x + b.w / 2, y = b.y + b.h - 1;
+      ctx.moveTo(cx - 9, y); ctx.lineTo(cx - 9 + kick, y + 9); ctx.moveTo(cx + 9, y); ctx.lineTo(cx + 9 + kick, y + 9);
+    });
+    ctx.stroke();
+    const lead = C.bricks.find((b) => b.alive);
+    if (!lead || C.t >= CONGA_S) return;
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('♪', lead.x + lead.w / 2 + Math.sin(t * 4) * 4, lead.y - 12 - ((t * 20) % 8));
   }
   // Channel Flip: grey picture, sepia tint, scratches, and a title card.
   function drawFilm(t) {
@@ -2072,10 +2452,14 @@
     paddle.x += (paddle.tx - paddle.x) * Math.min(1, dt * (G.stun > 0 ? 12 : odd('grease') ? 7 : 30));
     paddle.x = clamp(paddle.x, paddle.w / 2, W - paddle.w / 2);
     paddle.vx = (paddle.x - (paddle.px == null ? paddle.x : paddle.px)) / dt; paddle.px = paddle.x;
+    if (G.thumpT > 0) G.thumpT -= dt;
+    const wall = paddle.x <= paddle.w / 2 + 0.5 ? -1 : paddle.x >= W - paddle.w / 2 - 0.5 ? 1 : 0;
+    if (wall && wall * paddle.vx > THUMP_V && G.thumpT <= 0 && G.started && G.clearT < 0 && G.level >= THUMP_FROM && !handsOn()) thump(wall);
 
     updateBalls(dt);
     updatePins(dt);
     updateBoy(dt);
+    updateGraves(dt);
     updateLoose(dt);
     updateFoes(dt);
     updateGuns(dt);
@@ -2104,14 +2488,35 @@
     if (G.clearT >= 0) { G.clearT -= dt; if (G.clearT <= 0) finishLevel(); }
   }
 
+  // Ball and Chain: each link follows the one before it, so the chain cuts the corners of the path of ball b.
+  function updateTail(b) {
+    const n = 2 * lv('tail'), dmg = Math.max(1, Math.round(ballDmg() * TAIL_K));
+    if (!b.tail || b.tail.length !== n) b.tail = Array.from({ length: n }, () => ({ x: b.x, y: b.y }));
+    let px = b.x, py = b.y;
+    for (const q of b.tail) {
+      const dx = q.x - px, dy = q.y - py, d = Math.hypot(dx, dy) || 1;
+      if (d > TAIL_LINK) { q.x = px + (dx / d) * TAIL_LINK; q.y = py + (dy / d) * TAIL_LINK; }
+      px = q.x; py = q.y;
+      for (const k of G.bricks) {
+        if (!hurtable(k) || q.x < k.x - TAIL_R || q.x > k.x + k.w + TAIL_R || q.y < k.y - TAIL_R || q.y > k.y + k.h + TAIL_R || G.time - (k.tailT || -9) < TAIL_CD) continue;
+        k.tailT = G.time; hitBrick(k, dmg, false); burst(q.x, q.y, '#c9d0ff', 2, 80);
+      }
+      for (const f of G.foes) {
+        if (f.dead || gunProof(f) || Math.hypot(f.x - q.x, f.y - q.y) > f.r + TAIL_R || G.time - (f.tailT || -9) < TAIL_CD) continue;
+        f.tailT = G.time; damageFoe(f, dmg);
+      }
+    }
+  }
   function updateBalls(dt) {
-    const sp = ballSpeed();
+    const sp0 = ballSpeed(), chill = 1 - CHILL_K * lv('chill');
     const fire = G.fx.fire > 0;
     const dmg = ballDmg();
     for (const b of G.balls) {
+      const sp = sp0 * (b.vy > 0 && b.y > PADDLE_Y - CHILL_H && !b.stuck ? chill : 1);
       b.r += (b.r0 * (mega() ? 1.7 : 1) - b.r) * Math.min(1, dt * 10);
       if (b.frog) continue;
       if (b.fireT > 0) b.fireT -= dt;
+      if (b.duckT > 0) b.duckT -= dt;
       if (b.potato && (b.potato.t -= dt) <= 0) b.potato = null;
       if (b.stuck) {
         b.x = clamp(paddle.x + b.off, b.r, W - b.r); b.y = PADDLE_Y - b.r - 1;
@@ -2134,7 +2539,7 @@
       }
       if (b.spin) { b.spin *= Math.max(0, 1 - dt * 1.2); if (Math.abs(b.spin) < 0.05) b.spin = 0; }
       // a ball that a frog spat is a fireball by itself; ballDmg() already holds the triple damage of a global one
-      const hot = fire || b.fireT > 0, dmgB = hot && !fire ? dmg * 3 : dmg;
+      const hot = fire || b.fireT > 0 || comet(), dmgB = hot && !fire ? dmg * 3 : dmg;
       const steps = Math.max(1, Math.ceil((sp * dt) / (b.r * 0.7)));
       const sdt = dt / steps;
       for (let s = 0; s < steps && !b.dead; s++) {
@@ -2172,19 +2577,21 @@
         if (goalie && !holstered() && G.goalieCd <= 0 && b.vy > 0 && b.y + b.r >= GOALIE_Y && b.y < GOALIE_Y + 10 && Math.abs(b.x - goalie.x) < 38) {
           b.vy = -Math.abs(b.vy); b.y = GOALIE_Y - b.r; G.goalieCd = goalieRecharge(lv('d_goalie')) / overclock();
           sfx.net(); burst(b.x, GOALIE_Y, '#7cf2a8', 10);
+          if (capped('d_goalie')) { b.fireT = Math.max(b.fireT || 0, KICK_S); say(b.x, GOALIE_Y - 18, 'KICK!', '#7cf2a8', 0.7); }
         }
         // net
         if (G.net > 0 && b.vy > 0 && b.y + b.r >= NET_Y) {
           b.vy = -Math.abs(b.vy); b.y = NET_Y - b.r; G.net--; sfx.net(); burst(b.x, NET_Y, '#6ee7ff', 14);
         }
         if (b.y - b.r > H) {
-          if (!relic('boomerang') || Math.random() > 0.35) { b.dead = true; break; }
+          if (!relic('boomerang') || Math.random() > 0.35) { b.dead = true; grave(b); break; }
           b.y = HUD_H + b.r + 2; b.vy = Math.abs(b.vy); sfx.net(); say(b.x, HUD_H + 30, 'BOOMERANG!', '#6ee7ff', 0.9);
         }
         // enemies, boss, slime
         const dmgE = dmg;
         for (const f of G.foes) {
-          if (f.dead || !ballVsCircle(b, f.x, f.y, f.r)) continue;
+          if (f.dead || ghost(f) || !ballVsCircle(b, f.x, f.y, f.r)) continue;
+          if (f.shell > 2 && b.smash) f.shell = 2;
           if (f.hitCd <= 0) { damageFoe(f, dmgE * pinTouch(b, f), true); f.hitCd = 0.15; if (relic('frost')) f.frozenT = 2; }
         }
         const C = G.cameo;
@@ -2193,6 +2600,8 @@
         if (Q && !Q.fly && !Q.out && ballVsCircle(b, Q.x, Q.y, QUILL_R)) quillHit(Q);
         const M = G.mole;
         if (M && !M.out) { if (ballVsCircle(b, M.x, moleSackY(M), moleSackR(M))) moleSackHit(M); else if (ballVsCircle(b, M.x, M.y, MOLE_R)) moleHit(M); }
+        const R = G.raccoon;
+        if (R && !R.out && ballVsRect(b, R.x - RACCOON_W / 2, raccoonTop(R) - raccoonLift(R), RACCOON_W, R.y - raccoonTop(R))) raccoonHit(R);
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
           if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
@@ -2222,10 +2631,12 @@
           if (dx * dx + dy * dy > b.r * b.r) continue;
           if (b.inside.has(k)) { nowInside.add(k); continue; }
           if (k.type === 'turtle') { shellHit(b, k, dmgB); fuse(b, dmg); break; }
-          const passes = k.type !== 'stone' && (hot || b.pierce > 0);
+          const wreck = capped('dmg') && hurtable(k) && !k.mimic && (dmgB * (b.smash ? 2 : 1) * (b.whip ? 2 : 1) * (G.fx.coffee > 0 ? 2 : 1) >= k.hp
+            || (capped('glasses') && !b.auto && k.type === 'normal' && G.marks.some((q) => q.ref === k)));
+          const passes = k.type !== 'stone' && (hot || b.pierce > 0 || wreck);
           if (passes) {
             nowInside.add(k);
-            if (!hot) b.pierce--;
+            if (!hot && !wreck) b.pierce--;
             hitBrick(k, ballHit(b, dmgB, k), true);
             fuse(b, dmg);
             continue;
@@ -2242,6 +2653,7 @@
         b.inside = nowInside;
       }
       b.trail.push(b.x, b.y); if (b.trail.length > 22) b.trail.splice(0, 2);
+      if (lv('tail')) updateTail(b);
     }
     const before = G.balls.length, gone = G.balls.find((b) => b.dead);
     G.balls = G.balls.filter((b) => !b.dead);
@@ -2249,7 +2661,28 @@
     if (lv('ballboy') && G.boyLeft > 0 && !G.safari) { G.boy = { t: BOY_S, x: clamp(gone ? gone.x : paddle.x, 30, W - 30) }; sfx.warn(); }
     else loseLife();
   }
+  function grave(b) {
+    if (!b.name || !(b.hits >= GRAVE_HITS)) return;
+    G.graves.push({ x: clamp(b.x, 60, W - 60), s: b.name, n: b.hits, t: GRAVE_S });
+    heckle('grave', 'A moment of silence for the ball. That was the moment.');
+  }
+  function drawGraves() {
+    for (const g of G.graves) {
+      const a = clamp(g.t, 0, 1) * clamp((GRAVE_S - g.t) * 4, 0, 1), y = H - 44 + (1 - clamp((GRAVE_S - g.t) * 3, 0, 1)) * 40;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#8b93b8'; rr(g.x - 44, y - 22, 88, 44, 14); ctx.fill(); ctx.fillRect(g.x - 44, y + 4, 88, 22);
+      ctx.fillStyle = '#5d6b80'; ctx.fillRect(g.x - 52, y + 22, 104, 6);
+      ctx.fillStyle = '#10142c'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillText(g.s, g.x, y - 8);
+      ctx.font = '10px system-ui, sans-serif'; ctx.fillText(`${g.n} hits. Gone.`, g.x, y + 8);
+      ctx.globalAlpha = 1;
+    }
+  }
   // The ball boy: after the last ball is lost the player has BOY_S seconds to tap, and he throws a ball back.
+  function updateGraves(dt) {
+    for (const g of G.graves) g.t -= dt;
+    G.graves = G.graves.filter((g) => g.t > 0);
+  }
   function updateBoy(dt) {
     if (!G.boy) return;
     if (G.clearT >= 0 || G.balls.length) { G.boy = null; return; }
@@ -2273,6 +2706,10 @@
   // Smash: a tap just before the bounce doubles the damage and adds pierce until the next bounce.
   const sweetX = () => paddle.x + G.sweet * paddle.w / 2;
   function paddleSkill(b, sweet) {
+    if (capped('width') && Math.abs(b.x - paddle.x) > (paddle.w / 2) * TIP_OFF) {
+      b.fireT = Math.max(b.fireT || 0, TIP_S); say(b.x, PADDLE_Y - 30, 'BOING!', '#ff9a3d', 0.7); sfx.pop(8);
+    }
+    if (sweet && capped('magnet') && G.coins.length) { G.lode = LODE_S; say(paddle.x, PADDLE_Y - 62, 'LODESTONE!', '#ffd84a', 0.9); }
     if (sweet) {
       const n = ++G.sweetN;
       G.dingBest = Math.max(G.dingBest, n);
@@ -2294,7 +2731,8 @@
   }
   // The damage of one ball hit on brick k. The smash, the Bank Shot relic and a bullseye multiply it.
   function ballHit(b, dmg, k) {
-    G.lastHit = k;
+    G.lastHit = k; b.hits++;
+    if (b.duckT > 0) riderBlast(b);
     const m = (b.smash ? 2 : 1) * (b.whip ? 2 : 1) * (G.fx.coffee > 0 ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0)) * pinTouch(b, k);
     if (k && b.banks > 0 && relic('rebound')) popNeighbour(k, dmg);
     b.banks = 0;
@@ -2319,6 +2757,16 @@
       for (const k of G.bricks) if (k.alive && k.type !== 'stone') hitBrick(k, Math.round(power()), false);
     }
   }
+  // Wall Thump at the left (-1) or right (1) wall.
+  function thump(side) {
+    G.thumpT = THUMP_S;
+    const x = side < 0 ? 0 : W, hit = G.bricks.filter((k) => k.alive && k.row < 90 && (side < 0 ? k.col < THUMP_COLS : k.col >= COLS - THUMP_COLS));
+    shake(7); sfx.boom(true); buzz(25); ring(x, PADDLE_Y, 90, '#ffd6a0', 0.35, 4);
+    say(side < 0 ? 50 : W - 50, PADDLE_Y - 40, 'THUMP!', '#ffd6a0', 0.8, true);
+    for (let i = 0; i < 10; i++) addPart({ k: 'spark', x: x - side * rand(2, 10), y: rand(HUD_H + 20, PADDLE_Y), vx: -side * rand(30, 120), vy: rand(40, 160), t: 0.5, T: 0.5, c: '#ffd6a0', s: rand(2, 4) });
+    for (const k of hit) { if (hurtable(k)) hitBrick(k, Math.max(1, Math.round(power())), false); else shakeCoins(k); }
+    if (hit.length) heckle('thump', 'Hit the wall again. The coins liked it.');
+  }
   // Tectonic: the bricks in a cone above x crack with half the ball damage.
   const CONE_W = 22, CONE_K = 0.2;
   function tectonic(x) {
@@ -2332,6 +2780,7 @@
   function launchOne(b) {
     const a = launchAngle(b), s = ballSpeed();
     b.stuck = false; b.vx = Math.sin(a) * s; b.vy = -Math.cos(a) * s; b.pierce = lv('pierce');
+    if (b.serve && b.name && run.level >= 4) say(clamp(b.x, 60, W - 60), PADDLE_Y - 34, `Go, ${b.name}!`, '#c9d0ff', 0.9);
   }
   function loseLife() {
     G.combo = 0; G.flawless = false; G.lost++; A.streak(0); pip('pipLost', true);
@@ -2401,17 +2850,17 @@
   function overclock() { return 1 + 0.25 * lv('d_over'); }
   function brickAbove(x, slack = 0) {
     for (const k of G.bricks) if (hurtable(k) && x >= k.x - slack && x <= k.x + k.w + slack) return true;
-    for (const f of G.foes) if (!passive(f) && Math.abs(f.x - x) <= f.r + slack) return true;
+    for (const f of G.foes) if (!gunProof(f) && Math.abs(f.x - x) <= f.r + slack) return true;
     if (G.boss && !G.boss.dead && bossXs(G.boss).some((bx) => Math.abs(bx - x) <= G.boss.w / 2 + slack)) return true;
     return false;
   }
-  function anyTarget() { return G.bricks.some(hurtable) || G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead); }
+  function anyTarget() { return G.bricks.some(hurtable) || G.foes.some((f) => !gunProof(f)) || (G.boss && !G.boss.dead); }
   // Targets are bricks (x, y = top left), foes (x, y = centre, r) or the boss (x = centre, y = top, kind).
   const centerOf = (o) => (o.r ? [o.x, o.y] : o.kind ? [o.x, o.y + o.h / 2] : [o.x + o.w / 2, o.y + o.h / 2]);
   const targetLive = (o) => (o.r || o.kind ? !o.dead : o.alive);
   function allTargets() {
     const out = G.bricks.filter(hurtable);
-    for (const f of G.foes) if (!f.dead && !passive(f)) out.push(f);
+    for (const f of G.foes) if (!f.dead && !gunProof(f)) out.push(f);
     if (G.boss && !G.boss.dead) out.push(G.boss);
     return out;
   }
@@ -2426,8 +2875,115 @@
   // Base damage, scaled by the gun level (30% per level), Hardened Rounds (35% per level) and Overcharge.
   const gunDmg = (d, gl = 1) => Math.max(1, Math.round(d * (1 + 0.3 * (gl - 1)) * (1 + 0.35 * lv('rounds')) * power()));
   const clipSize = (g) => Math.round(GUNS[g].clip * (1 + 0.25 * lv('belt')));
-  const reloadTime = (g) => GUNS[g].reload * Math.pow(RELOAD_CUT, lv('factory'));
+  const reloadTime = (g) => GUNS[g].reload * Math.pow(RELOAD_CUT, lv('belt'));
   const overdrive = () => G.fx.over > 0;
+  const ECHO_BASE = 6;
+  // how far a shot pushes the paddle down, as a share of the squish of a ball bounce
+  const RECOIL = { blaster: 0.2, scatter: 0.5, laser: 0.3, rocket: 0.8, arc: 0.3, saw: 0.7, duck: 0.8, yoyo: 0.4 };
+  const liveBall = () => G.balls.find((b) => !b.stuck && !b.frog);
+  // Hardened Rounds at the top level: Tungsten. A straight shot goes through one more brick.
+  const tungsten = () => (lv('rounds') >= ITEM_BY_ID.rounds.max ? 1 : 0);
+  const RAY_V = 700, SNEEZE_N = 20, DISCO_N = 8, BERTHA_K = 2, CIRCUIT_MAX = 10, MEGA_R = 26, MEGA_S = 3.5, RIDER_S = 5, RIDER_RAD = 38, RIDER_GAP = 0.15;
+  // A ray: a short rainbow shot that goes through two bricks.
+  function ray(x, y, a, dmg) {
+    G.shots.push({ x, y, vx: Math.cos(a) * RAY_V, vy: Math.sin(a) * RAY_V, dmg, k: 'ray', life: 0.6, bounce: 1, pierce: 2, hit: new Set(), hue: Math.random() });
+  }
+  // The super shot of gun g at level l. See GUN_TEXT.
+  function superShot(g, l) {
+    const dmg = gunDmg(GUNS[g].dmg, l), px = paddle.x, py = PADDLE_Y - 4, b = liveBall();
+    heckle('super', 'I sold you that. I regret nothing.');
+    const call = (s2, x = px, y = PADDLE_Y - 40) => say(clamp(x, 80, W - 80), y, s2, GUNS[g].color, 1, true);
+    if (g === 'blaster') {
+      if (!anyTarget()) return;
+      G.shots.push({ x: px, y: py - 8, vx: rand(-140, 140), vy: -520, dmg: dmg * 2, k: 'pea', r: 9, life: 5, left: 8, n: 0, cd: new Map(), spin: 0 });
+      call('LAST PEA!'); sfx.launch();
+    } else if (g === 'scatter') {
+      const x = b ? b.x : px, y = b ? b.y : py;
+      for (let i = 0; i < SNEEZE_N; i++) {
+        const a = (i / SNEEZE_N) * TAU;
+        G.shots.push({ x, y, vx: Math.cos(a) * 560, vy: Math.sin(a) * 560, dmg, k: 'scatter', life: 0.8, bounce: 1, pierce: 2, hit: new Set(), knock: true });
+      }
+      call('ACHOO!', x, y - 24); ring(x, y, 50, GUNS[g].color, 0.3, 4); sfx.raspberry(); shake(4);
+    } else if (g === 'laser') {
+      if (!b) return;
+      G.bolts.push({ pts: [[px, py], [b.x, b.y]], t: 0.25, T: 0.25, c: GUNS[g].color, straight: true });
+      for (let i = 0; i < DISCO_N; i++) ray(b.x, b.y, (i / DISCO_N) * TAU + 0.2, dmg);
+      call('PRISM!', b.x, b.y - 24); ring(b.x, b.y, 60, '#ffffff', 0.3, 4); sfx.laser(); flashScreen(GUNS[g].color, 0.12);
+    } else if (g === 'rocket') {
+      if (!anyTarget()) return;
+      G.shots.push({ x: px, y: py, vx: 0, vy: -200, dmg: dmg * 3, k: 'rocket', rad: (52 + 8 * (l - 1)) * BERTHA_K, homing: true, cluster: true, big: true });
+      call('BIG BERTHA!'); sfx.riser(); shake(5);
+    } else if (g === 'arc') {
+      coinCircuit(px, py, b, dmg * 2);
+    } else if (g === 'saw') {
+      if (!anyTarget()) return;
+      const a = rand(-0.4, 0.4);
+      G.shots.push({ x: px, y: py - 10, vx: Math.sin(a) * 380, vy: -Math.cos(a) * 380, dmg, k: 'saw', life: MEGA_S, r: MEGA_R, cd: new Map(), spin: 0, mega: true });
+      call('MEGA SAW!'); sfx.saw(); shake(5);
+    } else if (g === 'duck') {
+      if (!b) return;
+      b.duckT = RIDER_S; b.duckDmg = dmg; b.duckAt = 0;
+      call('DUCK RIDER!', b.x, b.y - 24); sfx.quack(); ring(b.x, b.y, 40, GUNS[g].color, 0.3, 3);
+    } else if (g === 'yoyo') {
+      if (throwYoyo(l, -paddle.w / 2 + 8) | throwYoyo(l, paddle.w / 2 - 8)) call("CAT'S CRADLE!");
+    }
+  }
+  // Coin Circuit: one bolt from the paddle through the ball and then through the coins that lie on bricks. Each of
+  // these bricks takes the damage. With no coin on a brick the bolt takes the bricks that are nearest to the ball.
+  function coinCircuit(px, py, b, dmg) {
+    const pts = [[px, py]], coins = G.coins.filter((c) => c.on && !c.dead && hurtable(c.on)).slice(0, CIRCUIT_MAX);
+    if (b) pts.push([b.x, b.y]);
+    let [cx, cy] = pts[pts.length - 1];
+    const bricks = coins.length ? coins.map((c) => c.on) : G.bricks.filter(hurtable).sort((p, q) => Math.hypot(...centerOf(p).map((v, i) => v - [cx, cy][i])) - Math.hypot(...centerOf(q).map((v, i) => v - [cx, cy][i]))).slice(0, 6);
+    if (!bricks.length) return;
+    for (const c of coins) pts.push([c.x, c.y]);
+    if (!coins.length) for (const k of bricks) pts.push(centerOf(k));
+    for (const k of new Set(bricks)) hitBrick(k, dmg, false);
+    G.bolts.push({ pts, t: 0.5, T: 0.5, c: '#ffe94a' });
+    say(W / 2, PADDLE_Y - 40, coins.length ? 'COIN CIRCUIT!' : 'OVERLOAD!', '#ffe94a', 1, true); sfx.zap(); shake(5); flashScreen('#ffe94a', 0.12);
+  }
+  // The duck that rides ball b blasts at each brick that the ball hits.
+  function riderBlast(b) {
+    if (G.time - b.duckAt < RIDER_GAP) return;
+    b.duckAt = G.time;
+    explode(b.x, b.y, RIDER_RAD, b.duckDmg, '#ffe94a', true); sfx.quack(); say(b.x, b.y - 18, 'QUACK!', '#ffe94a', 0.5);
+  }
+  // The Yo-Yo. off = its place on the paddle, from the centre.
+  const YOYO_UP = 440, YOYO_DOWN = 560, YOYO_OUT = 1.3, YOYO_SLEEP = 1.5, YOYO_REACH = 10;
+  function throwYoyo(l, off) {
+    if (!anyTarget() && !G.coins.some((c) => c.on)) return false;
+    G.shots.push({ k: 'yoyo', x: paddle.x + off, y: PADDLE_Y - 12, off, out: YOYO_OUT + (l >= 5 ? YOYO_SLEEP : 0), r: l >= 3 ? 12 : 9, dmg: gunDmg(GUNS.yoyo.dmg, l),
+      gap: l >= 3 ? 0.1 : 0.16, cap: 3 + l + (l >= 5 ? 4 : 0), coins: [], cd: new Map(), spin: 0 });
+    sfx.launch();
+    return true;
+  }
+  function updateYoyo(y, dt) {
+    y.spin += dt * 26;
+    y.x += (clamp(paddle.x + y.off, y.r, W - y.r) - y.x) * Math.min(1, dt * 7);
+    for (const c of G.coins) {
+      if (c.dead || c.fat || y.coins.length >= y.cap || Math.hypot(c.x - y.x, c.y - y.y) > y.r + YOYO_REACH) continue;
+      c.dead = true; c.on = null; y.coins.push(c); sfx.steal();
+    }
+    const fresh = (o) => { const t = y.cd.get(o); if (t != null && G.time - t < y.gap) return false; y.cd.set(o, G.time); return true; };
+    if (y.out <= 0 || G.clearT >= 0) {
+      y.y += YOYO_DOWN * dt;
+      if (y.y < PADDLE_Y - 12) return;
+      y.dead = true; paddle.squish = Math.max(paddle.squish, 0.4);
+      for (const c of y.coins) { c.x = y.x; c.y = PADDLE_Y - 10; collectCoin(c); }
+      return;
+    }
+    y.out -= dt;
+    let stop = y.y <= HUD_H + y.r;
+    for (const k of G.bricks) {
+      if (!k.alive || y.x + y.r < k.x || y.x - y.r > k.x + k.w || y.y - y.r > k.y + k.h || y.y + y.r < k.y) continue;
+      stop = true;
+      if (!hurtable(k)) { y.out = Math.min(y.out, 0.15); continue; }
+      if (fresh(k)) { hitBrick(k, y.dmg, false); burst(y.x, y.y - y.r, GUNS.yoyo.color, 2, 110); }
+    }
+    for (const f of G.foes) if (!f.dead && !gunProof(f) && Math.hypot(f.x - y.x, f.y - y.y) < f.r + y.r && fresh(f)) damageFoe(f, y.dmg);
+    if (bossAt(y.x, y.y, y.r)) { stop = true; if (fresh(G.boss)) damageBoss(y.dmg); }
+    if (!stop) y.y -= YOYO_UP * dt;
+  }
   // The holster dare: guns and drones stay off for the level.
   const holstered = () => run.dare === 'holster' && !G.safari;
   function updateGuns(dt) {
@@ -2442,13 +2998,19 @@
       }
       G.gunCd[g] -= dt;
       if (!active || G.gunCd[g] > 0 || !fireGun(g, l, px, py)) continue;
-      if (!overdrive() && Math.random() >= lv('recycler') * 0.12 && --G.clip[g] <= 0) {
+      if (!overdrive() && --G.clip[g] <= 0) {
         G.reload[g] = reloadTime(g);
         if (setById('gunsmith')) for (const t of [0.1, 0.2]) after(t, () => { if (G.clearT < 0) fireGun(g, l, paddle.x, PADDLE_Y - 4); });
+        G.clipN[g] = (G.clipN[g] || 0) + 1;
+        if (l >= SUPER_LV && (l > SUPER_LV || G.clipN[g] % 2 === 0)) after(0.25, () => { if (G.clearT < 0) superShot(g, l); });
       }
       G.gunCd[g] = GUNS[g].rate * Math.pow(0.9, l - 1) * (overdrive() ? 0.5 : 1);
-      if (Math.random() < 0.12 * lv('echo')) after(0.14, () => { if (G.clearT < 0) fireGun(g, l, paddle.x, PADDLE_Y - 4); });
-      burst(px, py, GUNS[g].color, 2, 70);
+      // Echo Chamber: each ECHO_BASE - level shots, the gun fires twice
+      if (lv('echo') && ++G.echoN % (ECHO_BASE - lv('echo')) === 0) {
+        after(0.14, () => { if (G.clearT < 0 && fireGun(g, l, paddle.x, PADDLE_Y - 4)) ring(paddle.x, PADDLE_Y, 26, GUNS[g].color, 0.25, 2); });
+      }
+      paddle.squish = Math.max(paddle.squish, RECOIL[g]);
+      burst(px, py, GUNS[g].color, 3, 90); ring(px, py - 2, 10, GUNS[g].color, 0.12, 2);
     }
   }
   // Fires gun g at level l. Returns false when there is nothing to shoot at.
@@ -2457,12 +3019,16 @@
     if (g === 'blaster') {
       const xl = px - paddle.w / 2 + 6, xr = px + paddle.w / 2 - 6;
       if (!(brickAbove(xl) || brickAbove(xr) || (l >= 3 && brickAbove(px)))) return false;
-      for (const x of l >= 3 ? [xl, px, xr] : [xl, xr]) G.shots.push({ x, y: py, vx: 0, vy: -720, dmg, k: g, pierce: l >= 5 ? 2 : 1, hit: new Set() });
+      for (const x of l >= 3 ? [xl, px, xr] : [xl, xr]) {
+        G.shots.push({ x, y: py, vx: 0, vy: -720, dmg, k: g, pierce: 1 + tungsten(), hit: new Set(), pop: l >= 5 });
+        burst(x, py, GUNS[g].color, 2, 80);
+      }
       sfx.shot();
     } else if (g === 'laser') {
       const xs = l >= 5 ? [-16, 0, 16] : l >= 3 ? [-10, 10] : [0];
       if (!xs.some((o) => brickAbove(px + o))) return false;
-      for (const o of xs) G.shots.push({ x: px + o, y: py, vx: 0, vy: -900, dmg, k: g, pierce: 3 + (l - 1), hit: new Set() });
+      for (const o of xs) G.shots.push({ x: px + o, y: py, vx: 0, vy: -900, dmg, k: g, pierce: 3 + (l - 1) + tungsten(), hit: new Set(), refract: l >= 5 });
+      if (combo('glitter')) for (const a of [-0.25, 0, 0.25]) ray(px, py, a - Math.PI / 2, dmg);
       sfx.laser();
     } else if (g === 'rocket') {
       if (l >= 3 ? !anyTarget() : !brickAbove(px, 30)) return false;
@@ -2473,33 +3039,42 @@
       const n = 5 + (l - 1);
       for (let i = 0; i < n; i++) {
         const a = -0.55 + (1.1 * i) / (n - 1);
-        G.shots.push({ x: px, y: py, vx: Math.sin(a) * 620, vy: -Math.cos(a) * 620, dmg, k: g, life: l >= 3 ? 1.2 : 0.75, bounce: l >= 3 ? 2 : 0, pierce: l >= 5 ? 2 : 1, hit: new Set() });
+        G.shots.push({ x: px, y: py, vx: Math.sin(a) * 620, vy: -Math.cos(a) * 620, dmg, k: g, life: l >= 3 ? 1.2 : 0.75, bounce: l >= 3 ? 2 : 0, pierce: (l >= 5 ? 2 : 1) + tungsten(), hit: new Set(), knock: l >= 5 });
       }
       sfx.shot();
     } else if (g === 'arc') {
       if (!anyTarget()) return false;
       const used = new Set(), chains = l >= 5 ? 3 : l >= 3 ? 2 : 1;
-      for (let c = 0; c < chains; c++) arcZap(px + (c - (chains - 1) / 2) * 16, py, 3 + (l - 1), dmg, used);
+      // Live Wire: each second shot goes through the ball. Tesla Saw: a shot goes through a saw disc.
+      const b = l >= 5 && ++G.arcN % 2 === 0 ? liveBall() : null, saw = !b && combo('tesla') ? G.shots.find((o) => o.k === 'saw') : null, via = b || saw;
+      if (saw) saw.zapT = 0.4;
+      for (let c = 0; c < chains; c++) {
+        if (via) arcZap(via.x, via.y, 3 + (l - 1) + (saw ? 2 : 0), dmg, used, [px, py]);
+        else arcZap(px + (c - (chains - 1) / 2) * 16, py, 3 + (l - 1), dmg, used);
+      }
     } else if (g === 'saw') {
       if (!anyTarget()) return false;
       for (const a of l >= 5 ? [-0.45, 0.45] : [rand(-0.5, 0.5)]) {
-        G.shots.push({ x: px, y: py - 6, vx: Math.sin(a) * 430, vy: -Math.cos(a) * 430, dmg, k: g, life: 4 + 0.5 * l + (l >= 3 ? 1.5 : 0), r: l >= 3 ? 13 : 9, cd: new Map(), spin: 0 });
+        G.shots.push({ x: px, y: py - 6, vx: Math.sin(a) * 430, vy: -Math.cos(a) * 430, dmg, k: g, life: 4 + 0.5 * l + (l >= 3 ? 1.5 : 0), r: l >= 3 ? 13 : 9, cd: new Map(), spin: 0, rev: l >= 5 });
       }
       sfx.saw();
+    } else if (g === 'yoyo') {
+      if (!throwYoyo(l, 0)) return false;
     } else if (g === 'duck') {
       const targets = allTargets();
       if (!targets.length) return false;
       // a high lob: the duck flies over everything on the way up and lands on the target
       const [tx, ty] = centerOf(flared() || pick(targets)), apex = HUD_H + 16, v0 = Math.sqrt(2 * DUCK_G * (py - apex));
       const flight = v0 / DUCK_G + Math.sqrt((2 * Math.max(10, ty - apex)) / DUCK_G);
-      G.shots.push({ x: px, y: py, vx: (tx - px) / flight, vy: -v0, dmg, k: g, rad: l >= 5 ? 60 : 44, bounces: 1 + (l >= 3 ? 1 : 0) + (l >= 5 ? 1 : 0), first: true, spin: 0 });
+      G.shots.push({ x: px, y: py, vx: (tx - px) / flight, vy: -v0, dmg, k: g, rad: l >= 5 ? 60 : 44, bounces: 1 + (l >= 3 ? 1 : 0) + (l >= 5 ? 1 : 0), first: true, spin: 0, kids: l >= 5 });
       sfx.launch();
     }
     return true;
   }
   const DUCK_G = 900;
-  function arcZap(x, y, jumps, dmg, used) {
-    const pts = [[x, y]]; let cx = x, cy = y;
+  // from = a point before (x, y) that the bolt comes from.
+  function arcZap(x, y, jumps, dmg, used, from) {
+    const pts = from ? [from, [x, y]] : [[x, y]]; let cx = x, cy = y;
     for (let j = 0; j < jumps; j++) {
       // the first jump goes to the flare
       let best = j === 0 && flared() && !used.has(flared()) ? flared() : null, bd = best ? 0 : Infinity;
@@ -2513,12 +3088,21 @@
       used.add(best); [cx, cy] = centerOf(best); pts.push([cx, cy]);
       hitTarget(best, dmg);
     }
-    if (pts.length > 1) { G.bolts.push({ pts, t: 0.18, T: 0.18 }); sfx.zap(); }
+    if (pts.length > (from ? 2 : 1)) { G.bolts.push({ pts, t: 0.18, T: 0.18 }); sfx.zap(); }
   }
   function rocketBoom(s, x, y, scale = 1) {
     explode(x, y, s.rad * scale, s.dmg, '#ffb14a');
+    if (s.big) {
+      G.hitstop = Math.max(G.hitstop, 0.12); shake(14); ring(x, y, s.rad * 2, '#ffffff', 0.5, 5); flashScreen('#ffb14a', 0.3); buzz(60);
+      for (const c of G.coins) if (Math.hypot(c.x - x, c.y - y) < s.rad * 1.5) hop(c);
+      for (let i = 0; i < 8; i++) after(0.12 + i * 0.04, () => explode(x + Math.cos(i * TAU / 8) * s.rad * 0.9, y + Math.sin(i * TAU / 8) * s.rad * 0.9, 30, Math.ceil(s.dmg / 3), '#ffb14a', true));
+    }
     if (!s.cluster) return;
-    for (let i = 0; i < 3; i++) after(0.1 + i * 0.06, () => explode(x + rand(-55, 55), y + rand(-40, 40), 30, Math.ceil(s.dmg / 2), '#ffb14a', true));
+    // Firework: sparks that fall and hurt what they land on
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + (i - 2) * 0.5;
+      G.shots.push({ x, y, vx: Math.cos(a) * 230, vy: Math.sin(a) * 230, dmg: Math.ceil(s.dmg / 2), k: 'spark', life: 1.6, safeT: 0.2, hue: i / 5 });
+    }
   }
   function steer(s, dt) {
     if (s.k === 'rocket' && flared()) s.target = flared();
@@ -2533,18 +3117,29 @@
   // The saw bounces like a ball that never falls. It cuts through bricks that it destroys.
   function updateSaw(s, dt) {
     s.life -= dt; s.spin += dt * 22;
+    if (s.zapT > 0) s.zapT -= dt;
     if (s.life <= 0) { s.dead = true; burst(s.x, s.y, '#ffd6a0', 8, 140); return; }
     s.x += s.vx * dt; s.y += s.vy * dt;
     if (s.x < s.r) { s.x = s.r; s.vx = Math.abs(s.vx); } if (s.x > W - s.r) { s.x = W - s.r; s.vx = -Math.abs(s.vx); }
     if (s.y < HUD_H + s.r) { s.y = HUD_H + s.r; s.vy = Math.abs(s.vy); }
-    if (s.y > PADDLE_Y - 30) { s.y = PADDLE_Y - 30; s.vy = -Math.abs(s.vy); }
-    const fresh = (o) => { const t = s.cd.get(o); if (t != null && G.time - t < 0.3) return false; s.cd.set(o, G.time); return true; };
+    if (s.y > PADDLE_Y - 30) {
+      s.y = PADDLE_Y - 30; s.vy = -Math.abs(s.vy);
+      // a disc that comes down on the paddle gets a new spin
+      if (s.rev && Math.abs(s.x - paddle.x) < paddle.w / 2 + s.r) {
+        const v = Math.min(1.12, 640 / Math.hypot(s.vx, s.vy));
+        s.vx *= v; s.vy *= v; s.life += 1.5; paddle.squish = 1; sfx.saw(); say(s.x, PADDLE_Y - 44, 'REV!', '#ffd6a0', 0.6);
+      }
+    }
+    const gap = s.mega ? 0.12 : 0.3;
+    const fresh = (o) => { const t = s.cd.get(o); if (t != null && G.time - t < gap) return false; s.cd.set(o, G.time); return true; };
     for (const k of G.bricks) {
       if (!k.alive) continue;
       const cx = clamp(s.x, k.x, k.x + k.w), cy = clamp(s.y, k.y, k.y + k.h), dx = s.x - cx, dy = s.y - cy;
       if (dx * dx + dy * dy > s.r * s.r || !fresh(k)) continue;
       burst(cx, cy, '#ffd6a0', 3, 120);
-      if (hitBrick(k, s.dmg, false)) continue;
+      const broke = hitBrick(k, s.dmg, false);
+      if (s.k === 'pea') { sfx.ping(s.n++); if (--s.left <= 0) { s.dead = true; burst(s.x, s.y, GUNS.blaster.color, 10, 160); return; } }
+      else if (broke || (s.mega && k.type !== 'stone')) continue;
       if (Math.abs(dx) > Math.abs(dy)) s.vx = Math.sign(dx || 1) * Math.abs(s.vx); else s.vy = Math.sign(dy || 1) * Math.abs(s.vy);
     }
     for (const f of G.foes) if (!f.dead && Math.hypot(f.x - s.x, f.y - s.y) < f.r + s.r && fresh(f)) damageFoe(f, s.dmg);
@@ -2560,15 +3155,22 @@
     if (!hit) return;
     explode(s.x, s.y, s.rad, s.dmg, '#ffe94a', !s.first);
     s.first = false;
-    sfx.quack(); say(s.x, s.y - 18, 'QUACK!', '#ffe94a', 0.7);
+    sfx.quack(); say(s.x, s.y - 18, s.small ? 'quack' : 'QUACK!', '#ffe94a', 0.7);
+    if (s.kids) G.shots.push({ x: s.x, y: s.y - 8, vx: rand(-170, 170), vy: -330, dmg: Math.ceil(s.dmg / 2), k: 'duck', rad: 28, bounces: 0, first: false, spin: 0, small: true });
+    if (combo('jetduck') && !s.small) G.shots.push({ x: s.x, y: s.y - 10, vx: 0, vy: -380, dmg: s.dmg, k: 'rocket', rad: 40, homing: true, safeT: 0.3 });
     if (s.bounces-- <= 0) { s.dead = true; return; }
     s.vy = -430; s.vx = rand(-150, 150);
   }
   function updateShots(dt) {
     for (const s of G.shots) {
-      if (s.k === 'saw') { updateSaw(s, dt); continue; }
+      if (s.k === 'saw' || s.k === 'pea') { updateSaw(s, dt); continue; }
       if (s.k === 'duck') { updateDuck(s, dt); continue; }
+      if (s.k === 'yoyo') { updateYoyo(s, dt); continue; }
       if (s.homing) steer(s, dt);
+      if (s.k === 'spark') s.vy += 520 * dt;
+      if (s.safeT > 0) s.safeT -= dt;
+      if (s.knock) for (const c of G.coins) if (c.on && Math.abs(c.x - s.x) < 12 && Math.abs(c.y - s.y) < 12) hop(c);
+      if (s.k === 'rocket' && Math.random() < dt * 40) addPart({ k: 'spark', x: s.x + rand(-2, 2), y: s.y + 10, vx: rand(-15, 15), vy: 50, t: 0.35, T: 0.35, c: '#8b93b8', s: s.big ? 6 : 3 });
       s.x += s.vx * dt; s.y += s.vy * dt;
       if (s.life != null) { s.life -= dt; if (s.life <= 0) s.dead = true; }
       if (s.bounce > 0) {
@@ -2593,15 +3195,20 @@
       const color = GUNS[s.k] ? GUNS[s.k].color : '#ffffff';
       for (const k of G.bricks) {
         if (!k.alive || s.x < k.x - 2 || s.x > k.x + k.w + 2 || s.y < k.y || s.y > k.y + k.h + 6) continue;
+        if (s.safeT > 0) continue;
         if (s.k === 'rocket') { rocketBoom(s, s.x, s.y); s.dead = true; break; }
         if (!s.hit) { hitBrick(k, s.dmg, false); burst(s.x, s.y, color, 3, 80); s.dead = true; break; }
         // piercing shots damage each brick once and stop at stone
         if (s.hit.has(k)) continue;
         s.hit.add(k);
         if (k.type === 'stone') { s.dead = true; k.flash = 0.12; break; }
-        hitBrick(k, s.dmg, false); burst(s.x, s.y, color, 3, 80);
+        const broke = hitBrick(k, s.dmg, false); burst(s.x, s.y, color, 3, 80);
+        // Popcorn: two small shots fly off sideways
+        if (broke && s.pop) for (const d of [-1, 1]) G.shots.push({ x: s.x, y: k.y + k.h / 2, vx: d * 460, vy: -120, dmg: s.dmg, k: 'blaster', life: 0.45, pierce: 1, hit: new Set([k]), kid: true });
         if (--s.pierce <= 0) { s.dead = true; break; }
       }
+      // Refract: a beam that stops at a brick splits into two rays that fly to the sides, below the brick
+      if (s.dead && s.refract && s.y > HUD_H + 4) for (const a of [-2.9, -0.24]) ray(s.x, s.y + BH / 2, a, s.dmg);
     }
     G.shots = G.shots.filter((s) => !s.dead);
     for (const b of G.bolts) b.t -= dt;
@@ -2708,6 +3315,7 @@
   // ---------- coins / capsules ----------
   function updateDrops(dt) {
     const ml = lv('magnet');
+    if (G.lode > 0) G.lode -= dt;
     const mRad = magnetR(ml), mPow = 500 + 220 * ml;
     const pcx = paddle.x, pcy = PADDLE_Y;
     for (const c of G.coins) {
@@ -2730,16 +3338,20 @@
         c.crackT = FAT_CRACK_S; burst(c.x, c.y + COIN_R, '#ffd84a', 4, 80);
         hitBrick(c.on, Math.ceil(c.on.maxhp * FAT_CRACK_K), false);
       }
-      if (ml) {
+      if (G.lode > 0 && c.y < pcy) {
+        const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy) || 1;
+        c.vx = (dx / d) * LODE_V; c.vy = (dy / d) * LODE_V;
+      } else if (ml) {
         const dx = pcx - c.x, dy = pcy - c.y, d = Math.hypot(dx, dy);
         if (d < mRad && d > 1) { c.vx += (dx / d) * mPow * dt * 2; c.vy += (dy / d) * mPow * dt; }
       }
       c.x += c.vx * dt; c.y += c.vy * dt;
       if (!c.on) c.spin += dt * 8;
       if (c.x < 6) { c.x = 6; c.vx = Math.abs(c.vx); } if (c.x > W - 6) { c.x = W - 6; c.vx = -Math.abs(c.vx); }
-      c.on = coinVsBricks(c);
+      c.on = G.lode > 0 ? null : coinVsBricks(c);
       if (c.on) c.sat = true;
-      if (onPaddle(c.x, c.y, 8)) {
+      if (c.fat && c.vy > 0 && tossOk(c) && G.time - G.tapT < TOSS_TAP && onPaddle(c.x, c.y, 8)) toss(c);
+      else if (onPaddle(c.x, c.y, 8)) {
         c.dead = true;
         if (c.sat && lv('rake')) { const raw = c.val * (1 + RAKE_K * lv('rake')); c.val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
         if (c.run && G.fx.stampede > 0) c.val *= 2;
@@ -2749,6 +3361,7 @@
         c.dead = true;
         if (handsOn()) continue;
         G.spilled += c.val;
+        if (c.tossN) heckle('tossLost', 'It was a nice coin. It is a nice hole now.');
         if (G.spilled >= SPILL_HECKLE * coinVal()) heckle('spill', 'Coins fell past the paddle. That was your job.');
       }
     }
@@ -2809,19 +3422,44 @@
 
   // ---------- enemies ----------
   const FOE = {
-    drifter: { r: 13, hp: 3, color: '#c08cff', coins: 2 },
-    shooter: { r: 14, hp: 4, color: '#ff9a4d', coins: 3 },
-    mender: { r: 12, hp: 4, color: '#5ee08a', coins: 3 },
-    thief: { r: 12, hp: 2, color: '#8b93b8', coins: 2 },
+    drifter: { r: 16, hp: 3, color: '#c08cff', coins: 2 },
+    shooter: { r: 17, hp: 4, color: '#ff9a4d', coins: 3 },
+    mender: { r: 15, hp: 4, color: '#5ee08a', coins: 3 },
+    thief: { r: 15, hp: 2, color: '#8b93b8', coins: 2 },
     blimp: { r: 17, hp: 3, color: '#ffd23f', coins: 8 },
-    splitter: { r: 20, hp: 9, color: '#8f5cff', coins: 4 },
-    bomber: { r: 11, hp: 2, color: '#ff5c5c', coins: 3 },
+    splitter: { r: 24, hp: 9, color: '#8f5cff', coins: 4 },
+    bomber: { r: 14, hp: 2, color: '#ff5c5c', coins: 3 },
+    spook: { r: 17, hp: 4, color: '#bfe0ff', coins: 3 },
+    jester: { r: 16, hp: 3, color: '#ff7ad9', coins: 3 },
+    bulwark: { r: 18, hp: 3, color: '#4ad0b0', coins: 4 },
+    zapper: { r: 19, hp: 5, color: '#8fa0d8', coins: 4 },
     pinata: { r: 42, hp: 1e9, color: '#ff7ad9', coins: 0 },
     bumper: { r: 22, hp: 1e9, color: '#5ef0ff', coins: 0 },
     snail: { r: 14, hp: 1e9, color: '#c8874a', coins: 0 },
   };
   // Blimps and the targets of the bonus rounds: only a ball touches them, and guns do not aim at them.
   const passive = (f) => f.type === 'blimp' || f.type === 'pinata' || f.type === 'bumper' || f.type === 'snail';
+  // The looks of the monsters are in foeart.js, the looks of the bosses in bossart.js.
+  const FOE_ART = window.BBFoeArt, BOSS_ART = window.BBBossArt;
+  const artEnv = { time: 0, px: 0, py: PADDLE_Y, frozen: false };
+  const foeColor = (f) => (passive(f) ? FOE[f.type].color : FOE_ART.color(f));
+  // The first level of each later monster. From SWAP_FROM a monster of a level can come as one of them.
+  const FOE_FROM = { spook: 19, jester: 23, bulwark: 27, zapper: 29 };
+  const SWAP_FROM = 24, SWAP_CHANCE = 0.3;
+  // A champion is bigger and tougher, and it pays: more coins and a capsule.
+  const CHAMP_FROM = 18, CHAMP_CHANCE = 0.15, CHAMP_MAX = 2, CHAMP_R = 1.3, CHAMP_HP = 2.5, CHAMP_COINS = 3;
+  // Spook: solid, then it fades and nothing can hit it. It comes back with a BOO that throws the balls near it away.
+  const SPOOK_SOLID = 3.5, SPOOK_GONE = 1.8, SPOOK_FADE = 0.4, SPOOK_BOO = 90;
+  const ghost = (f) => f.type === 'spook' && f.fade < 0.5;
+  // Shellback: only a ball cracks its shell, in SHELL_HITS hits. A smash leaves one hit. Without the shell it runs.
+  const SHELL_HITS = 3, PANIC_V = 150;
+  // Jinx: it jumps away from a ball that comes near, then it must wait JINX_CD seconds. It always carries a capsule.
+  const JINX_NEAR = 70, JINX_CD = 2.2, JINX_CRIES = ['Nyah!', 'Missed!', 'Too slow!', 'Over here!'];
+  // Thunderhead: it follows the paddle, charges for ZAP_CHARGE seconds and drops a lightning column.
+  const ZAP_MIN = 5, ZAP_MAX = 8, ZAP_CHARGE = 1.2, ZAP_WARN = 0.6;
+  const FOE_LINES = { spook: 'A spook. Wait until you can see it. Then hit it.', jester: 'A jinx. It hates the ball. Use that.', bulwark: 'A shellback. Guns bounce off. Your ball does not.', zapper: 'A thunderhead. Do not stand under the dark one.' };
+  // Guns, drones and blasts do nothing to these.
+  const gunProof = (f) => passive(f) || ghost(f) || f.shell > 0;
   // The shopkeeper crosses the field on his lunch break. A ball hit shakes a coin out of him, five times at most.
   const SNAIL_CRIES = ["Hey! I'm on my lunch!", 'Mind the shell!', 'I will remember this. Slowly.', 'Not the face!', 'This is why I close early.'];
   function spawnSnail() {
@@ -2951,8 +3589,48 @@
     const hp = Math.round(d.hp * foeScale());
     const f = { type, x: x != null ? x : rand(40, W - 40), y: y != null ? y : rand(z.top, z.bot), r: d.r, hp, maxhp: hp,
       vx: rand(-1, 1) * 55, vy: rand(-1, 1) * 30, t: Math.random() * 6, cd: rand(1.5, 3.5), hitCd: 0, flash: 0, loot: 0, dir: Math.random() < 0.5 ? -1 : 1, frozenT: 0 };
-    G.foes.push(f); burst(f.x, f.y, d.color, 10, 120);
+    if (!passive(f)) f.skin = Math.floor(Math.random() * (FOE_ART.skins[type] || 1));
+    if (type === 'spook') f.fade = 1;
+    if (type === 'bulwark') f.shell = SHELL_HITS;
+    if (type === 'jester') { f.blink = 0; f.tp = 0; }
+    if (type === 'zapper') { f.charge = 0; f.cd = rand(ZAP_MIN, ZAP_MAX); }
+    // only a monster of the level itself can be a champion, not one that a boss, a hive or a split makes
+    if (x == null && !passive(f) && !G.boss && run.level >= CHAMP_FROM && G.champs < CHAMP_MAX && Math.random() < CHAMP_CHANCE) {
+      G.champs++; f.champ = true; f.r = Math.round(d.r * CHAMP_R); f.hp = f.maxhp = Math.round(hp * CHAMP_HP);
+      say(clamp(f.x, 70, W - 70), f.y - f.r - 14, 'CHAMPION!', '#ffd23f', 1.4); sfx.taunt();
+      heckle('champ', 'A champion. Big, slow, full of coins. Like me, but hostile.');
+    }
+    if (FOE_FROM[type]) heckle(type, FOE_LINES[type]);
+    G.foes.push(f); burst(f.x, f.y, foeColor(f), 10, 120);
     return f;
+  }
+  function shellCrack(f) {
+    f.shell--; f.flash = 0.12; sfx.stone(); burst(f.x, f.y, '#d8e6f0', 6, 150);
+    if (f.shell > 0) return;
+    f.panic = true; sfx.pop(0); ring(f.x, f.y, f.r * 2.2, '#d8e6f0');
+    say(f.x, f.y - f.r - 10, 'CRACK!', '#e8ffd0', 0.8);
+  }
+  // The spook is solid again: the balls near it fly straight away from it.
+  function boo(f) {
+    ring(f.x, f.y, SPOOK_BOO, '#bfe0ff', 0.35, 3); sfx.taunt();
+    say(clamp(f.x, 40, W - 40), f.y - f.r - 10, 'BOO!', '#e8f4ff', 0.7);
+    for (const b of G.balls) {
+      const dx = b.x - f.x, dy = b.y - f.y, d = Math.hypot(dx, dy);
+      if (b.stuck || !d || d > SPOOK_BOO) continue;
+      const sp = Math.hypot(b.vx, b.vy);
+      b.vx = (dx / d) * sp; b.vy = (dy / d) * sp;
+    }
+  }
+  // The jinx jumps to a place that is far from ball b.
+  function jinxHop(f, b, z) {
+    poof(f.x, f.y, foeColor(f));
+    for (let i = 0; i < 8; i++) {
+      f.x = rand(40, W - 40); f.y = rand(z.top, z.bot);
+      if (Math.hypot(f.x - b.x, f.y - b.y) > 2 * JINX_NEAR) break;
+    }
+    poof(f.x, f.y, foeColor(f)); sfx.teleport();
+    f.blink = 0.3; f.tp = JINX_CD;
+    if (Math.random() < 0.4) say(clamp(f.x, 50, W - 50), f.y - f.r - 10, pick(JINX_CRIES), '#ffffff', 0.8);
   }
   // ball = the hit comes from a ball. A blimp takes one hit per ball hit, whatever the damage.
   function damageFoe(f, dmg, ball = false) {
@@ -2964,15 +3642,20 @@
       if (!ball) return;
       dmg = 1; blimpHit(f);
     }
+    // the end of a level (damage 999) takes every monster
+    if (dmg < 999 && ghost(f)) return;
+    if (dmg < 999 && f.shell > 0) { if (ball) shellCrack(f); else f.flash = 0.06; return; }
     f.hp -= dmg; f.flash = 0.12; sfx.foeHit();
     if (f.hp > 0) return;
-    f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
+    f.dead = true; sfx.foePop(); burst(f.x, f.y, foeColor(f), 16, 220); ring(f.x, f.y, f.r * 2.4, foeColor(f));
     run.score += 50; run.stats.foes++; addFever(0.06);
     if (f.type === 'blimp') dropCoin(f.x, f.y, (f.small ? 3 : BLIMPS[f.kind].coins) * (f.double ? 2 : 1), true);
-    else dropCoin(f.x, f.y, FOE[f.type].coins + f.loot * 2);
+    else dropCoin(f.x, f.y, FOE[f.type].coins * (f.champ ? CHAMP_COINS : 1) + f.loot * 2);
     if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
     if (G.clearT >= 0) return;
     trophy(f);
+    if (f.type === 'jester' || f.champ) G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
+    if (f.champ) { say(clamp(f.x, 90, W - 90), f.y - 26, 'CHAMPION DOWN!', '#ffd23f', 1.2, true); shake(6); G.hitstop = Math.max(G.hitstop, 0.06); sfx.cheer(1); }
     if (f.type === 'blimp') popBlimp(f);
     if (f.type === 'splitter') for (const sd of [-1, 1]) spawnFoe('drifter', f.x + sd * 14, f.y).vx = sd * 55;
   }
@@ -3028,7 +3711,7 @@
     for (const f of G.foes) {
       if (f.flash > 0) f.flash -= dt; if (f.hitCd > 0) f.hitCd -= dt;
       if (f.frozenT > 0) f.frozenT -= dt;
-      if (frozen || f.frozenT > 0) continue;
+      if (frozen || f.frozenT > 0) { if (f.type === 'spook') f.fade = 1; continue; }
       f.t += dt;
       if (f.type === 'blimp') {
         if (f.leak) {
@@ -3042,10 +3725,35 @@
           f.x += f.dir * f.speed * dt; f.y = f.baseY + Math.sin(f.t * 2) * (f.convoy ? 22 : 8);
           if ((f.x < -60 && f.dir < 0) || (f.x > W + 60 && f.dir > 0)) f.dead = true;
         }
-      } else if (f.type === 'drifter' || f.type === 'splitter') {
+      } else if (f.type === 'drifter' || f.type === 'splitter' || f.type === 'spook') {
         f.vx += Math.sin(f.t * 0.9) * 12 * dt; f.vy += Math.cos(f.t * 0.7) * 10 * dt;
-        const sp = Math.hypot(f.vx, f.vy) || 1, want = f.type === 'splitter' ? 36 : 55; f.vx *= want / sp; f.vy *= want / sp;
+        const sp = Math.hypot(f.vx, f.vy) || 1, want = f.type === 'drifter' ? 55 : 36; f.vx *= want / sp; f.vy *= want / sp;
         f.x += f.vx * dt; f.y += f.vy * dt;
+        if (f.type === 'spook') {
+          const T = SPOOK_SOLID + SPOOK_GONE + 2 * SPOOK_FADE, p = f.t % T, was = f.fade;
+          f.fade = p < SPOOK_SOLID ? 1 : p < SPOOK_SOLID + SPOOK_FADE ? 1 - (p - SPOOK_SOLID) / SPOOK_FADE : p < T - SPOOK_FADE ? 0 : (p - T + SPOOK_FADE) / SPOOK_FADE;
+          if (was < 1 && f.fade >= 1 && G.clearT < 0) boo(f);
+        }
+      } else if (f.type === 'bulwark') {
+        // low in the zone, where the balls pass
+        f.x += f.dir * (f.panic ? PANIC_V : 30) * dt;
+        if (f.x < 30) f.dir = 1; else if (f.x > W - 30) f.dir = -1;
+        f.y += (z.bot - 14 - f.y) * Math.min(1, dt * 1.5);
+      } else if (f.type === 'jester') {
+        f.x += Math.cos(f.t * 1.3) * 40 * dt; f.y += Math.sin(f.t * 2.1) * 25 * dt;
+        if (f.blink > 0) f.blink -= dt;
+        if (f.tp > 0) f.tp -= dt;
+        const near = f.tp <= 0 && G.balls.find((o) => !o.stuck && Math.hypot(o.x - f.x, o.y - f.y) < JINX_NEAR + f.r);
+        if (near) jinxHop(f, near, z);
+      } else if (f.type === 'zapper') {
+        f.y += (z.top + 4 + Math.sin(f.t * 1.1) * 6 - f.y) * Math.min(1, dt * 1.5);
+        if (f.charge > 0) {
+          f.charge += dt / ZAP_CHARGE;
+          if (f.charge >= 1) { f.charge = 0; f.cd = rand(ZAP_MIN, ZAP_MAX); if (G.clearT < 0) laserAt(f.x, ZAP_WARN); }
+        } else {
+          f.x += clamp(paddle.x - f.x, -45 * dt, 45 * dt);
+          if (G.clearT < 0 && (f.cd -= dt) <= 0) { f.charge = 0.01; sfx.riser(); }
+        }
       } else if (f.type === 'shooter') {
         f.x += f.dir * 70 * dt;
         if (f.x < 30 || f.x > W - 30) f.dir *= -1;
@@ -3163,10 +3871,11 @@
   const BOSS_K = [0, 75, 55, 50, 35, 35];
   const bossHp = (n, kind) => Math.round(BOSS_K[kind] * hpMult(n));
   const BOSS_CLOCK_S = 20;
+  const bossAlt = () => Math.min(2, (run.level > LEVELS.length ? 1 : 0) + (run.stars ? 1 : 0));
   function makeBoss(kind) {
     const d = BOSSES[kind], hp = Math.round(bossHp(run.level, kind) * Math.pow(heatMult(), 0.6));
     return { kind, x: W / 2, y: BOSS_Y, w: d.w, h: d.h, hp, maxhp: hp, t: 0, phase: 1, atkT: 3, moveT: 4, talkT: 5, flash: 0, dead: false,
-      coinAcc: 0, talk: null, state: 'idle', stateT: 0, vx: 95, vy: 40 };
+      coinAcc: 0, talk: null, state: 'idle', stateT: 0, vx: 95, vy: 40, alt: bossAlt() };
   }
   function bossSay(s) {
     G.boss.talk = { s, t: 2.2 }; sfx.taunt();
@@ -3364,7 +4073,7 @@
   const tractorOn = (c) => G.boss && !G.boss.dead && G.boss.state === 'tractor' && Math.abs(c.x - G.boss.x) < 70 && c.y > G.boss.y;
 
   function foeAt(x, y, pad = 0) {
-    for (const f of G.foes) if (!f.dead && !passive(f) && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
+    for (const f of G.foes) if (!f.dead && !gunProof(f) && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
     return null;
   }
   function bossAt(x, y, pad = 0) {
@@ -3423,9 +4132,8 @@
     ctx.fillStyle = f.lit ? '#7a5300' : '#5ef0ff'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', f.x, f.y + 1);
   }
   function drawFoes(t) {
+    artEnv.time = t; artEnv.px = paddle.x;
     for (const f of G.foes) {
-      const d = FOE[f.type], wob = Math.sin(f.t * 4) * 1.5;
-      ctx.fillStyle = f.flash > 0 ? '#ffffff' : d.color;
       if (f.type === 'snail') { drawSnail(f); continue; }
       if (f.type === 'pinata') { drawPinata(f); continue; }
       if (f.type === 'bumper') { drawBumper(f); continue; }
@@ -3437,63 +4145,20 @@
         }
         continue;
       }
-      if (f.type === 'drifter' || f.type === 'splitter') {
-        ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r + wob, f.r - wob, 0, 0, 7); ctx.fill();
-        if (f.type === 'splitter') { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(f.x, f.y - f.r + 3); ctx.lineTo(f.x, f.y + f.r - 3); ctx.stroke(); ctx.setLineDash([]); }
-      } else if (f.type === 'shooter') {
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
-        ctx.fillStyle = '#7a3a10'; ctx.fillRect(f.x - 4, f.y + f.r - 4, 8, 9);
-        ctx.fillStyle = d.color; for (const s of [-1, 1]) ctx.fillRect(f.x + s * (f.r + 2) - 3, f.y - 2 + wob, 6, 4);
-      } else if (f.type === 'mender') {
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(f.x - 2, f.y - 7, 4, 14); ctx.fillRect(f.x - 7, f.y - 2, 14, 4);
-      } else if (f.type === 'thief') {
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
-        ctx.fillStyle = '#1b1f33'; ctx.fillRect(f.x - f.r, f.y - 5, f.r * 2, 6);
-        if (f.loot) { ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(f.x + f.r - 2, f.y + f.r - 2, 6, 0, 7); ctx.fill();
-          ctx.fillStyle = '#5a3b00'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(f.loot, f.x + f.r - 2, f.y + f.r - 1.5); }
-      } else if (f.type === 'bomber') {
-        // the warning: it blinks white before the dive
-        if (!f.dive && f.cd < 0 && Math.sin(f.t * 40) > 0) ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(f.x - f.r, f.y - 2); ctx.lineTo(f.x - f.r - 8, f.y - 9); ctx.lineTo(f.x - 3, f.y - 7); ctx.moveTo(f.x + f.r, f.y - 2); ctx.lineTo(f.x + f.r + 8, f.y - 9); ctx.lineTo(f.x + 3, f.y - 7); ctx.fill();
-        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(f.x, f.y - f.r - 2, 2.5, 0, 7); ctx.fill();
-      }
-      if (f.type !== 'mender') {
-        const ey = f.type === 'thief' ? f.y - 2 : f.y - 3;
-        ctx.fillStyle = f.type === 'thief' ? '#ffe066' : '#ffffff';
-        ctx.beginPath(); ctx.arc(f.x - 4, ey, 2.6, 0, 7); ctx.arc(f.x + 4, ey, 2.6, 0, 7); ctx.fill();
-        if (f.type !== 'thief') { ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(f.x - 4, ey + 0.8, 1.2, 0, 7); ctx.arc(f.x + 4, ey + 0.8, 1.2, 0, 7); ctx.fill(); }
-      }
+      artEnv.frozen = G.fx.freeze > 0 || f.frozenT > 0;
+      FOE_ART.draw(ctx, f, artEnv);
       if (G.fx.freeze > 0 || f.frozenT > 0) { ctx.fillStyle = 'rgba(168,230,255,0.5)'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 3, 0, 7); ctx.fill(); }
       if (f.hp < f.maxhp) {
-        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(f.x - 12, f.y - f.r - 8, 24, 3);
-        ctx.fillStyle = d.color; ctx.fillRect(f.x - 12, f.y - f.r - 8, 24 * Math.max(0, f.hp / f.maxhp), 3);
+        const by = f.y - f.r * (f.champ ? 1.9 : 1.5) - 4;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(f.x - 12, by, 24, 3);
+        ctx.fillStyle = foeColor(f); ctx.fillRect(f.x - 12, by, 24 * Math.max(0, f.hp / f.maxhp), 3);
       }
     }
     drawLasers(t);
     drawBoss(t);
     drawBoss(t, G.cameo);
-    for (const s of G.eshots) {
-      if (s.k === 'curse') {
-        ctx.fillStyle = '#7a0f1e'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
-        ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r - 2, 0, 7); ctx.fill();
-        ctx.fillStyle = '#3a0008'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('☠', s.x, s.y + 1);
-      } else if (s.k === 'sock') {
-        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.t * 5);
-        ctx.font = '20px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧦', 0, 0);
-        ctx.restore();
-      } else if (s.k === 'paper') {
-        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.sin(s.t * 6) * 0.5);
-        ctx.fillStyle = '#f4f6ff'; ctx.fillRect(-7, -9, 14, 18);
-        ctx.fillStyle = '#9aa6c9'; for (let i = 0; i < 3; i++) ctx.fillRect(-4, -5 + i * 4, 8, 1.5);
-        ctx.fillStyle = '#ff5c5c'; ctx.fillRect(-4, 6, 5, 1.5);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = 'rgba(156,255,87,0.35)'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 4, 0, 7); ctx.fill();
-        ctx.fillStyle = '#9cff57'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
-      }
-    }
+    artEnv.frozen = G.fx.freeze > 0;
+    for (const s of G.eshots) FOE_ART.shot(ctx, s, artEnv);
   }
   function drawLasers(t) {
     for (const l of G.lasers) {
@@ -3507,61 +4172,16 @@
       }
     }
   }
+  const bossEnv = { time: 0, look: 0, frozen: false, xs: [], queenSplit: QUEEN_SPLIT, hatW: HAT_W, paddleY: PADDLE_Y };
   // B = the boss, or a cameo, which has the same fields.
   function drawBoss(t, B = G.boss) {
     if (!B || B.dead) return;
-    const x = B.x - B.w / 2, y = B.y, hot = B.phase === 3, look = clamp((paddle.x - B.x) / 60, -3, 3);
-    const frozen = G.fx.freeze > 0, body = (c) => (B.flash > 0 ? '#ffffff' : frozen ? '#a8e6ff' : c);
+    const y = B.y, hot = B.phase === 3, look = clamp((paddle.x - B.x) / 60, -3, 3), frozen = G.fx.freeze > 0;
     ctx.globalCompositeOperation = 'lighter'; glow(B.x, y + B.h / 2, B.w * 0.75, hot ? '#ff2a4d' : '#ffd23f', 0.3 + 0.1 * Math.sin(t * 5), 60);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-    if (B.kind === 1) {
-      const flip = B.state === 'rest';
-      if (flip) { ctx.save(); ctx.translate(0, 2 * y + B.h); ctx.scale(1, -1); }
-      ctx.fillStyle = body('#c8874a'); rr(x, y, B.w, B.h, 8); ctx.fill();
-      ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 3; ctx.beginPath();
-      ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + B.w - 6, y + B.h - 6); ctx.moveTo(x + B.w - 6, y + 6); ctx.lineTo(x + 6, y + B.h - 6); ctx.stroke();
-      rr(x + 1.5, y + 1.5, B.w - 3, B.h - 3, 7); ctx.stroke();
-      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(x + 40, y); ctx.lineTo(x + 52, y - 16); ctx.lineTo(x + 75, y - 4); ctx.lineTo(x + 98, y - 16); ctx.lineTo(x + 110, y); ctx.fill();
-      eyes(B.x, y + 22, 22, 8, look, hot ? '#ff2a4d' : '#1b1f33');
-      if (flip) ctx.restore();
-    } else if (B.kind === 2) {
-      ctx.fillStyle = '#3d4760'; for (const ox of [-55, 55]) { rr(B.x + ox - 9, y + B.h - 6, 18, 20, 4); ctx.fill(); }
-      ctx.fillStyle = body('#8a9bb8'); rr(x, y, B.w, B.h, 12); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 10, y + 4, B.w - 20, 5);
-      ctx.fillStyle = '#26303f'; for (const ox of [-66, 66]) { ctx.beginPath(); ctx.arc(B.x + ox, y + 12, 3, 0, 7); ctx.fill(); }
-      eyes(B.x, y + 24, 20, 8, look, hot ? '#ff2a4d' : '#1b1f33');
-    } else if (B.kind === 3) {
-      if (B.hat) drawHat(B.hat.x, B.hat.y, Math.sin(t * 12) * 0.08);
-      else drawHat(B.x, y, 0);
-      ctx.fillStyle = body('#d4a5ff'); rr(x, y, B.w, B.h, 14); ctx.fill();
-      eyes(B.x, y + 20, 20, 8, look, hot ? '#ff2a4d' : '#1b1f33');
-      // a moustache
-      ctx.fillStyle = '#2b1a40'; ctx.beginPath(); ctx.ellipse(B.x - 11, y + 36, 12, 4, -0.25, 0, 7); ctx.ellipse(B.x + 11, y + 36, 12, 4, 0.25, 0, 7); ctx.fill();
-    } else if (B.kind === 4) {
-      // drawn at full size around (0, 0), then scaled: after the split there are two smaller queens
-      const wob = Math.sin(t * 6) * 5, d = BOSSES[4], s = B.twin ? QUEEN_SPLIT : 1;
-      for (const qx of bossXs(B)) {
-        ctx.save(); ctx.translate(qx, y); ctx.scale(s, s);
-        ctx.fillStyle = body('#7ee05a'); ctx.beginPath(); ctx.ellipse(0, d.h / 2 + 4, d.w / 2 + wob, d.h / 2 - wob * 0.6, 0, 0, 7); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(-22, 16, 22, 7, -0.3, 0, 7); ctx.fill();
-        ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(-22, 6); ctx.lineTo(-16, -12); ctx.lineTo(-6, 0); ctx.lineTo(0, -16); ctx.lineTo(6, 0); ctx.lineTo(16, -12); ctx.lineTo(22, 6); ctx.fill();
-        eyes(0, 30, 20, 9, look, hot ? '#ff2a4d' : '#1b1f33');
-        ctx.strokeStyle = '#1e5a12'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 44, 10, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-        ctx.restore();
-      }
-    } else {
-      if (B.state === 'tractor') {
-        ctx.fillStyle = `rgba(126,224,255,${0.18 + 0.08 * Math.sin(t * 20)})`;
-        ctx.beginPath(); ctx.moveTo(B.x - 24, y + B.h); ctx.lineTo(B.x + 24, y + B.h); ctx.lineTo(B.x + 70, PADDLE_Y); ctx.lineTo(B.x - 70, PADDLE_Y); ctx.fill();
-      }
-      ctx.fillStyle = frozen ? '#a8e6ff' : '#bfe9ff'; ctx.beginPath(); ctx.ellipse(B.x, y + 14, 40, 22, 0, Math.PI, 0); ctx.fill();
-      ctx.fillStyle = body('#9aa6c9'); ctx.beginPath(); ctx.ellipse(B.x, y + 26, B.w / 2, 18, 0, 0, 7); ctx.fill();
-      ctx.fillStyle = '#5d6b80'; ctx.beginPath(); ctx.ellipse(B.x, y + 34, B.w / 2 - 14, 9, 0, 0, Math.PI); ctx.fill();
-      for (let i = 0; i < 5; i++) { ctx.fillStyle = Math.floor(t * 4 + i) % 2 ? '#ffd23f' : '#ff5c5c'; ctx.beginPath(); ctx.arc(B.x - 60 + i * 30, y + 28, 4, 0, 7); ctx.fill(); }
-      eyes(B.x, y + 6, 12, 6, look * 0.7, hot ? '#ff2a4d' : '#1b1f33');
-      // glasses
-      ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(B.x - 12, y + 6, 8, 0, 7); ctx.moveTo(B.x + 20, y + 6); ctx.arc(B.x + 12, y + 6, 8, 0, 7); ctx.stroke();
-    }
+    bossEnv.time = t; bossEnv.look = look; bossEnv.frozen = frozen; bossEnv.xs = bossXs(B);
+    if (B.hat) BOSS_ART.hat(ctx, B.hat.x, B.hat.y, Math.sin(t * 12) * 0.08, bossEnv, B.alt);
+    BOSS_ART.draw(ctx, B, bossEnv);
     if (!B.talk) return;
     ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const tw = ctx.measureText(B.talk.s).width + 18, bx = clamp(B.x, tw / 2 + 6, W - tw / 2 - 6), by = y + B.h + 22;
@@ -3571,18 +4191,10 @@
     ctx.fillStyle = '#1b1f33'; ctx.fillText(B.talk.s, bx, by + 1);
     ctx.globalAlpha = 1;
   }
-  // The top hat of the Bazaar Baron. (x, y) = the middle of its brim.
-  function drawHat(x, y, tilt) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
-    ctx.fillStyle = '#2b1a40'; ctx.fillRect(-HAT_W / 2, -4, HAT_W, 6);
-    ctx.fillStyle = '#ffd23f'; rr(-HAT_W / 2 + 16, -24, HAT_W - 32, 22, 4); ctx.fill();
-    ctx.fillStyle = '#7a5300'; ctx.font = 'bold 14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', 0, -12);
-    ctx.restore();
-  }
-
   // ---------- level end ----------
   function finishLevel() {
     for (const c of G.coins) collectCoin(c);
+    for (const y of G.shots) if (y.coins) { for (const c of y.coins) collectCoin(c); y.coins = []; }
     G.coins = [];
     if (G.safari) {
       const record = G.levelCoins > (run.safariBest || 0);
@@ -3631,7 +4243,7 @@
     // heat follows the pace of the player; boss fights do not change it
     let heat = 0;
     if (lvl >= FROM.heat && !G.def.boss) {
-      const r = G.clock / G.par, was = run.heat;
+      const r = G.clock / G.par0, was = run.heat;
       run.heat = clamp(run.heat + heatStep(r * Math.pow(HEAT_BRICKS / Math.max(10, G.brick0), 0.6), late), HEAT_MIN, 99);
       heat = run.heat - was;
     }
@@ -3781,7 +4393,10 @@
         btn = `<button class="buy ${state === 'ok' ? '' : 'no'}" data-buy="${it.id}">${it.verb && !itemCost(it) ? it.verb : `${it.verb || verb} · ${itemCost(it)} ${it.seals ? '🦭' : '🪙'}`}</button>`;
       }
       const set = run.level >= SET_FROM && SETS.find((s) => s.items.includes(it.id));
-      const setLine = set ? `<div class="setline ${setOn(set) ? 'on' : ''}">🧩 ${set.icon} ${set.name} ${setHave(set)}/${set.items.length}: ${set.text}</div>` : '';
+      const cbs = it.gunItem && l ? COMBOS.filter((c) => (c.a === it.gun || c.b === it.gun) && lv('gun_' + (c.a === it.gun ? c.b : c.a))) : [];
+      const setLine = (set ? `<div class="setline ${setOn(set) ? 'on' : ''}">🧩 ${set.icon} ${set.name} ${setHave(set)}/${set.items.length}: ${set.text}</div>` : '')
+        + (it.cap ? `<div class="setline ${l >= max ? 'on' : ''}">★ Top level: ${it.cap.name}. ${it.cap.text}</div>` : '')
+        + cbs.map((c) => `<div class="setline ${comboOn(c) ? 'on' : ''}">${c.icon} ${c.name} (${GUNS[c.a].name} and ${GUNS[c.b].name} at level ${COMBO_LV}): ${c.text}</div>`).join('');
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
         ${priceLocked(it) ? '<span class="sale lock">🔒</span>' : sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
         <div class="top"><span class="ic">${it.icon}</span><span class="nm">${it.name}</span></div>
@@ -3956,7 +4571,7 @@
   function stormStrike() {
     const cands = [];
     for (const k of G.bricks) if (hurtable(k)) cands.push({ x: k.x + k.w / 2, y: k.y + k.h / 2, hit: () => hitBrick(k, gunDmg(2), false) });
-    for (const f of G.foes) if (!f.dead && !passive(f)) cands.push({ x: f.x, y: f.y, hit: () => damageFoe(f, gunDmg(2)) });
+    for (const f of G.foes) if (!f.dead && !gunProof(f)) cands.push({ x: f.x, y: f.y, hit: () => damageFoe(f, gunDmg(2)) });
     if (G.boss && !G.boss.dead) cands.push({ x: G.boss.x + rand(-50, 50), y: G.boss.y + G.boss.h, hit: () => damageBoss(gunDmg(2)) });
     if (!cands.length) return;
     const c = pick(cands);
@@ -4169,6 +4784,7 @@
     const m = G.marks.find((q) => q.ref === k);
     if (!m) return 1;
     if (onBlimp(m) && !b.auto) { k.hp = 1; k.double = true; }
+    if (!b.auto && capped('glasses') && k.alive && k.type === 'normal') k.hp = 1;
     bullseye(b, m);
     return b.auto ? 1 : BULL_K + lv('glasses');
   }
@@ -4469,7 +5085,7 @@
   // relic. It has its own best score and a count of the days played in meta. It never writes the normal save.
   const DAILY_STICKERS = 5, DAILY_COINS = 600;
   const DAILY_LEVELS = [12, 16, 19, 23, 27, 31, 35, 38, 43, 47];
-  const DAILY_KIT = { gun_blaster: 3, gun_laser: 2, gun_rocket: 2, belt: 2, factory: 2, rounds: 1, d_orbit: 2, d_collect: 1, width: 3, magnet: 3, net: 2,
+  const DAILY_KIT = { gun_blaster: 3, gun_laser: 2, gun_rocket: 2, belt: 3, rounds: 1, d_orbit: 2, d_collect: 1, width: 3, magnet: 3, net: 2,
     shield: 1, dmg: 4, crit: 3, twin: 1, splash: 2, pierce: 1, luck: 3, value: 2, bait: 1 };
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   function dayHash(s) { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
@@ -4710,6 +5326,7 @@
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; rr(x + 5, y + 2, w - 10, 3, 1.5); ctx.fill();
   }
   function drawPaddle(t) {
+    if (lv('chill')) { ctx.fillStyle = `rgba(126,224,255,${0.025 * lv('chill')})`; ctx.fillRect(0, PADDLE_Y - CHILL_H, W, CHILL_H); }
     const sq = paddle.squish, w = paddle.w * (1 + sq * 0.1), y = PADDLE_Y + sq * 3, x = paddle.x - w / 2;
     const glue = G.fx.glue > 0, fire = G.fx.fire > 0, stun = G.stun > 0;
     const col = stun ? '#9cff57' : glue ? '#ffe066' : feverOn() ? rainbow(t) : '#5ef0ff';
@@ -4720,8 +5337,13 @@
     if (G.shield > 0) { ctx.strokeStyle = 'rgba(110,231,255,0.6)'; ctx.lineWidth = 2; rr(x - 7, y - 7, w + 14, PADDLE_H + 14, 12); ctx.stroke(); }
     paddleBody(paddle.x, w, y, stun ? '#d8ffb0' : glue ? '#fff3a8' : '#d6fbff', stun ? '#4f9a1e' : glue ? '#e0a800' : '#2f8cff');
     ctx.fillStyle = col; rr(x + 2, y + 4, 4, PADDLE_H - 8, 2); ctx.fill(); rr(x + w - 6, y + 4, 4, PADDLE_H - 8, 2); ctx.fill();
+    if (capped('width')) {
+      const tw = (w / 2) * (1 - TIP_OFF);
+      ctx.fillStyle = '#ff9a3d'; rr(x, y, tw, PADDLE_H, 7); ctx.fill(); rr(x + w - tw, y, tw, PADDLE_H, 7); ctx.fill();
+      ctx.fillStyle = '#ffe2b8'; for (let i = 1; i < 3; i++) { ctx.fillRect(x + (tw * i) / 3, y + 2, 1.5, PADDLE_H - 4); ctx.fillRect(x + w - (tw * i) / 3 - 1.5, y + 2, 1.5, PADDLE_H - 4); }
+    }
     if (lv('gun_blaster')) { ctx.fillStyle = '#7cf2ff'; ctx.fillRect(x + 3, y - 5, 6, 6); ctx.fillRect(x + w - 9, y - 5, 6, 6); }
-    const center = ['laser', 'rocket', 'scatter', 'arc'].filter((g2) => lv('gun_' + g2));
+    const center = ['laser', 'rocket', 'scatter', 'arc', 'saw', 'duck', 'yoyo'].filter((g2) => lv('gun_' + g2));
     center.forEach((g2, i) => { ctx.fillStyle = GUNS[g2].color; ctx.fillRect(paddle.x - center.length * 4 + i * 8 + 1, y - 6, 6, 7); });
     if (fire) { ctx.fillStyle = '#ff8a3d'; ctx.fillRect(x + 10, y + PADDLE_H - 3, w - 20, 2); }
     if (G.level >= FROM.sweet && !stun) {
@@ -4753,10 +5375,18 @@
     ctx.fillText('TAP!', x, y - 34 - 12 * k);
   }
   function ballGlowColor(b, t) {
-    return b.potato ? '#ff9a3d' : G.fx.fire > 0 || b.fireT > 0 ? '#ff8a3d' : G.fx.gold > 0 ? '#ffd23f' : feverOn() ? rainbow(t, b.r0) : b.pierce > 0 ? '#ffb36b' : '#7fe9ff';
+    return b.potato ? '#ff9a3d' : G.fx.fire > 0 || b.fireT > 0 || comet() ? '#ff8a3d' : G.fx.gold > 0 ? '#ffd23f' : feverOn() ? rainbow(t, b.r0) : b.pierce > 0 ? '#ffb36b' : '#7fe9ff';
   }
+  // Heavy Core: the ball is darker steel with each level.
+  const CORE_LOOK = ['#ffffff', '#eef2ff', '#dde4f4', '#c8d2e8', '#b1bedb', '#99a9cc', '#8092bd'];
   function drawBall(b) {
-    const fire = G.fx.fire > 0 || b.fireT > 0;
+    const fire = G.fx.fire > 0 || b.fireT > 0 || comet();
+    if (b.tail) {
+      ctx.fillStyle = '#9aa6c9';
+      for (const q of b.tail) { ctx.beginPath(); ctx.arc(q.x, q.y, 2.5, 0, TAU); ctx.fill(); }
+      const e = b.tail[b.tail.length - 1];
+      ctx.fillStyle = '#5d6b80'; ctx.beginPath(); ctx.arc(e.x, e.y, 4.5, 0, TAU); ctx.fill();
+    }
     if (b.chicken) {
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx) + Math.sin(tAcc * 20) * 0.3);
       const r = b.r * 1.25;
@@ -4768,7 +5398,9 @@
       ctx.restore();
       return;
     }
-    ctx.fillStyle = b.potato ? '#e0b070' : fire ? '#ffe2c0' : '#ffffff'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = b.potato ? '#e0b070' : fire ? '#ffe2c0' : CORE_LOOK[Math.min(lv('dmg'), 6)]; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+    if (capped('dmg') && !fire && !b.potato) { ctx.strokeStyle = '#4a5a80'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 1, 0, TAU); ctx.stroke(); }
+    if (b.duckT > 0) drawDuck({ x: b.x, y: b.y - b.r - 4, spin: tAcc * 9, small: true });
     ctx.fillStyle = 'rgba(120,200,255,0.35)'; ctx.beginPath(); ctx.arc(b.x + b.r * 0.25, b.y + b.r * 0.3, b.r * 0.6, 0, TAU); ctx.fill();
     if (b.pierce > 0 && !fire) { ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 1, 0, TAU); ctx.stroke(); }
     if (b.potato && b.potato.n) {
@@ -4801,7 +5433,11 @@
   }
   // A coin in the air spins. A coin that lies on a brick is flat. In the Penny Stampede it stands up and has legs.
   // A fat coin is bigger.
+  // [rim, face, shine] of a coin, by the levels of Gold Plating and Golden Age.
+  const COIN_LOOK = [['#7a421a', '#d98a4a', '#ffd9b0'], ['#6b7488', '#d3daea', '#ffffff'], ['#a8730a', '#ffd84a', '#fff6c0']];
+  const coinTier = () => { const n = lv('value') + lv('goldage'); return n >= 3 ? 2 : n >= 1 ? 1 : 0; };
   function drawCoin(c) {
+    const look = COIN_LOOK[c.fat ? 2 : coinTier()];
     const R = c.fat ? 1.6 : 1, walk = c.on && c.run && G.fx.stampede > 0, flat = c.on && !walk;
     const sx = flat || walk ? 1 : Math.abs(Math.cos(c.spin)), sy = flat ? 0.55 : 1, y = c.y + COIN_R - 7 * sy * R - (walk ? 3 : 0);
     if (walk) {
@@ -4809,9 +5445,14 @@
       ctx.strokeStyle = '#8a5a00'; ctx.lineWidth = 1.5; ctx.beginPath();
       ctx.moveTo(c.x - 2, y + 5); ctx.lineTo(c.x - 2 + step, c.y + COIN_R); ctx.moveTo(c.x + 2, y + 5); ctx.lineTo(c.x + 2 - step, c.y + COIN_R); ctx.stroke();
     }
-    ctx.fillStyle = '#a8730a'; ctx.beginPath(); ctx.ellipse(c.x, y, (7 * sx + 1) * R, 7 * sy * R, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.ellipse(c.x, y, (5.5 * sx + 0.5) * R, 5.5 * sy * R, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#fff6c0'; ctx.beginPath(); ctx.ellipse(c.x - 1.5 * sx * R, y - 2 * sy * R, (2 * sx + 0.3) * R, 1.6 * sy * R, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = look[0]; ctx.beginPath(); ctx.ellipse(c.x, y, (7 * sx + 1) * R, 7 * sy * R, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = look[1]; ctx.beginPath(); ctx.ellipse(c.x, y, (5.5 * sx + 0.5) * R, 5.5 * sy * R, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = look[2]; ctx.beginPath(); ctx.ellipse(c.x - 1.5 * sx * R, y - 2 * sy * R, (2 * sx + 0.3) * R, 1.6 * sy * R, 0, 0, TAU); ctx.fill();
+    if (lv('goldage') >= 5 && sx > 0.5) { ctx.fillStyle = '#7cf2ff'; ctx.beginPath(); ctx.moveTo(c.x, y - 2.5 * sy * R); ctx.lineTo(c.x + 2.5 * R, y); ctx.lineTo(c.x, y + 2.5 * sy * R); ctx.lineTo(c.x - 2.5 * R, y); ctx.fill(); }
+    if (c.sat && !c.on && lv('rake')) { ctx.strokeStyle = '#7cf2a8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(c.x, y, (8.5 * sx + 1) * R, 8.5 * sy * R, 0, 0, TAU); ctx.stroke(); }
+    if (c.fat && !c.on && c.vy > 0 && c.y > PADDLE_Y - TOSS_HINT && c.y < PADDLE_Y && tossOk(c)) {
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('TAP!', c.x, y - 20);
+    }
     if (c.val > 1 && sx > 0.5 && !flat) { ctx.fillStyle = '#8a5a00'; ctx.font = `bold ${c.fat ? 11 : 8}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(c.val, c.x, y + 0.5); }
   }
   function drawPU(p, t) {
@@ -4863,31 +5504,82 @@
     }
   }
   function drawSaw(s) {
+    const n = s.mega ? 24 : 16;
     ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.spin);
-    ctx.fillStyle = '#dfe6f2'; ctx.beginPath();
-    for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU, r = i % 2 ? s.r : s.r * 0.72; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+    ctx.fillStyle = s.mega ? '#ffe2b8' : '#dfe6f2'; ctx.beginPath();
+    for (let i = 0; i < n; i++) { const a = (i / n) * TAU, r = i % 2 ? s.r : s.r * 0.72; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#8b93b8'; ctx.beginPath(); ctx.arc(0, 0, s.r * 0.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = s.mega ? '#ff8a3d' : '#8b93b8'; ctx.beginPath(); ctx.arc(0, 0, s.r * 0.3, 0, TAU); ctx.fill();
+    if (s.mega) { ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, s.r * 0.55, 0, 4); ctx.stroke(); }
+    if (s.zapT > 0) { ctx.strokeStyle = '#9ab8ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, s.r + 3, 0, TAU); ctx.stroke(); }
     ctx.restore();
   }
   function drawDuck(s) {
-    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.sin(s.spin) * 0.5);
+    const k = s.small ? 0.6 : 1;
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.sin(s.spin) * 0.5); ctx.scale(k, k);
     ctx.fillStyle = '#ffe94a'; ctx.beginPath(); ctx.ellipse(0, 2, 10, 7, 0, 0, TAU); ctx.arc(6, -6, 5.5, 0, TAU); ctx.fill();
     ctx.fillStyle = '#ff9a3d'; ctx.beginPath(); ctx.moveTo(10, -7); ctx.lineTo(16, -5); ctx.lineTo(10, -3); ctx.fill();
     ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(7.5, -7.5, 1.2, 0, TAU); ctx.fill();
     ctx.restore();
   }
+  // The Last Pea shows how many bounces it has left.
+  function drawPea(s) {
+    ctx.fillStyle = '#2f8cff'; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = GUNS.blaster.color; ctx.beginPath(); ctx.arc(s.x, s.y, s.r - 2, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(s.x - s.r * 0.3, s.y - s.r * 0.35, s.r * 0.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#10142c'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s.left, s.x, s.y + 1);
+  }
+  function drawYoyo(y) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(clamp(paddle.x + y.off, 4, W - 4), PADDLE_Y); ctx.lineTo(y.x, y.y); ctx.stroke();
+    ctx.save(); ctx.translate(y.x, y.y); ctx.rotate(y.spin);
+    ctx.fillStyle = '#b0307a'; ctx.beginPath(); ctx.arc(0, 0, y.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = GUNS.yoyo.color; ctx.beginPath(); ctx.arc(0, 0, y.r - 2, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, y.r * 0.55, 0, 3.6); ctx.stroke();
+    ctx.restore();
+    // the coins that it carries turn around it
+    y.coins.forEach((c, i) => {
+      const a = y.spin * 0.2 + (i / y.coins.length) * TAU;
+      ctx.fillStyle = '#a8730a'; ctx.beginPath(); ctx.arc(y.x + Math.cos(a) * (y.r + 6), y.y + Math.sin(a) * (y.r + 6), 4, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(y.x + Math.cos(a) * (y.r + 6), y.y + Math.sin(a) * (y.r + 6), 3, 0, TAU); ctx.fill();
+    });
+  }
+  function drawRocket(s) {
+    const k = s.big ? 2.4 : 1;
+    ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(s.vy, s.vx) + Math.PI / 2); ctx.scale(k, k);
+    ctx.fillStyle = '#c9d0ff'; ctx.beginPath(); ctx.moveTo(-3.5, 2); ctx.lineTo(-7, 8); ctx.lineTo(-3.5, 6); ctx.moveTo(3.5, 2); ctx.lineTo(7, 8); ctx.lineTo(3.5, 6); ctx.fill();
+    ctx.fillStyle = '#ffb14a'; rr(-3.5, -8, 7, 14, 3); ctx.fill();
+    ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.moveTo(-3.5, -6); ctx.lineTo(0, -13); ctx.lineTo(3.5, -6); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, -2, 1.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ff5a2a'; ctx.beginPath(); ctx.moveTo(-3, 6); ctx.lineTo(0, 12 + Math.random() * 6); ctx.lineTo(3, 6); ctx.fill();
+    ctx.fillStyle = '#ffe94a'; ctx.beginPath(); ctx.moveTo(-1.5, 6); ctx.lineTo(0, 9 + Math.random() * 3); ctx.lineTo(1.5, 6); ctx.fill();
+    ctx.restore();
+  }
   function drawShots() {
+    // Hardened Rounds make the shots bigger
+    const K = 1 + 0.18 * lv('rounds');
     for (const s of G.shots) {
       if (s.k === 'saw') { drawSaw(s); continue; }
+      if (s.k === 'pea') { drawPea(s); continue; }
       if (s.k === 'duck') { drawDuck(s); continue; }
-      if (s.k === 'laser') { ctx.fillStyle = '#ff7cf0'; ctx.fillRect(s.x - 2, s.y - 14, 4, 22); ctx.fillStyle = '#ffffff'; ctx.fillRect(s.x - 0.75, s.y - 12, 1.5, 18); }
-      else if (s.k === 'rocket') {
-        ctx.fillStyle = '#ffb14a'; rr(s.x - 3.5, s.y - 10, 7, 16, 3); ctx.fill();
-        ctx.fillStyle = '#ff5a2a'; ctx.beginPath(); ctx.moveTo(s.x - 3, s.y + 6); ctx.lineTo(s.x, s.y + 12 + Math.random() * 6); ctx.lineTo(s.x + 3, s.y + 6); ctx.fill();
-      } else if (s.k === 'scatter') { ctx.fillStyle = '#b9ff6b'; ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, TAU); ctx.fill(); }
+      if (s.k === 'yoyo') { drawYoyo(s); continue; }
+      if (s.k === 'rocket') { drawRocket(s); continue; }
+      if (s.k === 'laser') {
+        ctx.fillStyle = 'rgba(255,124,240,0.35)'; ctx.fillRect(s.x - 2 * K, s.y + 8, 4 * K, 26);
+        ctx.fillStyle = '#ff7cf0'; ctx.fillRect(s.x - 2 * K, s.y - 14, 4 * K, 22); ctx.fillStyle = '#ffffff'; ctx.fillRect(s.x - 0.75 * K, s.y - 12, 1.5 * K, 18);
+      } else if (s.k === 'ray') {
+        const v = Math.hypot(s.vx, s.vy) || 1;
+        ctx.strokeStyle = rainbow(tAcc * 2 + s.hue); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - (s.vx / v) * 22, s.y - (s.vy / v) * 22); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - (s.vx / v) * 14, s.y - (s.vy / v) * 14); ctx.stroke();
+      } else if (s.k === 'spark') { ctx.fillStyle = rainbow(s.hue + tAcc); ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, TAU); ctx.fill(); }
+      else if (s.k === 'scatter') { ctx.fillStyle = '#b9ff6b'; ctx.beginPath(); ctx.arc(s.x, s.y, 2.5 * K, 0, TAU); ctx.fill(); }
       else if (s.k === 'back') { ctx.fillStyle = '#9cff57'; ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, TAU); ctx.fill(); }
-      else { ctx.fillStyle = s.k === 'orbit' ? '#9ab8ff' : '#7cf2ff'; ctx.fillRect(s.x - 1.5, s.y - 7, 3, 10); }
+      else if (s.kid) { ctx.fillStyle = '#7cf2ff'; ctx.beginPath(); ctx.arc(s.x, s.y, 2.5 * K, 0, TAU); ctx.fill(); }
+      else {
+        const c = s.k === 'orbit' ? '#9ab8ff' : '#7cf2ff';
+        ctx.globalAlpha = 0.35; ctx.fillStyle = c; ctx.fillRect(s.x - 1.5 * K, s.y + 3, 3 * K, 14); ctx.globalAlpha = 1;
+        ctx.fillRect(s.x - 1.5 * K, s.y - 7, 3 * K, 10);
+      }
     }
     if (G.cone && G.cone.t > 0) {
       const c = G.cone, top = HUD_H, dy = PADDLE_Y - top, hw = CONE_W + dy * CONE_K;
@@ -4896,11 +5588,11 @@
       ctx.globalAlpha = 1;
     }
     for (const b of G.bolts) {
-      ctx.strokeStyle = b.c || '#cfe0ff'; ctx.lineWidth = 2.5; ctx.globalAlpha = clamp(b.t / (b.T || 0.18), 0, 1); ctx.beginPath();
+      ctx.strokeStyle = b.c || '#cfe0ff'; ctx.lineWidth = b.straight ? 5 : 2.5; ctx.globalAlpha = clamp(b.t / (b.T || 0.18), 0, 1); ctx.beginPath();
       for (let i = 0; i < b.pts.length - 1; i++) {
         const [x1, y1] = b.pts[i], [x2, y2] = b.pts[i + 1];
         ctx.moveTo(x1, y1);
-        for (let j = 1; j < 5; j++) { const f = j / 5; ctx.lineTo(x1 + (x2 - x1) * f + rand(-6, 6), y1 + (y2 - y1) * f + rand(-6, 6)); }
+        for (let j = 1; j < 5 && !b.straight; j++) { const f = j / 5; ctx.lineTo(x1 + (x2 - x1) * f + rand(-6, 6), y1 + (y2 - y1) * f + rand(-6, 6)); }
         ctx.lineTo(x2, y2);
       }
       ctx.stroke(); ctx.globalAlpha = 1;
@@ -4922,7 +5614,7 @@
     const plain = Math.ceil(coinVal());
     for (const c of G.coins) if (c.val > plain) glow(c.x, c.y, 16, '#ffd84a', 0.5);
     for (const p of G.pus) glow(p.x, p.y, 26, PU[p.k].c, 0.35 + 0.15 * Math.sin(t * 8 + p.x));
-    for (const s of G.shots) glow(s.x, s.y, s.k === 'rocket' ? 16 : s.k === 'back' ? 14 : 9, GUNS[s.k] ? GUNS[s.k].color : s.k === 'back' ? '#9cff57' : '#9ab8ff', 0.6);
+    for (const s of G.shots) glow(s.x, s.y, s.r ? s.r * 1.6 : s.big ? 34 : s.k === 'rocket' ? 16 : s.k === 'back' ? 14 : 9, GUNS[s.k] ? GUNS[s.k].color : s.k === 'back' ? '#9cff57' : s.k === 'ray' || s.k === 'spark' ? rainbow(t + s.hue) : '#9ab8ff', 0.6);
     for (const e of G.eshots) glow(e.x, e.y, 16, '#9cff57', 0.5);
     for (const p of G.parts) if (p.k === 'spark') glow(p.x, p.y, p.s * 2.6, p.c, Math.min(1, (p.t / p.T) * 1.6));
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
@@ -5203,6 +5895,7 @@
     drawBirds(t);
     drawQuill(t);
     drawMole(t);
+    drawRaccoon(t);
     drawFrogs(t);
     drawWalkers();
     drawNet(t);
@@ -5218,6 +5911,7 @@
     drawDrones(t);
     if (!(G.api && ROUNDS[G.safari].hidePaddle)) drawPaddle(t);
     drawBoy(t);
+    drawGraves();
     drawGlowPass(t);
     for (const b of G.balls) drawBall(b);
     drawParts();
@@ -5263,6 +5957,8 @@
     critter(kind) { ({ frog: addFrog, walker: addWalker, peek: addPeek, cameo: startCameo })[kind](); },
     quill() { if (G) startQuill(); },
     mole() { if (G) startMole(); },
+    raccoon() { if (G) startRaccoon(); },
+    foe(type, x, y) { return spawnFoe(type, x, y); }, superShot(g, l = SUPER_LV) { superShot(g, l); }, boss(kind, alt = 0) { G.boss = makeBoss(kind); G.boss.alt = alt; return G.boss; },
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
     get summary() { return lastSummary; },
