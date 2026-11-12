@@ -247,7 +247,7 @@
   const ARCADE_FROM = { shell: 12, race: 15, whack: 18 };
   const arcadeDone = (id) => !!(run.arcade && run.arcade.at === run.level && run.arcade[id]);
   for (const g of window.BBMini ? window.BBMini.list : []) {
-    ITEMS.push({ id: 'mg_' + g.id, at: ARCADE_FROM[g.id] || 20, cat: 'arcade', icon: g.icon, name: g.name, verb: 'Play', flat: true, price: () => Math.round(betStake() * priceIndex()), full: () => arcadeDone(g.id),
+    ITEMS.push({ id: 'mg_' + g.id, at: ARCADE_FROM[g.id] || Math.max(20, g.at || 0), cat: 'arcade', icon: g.icon, name: g.name, verb: 'Play', flat: true, price: () => Math.round(betStake() * priceIndex()), full: () => arcadeDone(g.id),
       desc: () => `${g.blurb} The price is your stake. One game per visit.`, use: () => { run.pendingMini = g.id; } });
   }
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
@@ -767,6 +767,36 @@
     stock: { name: 'Stock Toss', title: '📦 STOCK TOSS 📦', over: 'SHELVES EMPTY!', count: 'Coins caught 📦', tip: 'BONUS ROUND! No ball. Catch what the snail throws. Not the socks' },
   };
   const BONUS_ORDER = ['blimps', 'stock', 'pinata', 'bumper'];
+  // ---------- round plug-ins ----------
+  // rounds.js can add bonus rounds that are other games: window.BBRounds = { id: round }. A round has the texts of a
+  // BONUS entry (name, title, over, count, tip) and: seconds (length), ball (false = no ball is served),
+  // hidePaddle (true = the round draws its own player), start(api), tick(api, dt), draw(api, ctx, t), tap(api, x, y).
+  // The round talks to the game only through the api object below. Coins go through api.coin, so that the coin value,
+  // the catch and the sounds are the same as in the rest of the game. ROUND_COINS limits the coins of one round.
+  const ROUNDS = window.BBRounds || {};
+  for (const id in ROUNDS) { BONUS[id] = ROUNDS[id]; BONUS_ORDER.push(id); }
+  const ROUND_COINS = 160;
+  function roundApi() {
+    let paid = 0;
+    const room = (n) => { const k = Math.max(0, Math.min(n, ROUND_COINS - paid)); paid += k; return k; };
+    return {
+      W, H, HUD_H, PADDLE_Y, PADDLE_H, paddle, level: run.level, state: {},
+      rand, pick, clamp,
+      get time() { return G.clock; }, get left() { return timeLeft(); },
+      // n coins fall from (x, y); the paddle must catch them
+      coin(x, y, n = 1) { const k = room(n); if (k) dropCoin(x, y, k, true); },
+      // n coins go straight to the player
+      pay(n = 1) { const k = room(n); if (k) dropCoin(paddle.x, PADDLE_Y - 30, k, true); },
+      // adds to the number that the results screen shows beside the round's 'count' text
+      score(n = 1) { G.popped += n; },
+      say(x, y, text, color = '#ffffff', big = false) { say(clamp(x, 80, W - 80), y, text, color, big ? 1.6 : 1.2, big); },
+      snail: (key) => snailSay(key), drawSnail: (x, y, dir = 1, flash = false) => drawSnail({ x, y, dir, flash: flash ? 1 : 0 }),
+      sfx, burst, ring, shake, flash: flashScreen, beat: () => A.beat(),
+      // makes the paddle small and slow for a moment; a round has no other penalty
+      stun(sec = 1.2) { G.stun = Math.max(G.stun, sec); },
+      end() { G.par = Math.min(G.par, G.clock); },
+    };
+  }
   // Stock Toss: the snail walks on a shelf and throws coins, coin bags and socks. A sock makes the paddle small for a moment.
   const STOCK_LINES = ['Inventory day!', 'That one is fragile!', 'No refunds on socks!', 'Catch! I have no hands.', 'Everything must go. Down.', 'Mind the antiques!'];
   function throwStock(f) {
@@ -840,7 +870,13 @@
     }
     if (!safari) run.bonusStart = 0;
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
-    if (safari !== 'stock') serve();
+    const plug = ROUNDS[safari];
+    if (safari !== 'stock' && !(plug && plug.ball === false)) serve();
+    if (plug) {
+      G.api = roundApi(); G.par = plug.seconds || SAFARI_S;
+      if (plug.ball === false) G.started = true;
+      plug.start(G.api);
+    }
     // drones
     for (let i = 0; i < lv('d_orbit'); i++) G.drones.push({ type: 'orbit', a: (i / Math.max(1, lv('d_orbit'))) * Math.PI * 2, cd: 0.5 + i * 0.3, x: W / 2, y: PADDLE_Y - 40 });
     for (let i = 0; i < lv('d_hunter'); i++) G.drones.push({ type: 'hunter', x: rand(80, 400), y: 420, vx: 0, vy: 0, cd: 0, target: null });
@@ -1152,6 +1188,7 @@
     if (mode !== 'play' || e.button === 2) return;
     const p = toGame(e); paddle.tx = p.x;
     G.tapT = G.time;
+    if (G.api && ROUNDS[G.safari].tap) ROUNDS[G.safari].tap(G.api, p.x, p.y);
     launch();
     e.preventDefault();
   });
@@ -1226,6 +1263,7 @@
     updateField();
     updateBirds(dt);
     updateHeckle(dt);
+    if (G.api && G.clearT < 0) ROUNDS[G.safari].tick(G.api, dt);
     if (G.eventAt > 0 && G.clock >= G.eventAt && G.clearT < 0) { G.eventAt = -1; startPanic(); }
 
     updateOvertime(dt);
@@ -3748,9 +3786,10 @@
     for (const c of G.coins) drawCoin(c);
     drawShots();
     drawFoes(t);
+    if (G.api) ROUNDS[G.safari].draw(G.api, ctx, t);
     if (special('night') && G.clearT < 0) drawNight();
     drawDrones(t);
-    drawPaddle(t);
+    if (!(G.api && ROUNDS[G.safari].hidePaddle)) drawPaddle(t);
     drawGlowPass(t);
     for (const b of G.balls) drawBall(b);
     drawParts();
