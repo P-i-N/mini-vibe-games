@@ -104,6 +104,8 @@ The shop has a keeper, Mortimer. His lines are in `QUIPS` and change nothing in 
 | `foeart.js` | The enemies, the bosses and the hamsters (`SSFoeArt`), with the same `paint` and `box`. The boxes are a measured table in the file. |
 | `audio.js` | Sound effects and music (`SSAudio`). The Brick Bazaar engine with a different band, and `layer(name)`, which changes the mix for the sky, the garden and the mine. |
 | `keeper.js` | The lines of Gnorman, the gnome who keeps the shop (`SS_KEEPER.lines[key]`). Data only. |
+| `lore.js` | The story (`SS_LORE`): the premise, a chapter per level, bios of foes, towers and the household, the twelve letters found in the mine, the ending and the garden facts. Data only. |
+| `voices.js` | Speech bubbles (`SS_VOICES`): what foes, bosses, Grandma, the Boot, hamsters and towers say, and the rules of the Garden Gazette headlines. Data only. |
 | `style.css` | Menus, shop, results screens, the build popup |
 
 The view is a 2:1 isometric projection of a 9 x 9 map. All rules use world units (one tile is 1 x 1); `toScreen` and `toWorld` convert. Only one layer is on screen, and all three keep running. The terrain of a layer is painted once into a canvas (`buildLayer`); set `cacheDirty[layer]` after a change to the terrain. Sprites are painted once per kind and option set (`spr`).
@@ -113,5 +115,7 @@ The view is a 2:1 isometric projection of a 9 x 9 map. All rules use world units
 The balance was tested with simple bots only. The main numbers are `hpMul`, `coinMul`, `genWaves`, `TOWERS` and `FOES`. For tests and tuning, `window.__ss` can start a level (`start(n, upgrades)`), run time (`step(seconds)`), and build, dig, stomp and merge.
 
 The first wave waits `FIRST_WAVE_S` seconds and the later ones `NEXT_WAVE_S`. The small rules live in tables: `TWISTS` (themed waves), `PALS` (pairs of towers that help each other when they stand side by side), `DARES` (the gnome's wagers), and `TRICKS` (the list of hidden moves on the pause screen; add a line there for every new one).
+
+The game runs without `lore.js` and `voices.js`; every use is guarded. A chapter shows on the level banner, `bark(enemy, event)` and `voice(who, event, ...)` show bubbles with cooldowns, `maybeLetter` hands out letters in story order, and the Almanac (`showAlmanac`) fills in from `meta` (foes beaten, towers built, letters, highest chapter). A Gazette rule is `{ when, text }`, where `when` is a JavaScript expression over the level's numbers `s`.
 
 A saved run of the first version of the game gets the gems for its upgrades back (`OLD_PRICES`).
