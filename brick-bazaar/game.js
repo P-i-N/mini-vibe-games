@@ -187,12 +187,12 @@
     { id: 'bait', at: 9, cat: 'blimp', icon: '🪱', name: 'Blimp Bait', max: 2, base: 90, grow: 2.5,
       desc: (l) => `${l + 2} blimps visit every level.` },
     { id: 'cargo', at: 12, cat: 'blimp', icon: '📦', name: 'Fat Cargo', max: 3, base: 110, grow: 2.2,
-      desc: (l) => `Each hit on a blimp shakes out ${l + 3} coins.` },
-    { id: 'safari', at: 14, cat: 'blimp', icon: '🎪', name: 'Safari Ticket', price: () => safariPrice(), full: () => run.safariAt === run.level,
-      desc: () => `A bonus round, right now: ${SAFARI_S} seconds of blimps and no bricks. The price follows your best haul. One ticket per visit.`,
-      use: () => { run.safariAt = run.level; run.pendingSafari = true; } },
+      desc: (l) => `Each hit on a loot blimp shakes out ${l + 3} coins. A mother ship gives 2 more.` },
+    { id: 'safari', at: 14, cat: 'blimp', icon: '🎪', name: 'Bonus Ticket', price: () => safariPrice(), full: () => run.safariAt === run.level,
+      desc: () => `A random bonus round, right now: ${SAFARI_S} seconds of blimps, a piñata or bumpers. The price follows your best haul. One ticket per visit.`,
+      use: () => { run.safariAt = run.level; run.pendingSafari = pick(BONUS_ORDER); } },
     { id: 'hull', at: 15, cat: 'blimp', icon: '🧵', name: 'Patched Hulls', max: 2, base: 160, grow: 2.4,
-      desc: (l) => `Blimps survive ${l + 1} more hit${l ? 's' : ''}. More hits, more loot.` },
+      desc: (l) => `In a level, blimps survive ${l + 1} more hit${l ? 's' : ''}. More hits, more loot. Not golden blimps.` },
     { id: 'goldtix', at: 19, cat: 'blimp', icon: '🎫', name: 'Golden Ticket', max: 3, base: 200, grow: 2.2,
       desc: (l) => `Golden blimps come ${l + 2} times as often. They are fast and full of coins.` },
     { id: 'd_blimp', at: 24, cat: 'blimp', icon: '🎈', name: 'War Blimp', max: 3, base: 420, grow: 2.1,
@@ -219,12 +219,16 @@
       desc: () => (run.nextSpecial ? `Booked for the next level: ${specialById(run.nextSpecial).name}.` : levelDef(run.level).boss || !run.offer ? 'Book a special for the next level. Not for boss levels.'
         : `Book ${specialById(run.offer).name} for the next level: ${specialById(run.offer).text.toLowerCase()}.`),
       use: () => { run.nextSpecial = run.offer; return `📅 ${specialById(run.offer).name} is booked!`; } },
+    { id: 'wanted', at: 27, cat: 'wild', icon: '🤠', name: 'Wanted Poster', price: () => Math.round(120 * levelVal() * Math.pow(1.6, run.wantedWon || 0)),
+      full: () => !!run.wanted || !!levelDef(run.level).boss || relicChoices().length === 0,
+      desc: () => (run.wanted ? 'A brick in the next level is WANTED.' : `One brick in the next level is WANTED. Break it with a ball in the first ${WANTED_S} seconds and you pick a relic. Not for boss levels.`),
+      use: () => { run.wanted = true; return '🤠 The hunt is on!'; } },
 
     { id: 'chili', at: 23, cat: 'dark', icon: '🌶️', name: 'Ghost Pepper', price: () => 150 + 30 * run.level,
-      desc: () => `Heat +1, right now: tougher bricks, bigger bonuses. Heat is ${run.heat}.`,
+      desc: () => `Heat +1, right now: tougher bricks${run.heat >= 0 ? ', bigger bonuses' : ''}. Heat is ${run.heat}.`,
       use: () => { run.heat++; return '🌶️ It burns!'; } },
     { id: 'icecream', at: 23, cat: 'dark', icon: '🍦', name: 'Ice Cream', price: () => 40 + 10 * run.level, full: () => run.heat <= HEAT_MIN,
-      desc: () => `Heat −1, right now: softer bricks, smaller bonuses. Heat is ${run.heat}.`,
+      desc: () => `Heat −1, right now: softer bricks${run.heat > 0 ? ', smaller bonuses' : ''}. Heat is ${run.heat}.`,
       use: () => { run.heat--; return '🍦 Ahh. Cooler.'; } },
     { id: 'devil', at: 25, cat: 'dark', icon: '😈', name: "Devil's Bargain", price: () => 0, full: () => run.lives <= 1 || relicChoices().length === 0,
       desc: () => 'Give one life. Pick a relic.', verb: 'Trade a life',
@@ -265,7 +269,7 @@
   const heatMult = () => Math.pow(HEAT_HP, run.heat);
   const heatPay = () => 1 + HEAT_PAY * Math.max(0, run.heat);
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
-  const FROM = { capsules: 2, spin: 3, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, heat: 12, specials: 13 };
+  const FROM = { capsules: 2, spin: 3, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, smash: 16 };
   // The first level on which each capsule can drop.
   const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, storm: 14, gold: 17, nuke: 20 };
   const unlocked = (it) => run.level >= it.at || lv(it.id) > 0;
@@ -284,7 +288,7 @@
     if (it.use ? it.full && it.full() : lv(it.id) >= maxOf(it)) return 'max';
     return run.coins >= itemCost(it) ? 'ok' : 'poor';
   }
-  let shopMsg = '', shopRerolls = 0;
+  let shopMsg = '', shopRerolls = 0, shopLevel = 0;
   function buy(it) {
     if (itemState(it) !== 'ok') { sfx.nope(); return false; }
     run.coins -= itemCost(it);
@@ -311,7 +315,7 @@
     r.relics = r.relics || {}; r.fever = r.fever || 0; r.deals = r.deals || [];
     r.lifeBought = r.lifeBought || 0; r.relicsBought = r.relicsBought || 0; r.bonusStart = r.bonusStart || 0;
     r.stats = Object.assign(newStats(), r.stats || {});
-    r.heat = r.heat || 0; r.bet = r.bet || 0; r.pendingSafari = false;
+    r.heat = r.heat || 0; r.bet = r.bet || 0;
     // The Big Ball upgrade is gone. A save that has it gets the coins back.
     for (let i = 0; i < (r.up.bigball || 0); i++) r.coins += Math.round(85 * Math.pow(1.8, i));
     delete r.up.bigball;
@@ -358,10 +362,12 @@
     if (ch === 'D') return makeBrick(r, c, 'dice', Math.round(2 * m));
     if (ch === 'C') return makeBrick(r, c, 'chest', Math.round(6 * m));
     if (ch === '?') return makeBrick(r, c, 'mystery', Math.round(m));
+    if (ch === 'J') return makeBrick(r, c, 'pinata', PINATA_HITS);
     return null;
   }
   // Endless mode after the campaign: seeded symmetric maps, more enemies, a boss every 10 levels.
-  const SPECIAL_BRICKS = [[0.08, 'S'], [0.1, 'B'], [0.13, 'G'], [0.145, 'H'], [0.165, 'Z'], [0.185, 'P'], [0.2, '?'], [0.212, 'T'], [0.226, 'C'], [0.24, 'D']];
+  const PINATA_HITS = 5;
+  const SPECIAL_BRICKS = [[0.08, 'S'], [0.1, 'B'], [0.13, 'G'], [0.145, 'H'], [0.165, 'Z'], [0.185, 'P'], [0.2, '?'], [0.212, 'T'], [0.226, 'C'], [0.24, 'D'], [0.25, 'J']];
   function endlessLevel(n) {
     const rnd = mulberry32(n * 7919 + 13), over = n - LEVELS.length;
     const R = 7 + Math.floor(rnd() * 3);
@@ -407,7 +413,7 @@
   ];
   function rollSpecial(def, bricks) {
     if (def.boss) return null;
-    const booked = run.nextSpecial; run.nextSpecial = null;
+    const booked = run.nextSpecial;
     if (!booked && (run.level < FROM.specials || (run.level > FROM.specials && Math.random() > 0.35))) return null;
     // giant balls do not fit through the gaps of a stone map
     const stone = def.map.some((row) => row.includes('X'));
@@ -431,11 +437,25 @@
   function basePaddleW() { return 84 * (1 + 0.12 * lv('width')); }
   function puDur(base) { return base * (1 + 0.15 * lv('puluck')); }
 
-  const SAFARI_DEF = { name: 'Blimp Safari', map: [], tip: 'BONUS ROUND! Pop the blimps with your ball. You cannot lose a ball here' };
-  function startSafari() { run.pendingSafari = false; startLevel(true); }
+  const MIMIC_FROM = 12, PANIC_FROM = 10;
+  // Bonus rounds: no bricks, three balls, and no ball can be lost. G.safari holds the kind.
+  const BONUS = {
+    blimps: { name: 'Blimp Safari', title: '🎈 SAFARI 🎈', over: 'SAFARI OVER!', count: 'Blimps popped 🎈', tip: 'BONUS ROUND! Pop the blimps with your ball. You cannot lose a ball here' },
+    pinata: { name: 'Piñata Party', title: '🪅 PIÑATA 🪅', over: 'PARTY OVER!', count: 'Piñata hits 🪅', tip: 'BONUS ROUND! Whack the piñata with your ball. Each hit pays more. You cannot lose a ball here' },
+    bumper: { name: 'Bumper Bazaar', title: '🎯 BUMPERS 🎯', over: 'LAST CALL!', count: 'Bumper hits 🎯', tip: 'BONUS ROUND! Light all seven bumpers for a jackpot. You cannot lose a ball here' },
+  };
+  const BONUS_ORDER = ['blimps', 'pinata', 'bumper'];
+  const BUMPERS = [[120, 180], [240, 150], [360, 180], [75, 300], [240, 280], [405, 300], [240, 400]];
+  // each boss gives a different bonus round
+  const bossBonus = (lvl) => BONUS_ORDER[(Math.round(lvl / 10) - 1) % BONUS_ORDER.length];
+  function startSafari(kind) {
+    kind = kind || (BONUS[run.pendingSafari] ? run.pendingSafari : 'blimps');
+    run.pendingSafari = false; startLevel(kind);
+  }
   function startLevel(safari = false) {
     G = {
-      safari, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
+      safari, fever0: run.fever, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
+      sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
       bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
       fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
@@ -444,11 +464,22 @@
       levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7, saw: 1, duck: 1.2 },
       shake: 0, banner: 3.2, started: false,
       foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
-      def: safari ? SAFARI_DEF : levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
+      def: safari ? { map: [], ...BONUS[safari] } : levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
     G.par = safari ? SAFARI_S : Math.max(30, parTime(run.level) + (G.def.boss ? BOSS_CLOCK_S : 0) + SAND_S * lv('sand') - EDGE_S * lv('edge'));
     G.special = safari ? null : rollSpecial(G.def, G.bricks);
-    if (safari) { G.net = 999; G.blimpT = 0.6; }
+    if (!safari && !G.def.boss) {
+      const plain = G.bricks.filter((b) => b.type === 'normal');
+      if (run.wanted && plain.length) { const top = Math.min(...plain.map((b) => b.row)); pick(plain.filter((b) => b.row === top)).wanted = true; }
+      const rest = plain.filter((b) => !b.wanted);
+      if (run.level >= MIMIC_FROM && rest.length > 6 && Math.random() < 0.5) pick(rest).mimic = true;
+      if (run.level >= PANIC_FROM && Math.random() < 0.2) G.eventAt = rand(6, 18);
+    }
+    if (safari) {
+      G.net = 999; G.blimpT = safari === 'blimps' ? 0.6 : -1;
+      if (safari === 'pinata') spawnFoe('pinata', W / 2, 190);
+      if (safari === 'bumper') for (const [x, y] of BUMPERS) spawnFoe('bumper', x, y);
+    }
     else if (G.def.boss) G.boss = makeBoss(G.def.boss);
     else if (run.level >= FROM.blimp) { G.blimpsLeft = 1 + lv('bait'); G.blimpT = special('blimps') ? 4 : rand(6, 14); }
     const q = [];
@@ -456,13 +487,12 @@
     for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
     G.foeQueue = q;
     for (const g in GUNS) { G.clip[g] = clipSize(g); G.reload[g] = 0; }
-    // Head Start: random power-ups at level start
-    // Head Start, plus the lucky-spin prize
-    for (let i = 0; i < lv('starter') + run.bonusStart; i++) {
+    // Head Start, plus the lucky-spin prize. A bonus round leaves both for the next level.
+    for (let i = 0; !safari && i < lv('starter') + run.bonusStart; i++) {
       const k = pick(['wide', 'slow', 'fire', 'mega', 'x2'].filter((p) => run.level >= PU_FROM[p]));
       setFx(k, puDur(k === 'fire' ? 7 : 12));
     }
-    run.bonusStart = 0;
+    if (!safari) run.bonusStart = 0;
     paddle.w = basePaddleW(); paddle.x = paddle.tx = W / 2;
     serve();
     // drones
@@ -479,17 +509,21 @@
     A.tune(run.level); A.music(G.boss || safari ? 2 : 1);
     if (G.boss) sfx.warn();
   }
-  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0 });
+  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0 });
 
   const MAX_BALLS = 8;
+  const CHICKEN_FROM = 12, WANTED_S = 15;
   function makeBall(x, y, vx, vy) {
     const r0 = 7;
-    return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, inside: new Set(), trail: [], serve: false };
+    return { x, y, vx, vy, r: r0, r0, stuck: false, off: 0, stuckT: 0, pierce: 0, banks: 0, spin: 0, smash: false, inside: new Set(), trail: [], serve: false };
   }
   function serve() {
     const b = makeBall(paddle.x, PADDLE_Y - 8, 0, 0);
     b.stuck = true; b.off = 0; b.serve = true;
     G.balls.push(b);
+    if (run.level >= CHICKEN_FROM && !G.safari && Math.random() < 0.1) {
+      b.chicken = true; say(W / 2, PADDLE_Y - 70, 'RUBBER CHICKEN! Double coins', '#ffe94a', 2.2); sfx.squawk(2);
+    }
   }
   function launchAngle(b) {
     if (b.serve) return clamp(-(paddle.x - W / 2) / (W / 2) * 0.55, -0.55, 0.55) || 0.12;
@@ -604,13 +638,24 @@
   }
 
   // ---------- bricks ----------
-  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff' };
+  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff', pinata: '#ff7ad9', runner: '#9cff57' };
   function brickColor(b) {
     return TYPE_COLOR[b.type] || BRICK_COLORS[(b.maxhp - 1 + b.row) % BRICK_COLORS.length];
   }
   function hitBrick(b, dmg, fromBall) {
     if (!b.alive) return false;
     if (b.type === 'stone') { b.flash = 0.12; sfx.stone(); return false; }
+    b.byBall = fromBall;
+    if (b.mimic) { runAway(b); return false; }
+    // only a ball can hurt a pinata or catch a runner
+    if (b.type === 'pinata' || b.type === 'runner') {
+      if (!fromBall) { b.flash = 0.06; return false; }
+      if (b.type === 'runner') { catchRunner(b); return true; }
+      b.hp--; b.flash = 0.12; b.punch = 1.6; sfx.whack(); burst(b.x + b.w / 2, b.y + b.h / 2, pick(RAINBOW), 8, 180);
+      if (b.hp <= 0) { destroyBrick(b); return true; }
+      return false;
+    }
+    if (G.fx.panic > 0 && Math.random() < 0.12) { say(b.x + b.w / 2, b.y - 4, pick(PANIC_CRIES), '#ffffff', 0.7); sfx.eek(); }
     if (fromBall && Math.random() < lv('crit') * 0.08) {
       dmg *= 3; say(b.x + b.w / 2, b.y, 'CRIT', '#fff27a', 0.6);
     }
@@ -636,6 +681,12 @@
     sfx.pop(G.combo);
     addFever(special('party') ? 0.08 : 0.04);
     if (G.noLoot) return;
+    if (G.fx.panic > 0) dropCoin(cx, cy, 1, true);
+    if (b.wanted) {
+      const won = b.byBall && G.clock < WANTED_S;
+      if (won) { G.wantedWon = true; sfx.jackpot(); flashScreen('#ffd23f', 0.25); }
+      say(clamp(cx, 90, W - 90), cy + 26, won ? 'BOUNTY CLAIMED! A relic waits' : 'The bandit got away', won ? '#ffd23f' : '#ff9aa8', 1.8, won);
+    }
     if (b.type === 'gold') { dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5)); if (relic('bombardier')) explode(cx, cy, 44, Math.round(2 * power()), '#ffd23f', true); }
     else if (b.type === 'chest') dropCoin(cx, cy, 6);
     else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
@@ -646,10 +697,50 @@
     else if (b.type === 'volt') zapRow(b);
     else if (b.type === 'prism') splitBall(cx, cy);
     else if (b.type === 'dice') rollDice(cx, cy);
+    else if (b.type === 'pinata') candyRain();
     cheer();
     relicBricks(b, cx, cy);
     // the last brick falls in slow motion
-    if (!G.boss && G.clearT < 0 && destructibleLeft() === 0) { G.slowmo = 0.7; flashScreen('#ffffff', 0.3); ring(cx, cy, 160, '#ffffff', 0.6, 4); }
+    if (!G.boss && G.clearT < 0 && destructibleLeft() === 0) {
+      G.slowmo = 0.7; flashScreen('#ffffff', 0.3); ring(cx, cy, 160, '#ffffff', 0.6, 4);
+      G.cam = { x: cx, y: cy, t: CAM_S, T: CAM_S }; sfx.roar();
+      say(W / 2, clamp(cy + 60, 160, 420), pick(['SMASHED!', 'CLEAN!', 'BOOM!', 'TIDY!', 'LAST ONE!']), '#ffffff', 1.2, true);
+    }
+  }
+  const CAM_S = 0.9; // the camera zooms on the last hit of a level
+  // A broken pinata rains coins and capsules across the field.
+  function candyRain() {
+    say(W / 2, H * 0.4, 'CANDY RAIN!', '#ff7ad9', 1.6, true); sfx.jackpot(); flashScreen('#ff7ad9', 0.25);
+    for (let i = 0; i < 14; i++) after(i * 0.12, () => dropCoin(rand(20, W - 20), HUD_H + 10, 1, true));
+    for (let i = 0; i < 3; i++) after(0.3 + i * 0.5, () => G.pus.push({ x: rand(40, W - 40), y: HUD_H + 10, vy: 110, k: rollPU() }));
+  }
+  // A mimic brick: on its first hit it grows legs, leaves the wall and runs below the bricks. A ball can catch it.
+  // A runner does not count for the level clear.
+  function runAway(b) {
+    const lane = clamp(brickBottom() + 18, TOP + 60, PADDLE_Y - 260);
+    b.mimic = false; b.type = 'runner'; b.hp = b.maxhp = 1; b.row = 99; b.col = -9;
+    b.baseY = lane; b.y = lane; b.vx = (Math.random() < 0.5 ? -1 : 1) * 130; b.hop = 0; b.flash = 0.2;
+    say(b.x + b.w / 2, lane - 14, 'NYEH! Catch me!', '#9cff57', 1.4); sfx.taunt();
+  }
+  function catchRunner(b) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    b.alive = false; shards(b); burst(cx, cy, '#9cff57', 18, 240); ring(cx, cy, 60, '#9cff57');
+    say(cx, cy - 18, 'GOTCHA!', '#9cff57', 1.2, true); sfx.jackpot(); shake(5);
+    dropCoin(cx, cy, 12, true); G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
+  }
+  function updateRunners(dt) {
+    for (const b of G.bricks) {
+      if (!b.alive || b.type !== 'runner') continue;
+      b.hop += dt; b.x += b.vx * dt; b.y = b.baseY - Math.abs(Math.sin(b.hop * 9)) * 8;
+      if (b.x < 4) { b.x = 4; b.vx = Math.abs(b.vx); } else if (b.x > W - b.w - 4) { b.x = W - b.w - 4; b.vx = -Math.abs(b.vx); }
+    }
+  }
+  // Googly Panic: a rare event. For some seconds every brick has eyes, cries, and drops a coin when it breaks.
+  const PANIC_CRIES = ['EEK!', 'NOT ME!', 'OUCH!', 'MOMMY!', 'HELP!', 'WHY?!'];
+  function startPanic() {
+    setFx('panic', 10);
+    say(W / 2, H * 0.42, 'THE BRICKS CAN SEE YOU!', '#ffffff', 2, true); sfx.taunt(); flashScreen('#ffffff', 0.2);
+    say(W / 2, H * 0.42 + 30, 'Every brick drops a coin', '#ffd84a', 2);
   }
   // Streaks pay out every STREAK_STEP bricks; each payout is bigger than the last.
   const STREAK_STEP = 5;
@@ -681,7 +772,7 @@
     for (const f of G.foes) if (Math.hypot(f.x - x, f.y - y) <= rad + f.r) damageFoe(f, dmg);
     if (bossAt(x, y, rad)) damageBoss(dmg);
   }
-  function destructibleLeft() { let n = 0; for (const b of G.bricks) if (b.alive && b.type !== 'stone') n++; return n; }
+  function destructibleLeft() { let n = 0; for (const b of G.bricks) if (b.alive && b.type !== 'stone' && b.type !== 'runner') n++; return n; }
 
   // ---------- input ----------
   function toGame(e) {
@@ -692,6 +783,7 @@
     audio();
     if (mode !== 'play' || e.button === 2) return;
     const p = toGame(e); paddle.tx = p.x;
+    G.tapT = G.time;
     launch();
     e.preventDefault();
   });
@@ -725,6 +817,7 @@
     if (mode !== 'play') return;
     // screen effects run on real time, also during hit-stop and slow motion
     G.shake = Math.max(0, G.shake - dt * 30);
+    if (G.cam) G.cam.t -= dt;
     G.flash = Math.max(0, G.flash - dt * 2.5);
     G.comboPop = Math.max(0, G.comboPop - dt * 6);
     paddle.squish = Math.max(0, paddle.squish - dt * 8);
@@ -740,7 +833,7 @@
     updateFever(dt);
     if ((G.fx.storm > 0 || (special('storm') && G.started)) && G.clearT < 0 && (G.stormT -= dt) <= 0) { G.stormT = G.fx.storm > 0 ? 0.28 : 2; stormStrike(); }
     if (G.blimpT > 0 && G.started && G.clearT < 0 && (G.blimpT -= dt) <= 0) {
-      spawnBlimp();
+      if (G.level >= CONVOY_FROM && Math.random() < 0.2) spawnConvoy(); else spawnBlimp();
       G.blimpT = G.safari ? rand(0.6, 1) : special('blimps') ? 6 : --G.blimpsLeft > 0 ? rand(8, 13) : -1;
     }
 
@@ -750,6 +843,7 @@
     paddle.w += (targetW - paddle.w) * Math.min(1, dt * 8);
     paddle.x += (paddle.tx - paddle.x) * Math.min(1, dt * (G.stun > 0 ? 12 : 30));
     paddle.x = clamp(paddle.x, paddle.w / 2, W - paddle.w / 2);
+    paddle.vx = (paddle.x - (paddle.px == null ? paddle.x : paddle.px)) / dt; paddle.px = paddle.x;
 
     updateBalls(dt);
     updateFoes(dt);
@@ -759,6 +853,8 @@
     updateDrops(dt);
     updateParticles(dt);
     for (const b of G.bricks) { if (b.flash > 0) b.flash -= dt; if (b.punch > 0) b.punch = Math.max(0, b.punch - dt * 7); }
+    updateRunners(dt);
+    if (G.eventAt > 0 && G.clock >= G.eventAt && G.clearT < 0) { G.eventAt = -1; startPanic(); }
 
     updateOvertime(dt);
     if (G.clearT < 0 && levelDone()) {
@@ -787,23 +883,28 @@
       if (Math.abs(b.vy) < sp * 0.28) { b.vy = Math.sign(b.vy || -1) * sp * 0.28; b.vx = Math.sign(b.vx) * Math.sqrt(sp * sp - b.vy * b.vy); }
 
       steerBall(b, dt);
+      if (b.spin) { b.spin *= Math.max(0, 1 - dt * 1.2); if (Math.abs(b.spin) < 0.05) b.spin = 0; }
       const steps = Math.max(1, Math.ceil((sp * dt) / (b.r * 0.7)));
       const sdt = dt / steps;
       for (let s = 0; s < steps && !b.dead; s++) {
+        if (b.spin) { const c = Math.cos(b.spin * sdt), sn = Math.sin(b.spin * sdt), vx = b.vx; b.vx = vx * c - b.vy * sn; b.vy = vx * sn + b.vy * c; }
         b.x += b.vx * sdt; b.y += b.vy * sdt;
         // walls
-        if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); sfx.wall(); }
-        if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); sfx.wall(); }
-        if (b.y < HUD_H + b.r) { b.y = HUD_H + b.r; b.vy = Math.abs(b.vy); sfx.wall(); }
+        if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); sfx.wall(); b.banks++; }
+        if (b.x > W - b.r) { b.x = W - b.r; b.vx = -Math.abs(b.vx); sfx.wall(); b.banks++; }
+        if (b.y < HUD_H + b.r) { b.y = HUD_H + b.r; b.vy = Math.abs(b.vy); sfx.wall(); b.banks++; }
         // paddle (and its mirror image, with the Mirror Paddle relic)
         const P = b.vy > 0 && b.y + b.r >= PADDLE_Y && b.y - b.r <= PADDLE_Y + PADDLE_H ? paddles().find((p) => Math.abs(b.x - p.x) <= p.w / 2 + b.r) : null;
         if (P) {
           const off = clamp((b.x - P.x) / (P.w / 2), -1, 1);
           const a = off * 1.08 + rand(-0.07, 0.07);
           b.vx = Math.sin(a) * sp; b.vy = -Math.cos(a) * sp; b.y = PADDLE_Y - b.r;
-          b.pierce = lv('pierce'); G.combo = 0;
+          b.pierce = lv('pierce'); b.banks = 0; b.smash = false;
+          // a hit on the sweet spot keeps the streak
+          const sweet = P === paddle && G.level >= FROM.sweet && Math.abs(b.x - sweetX()) <= 10;
+          if (!sweet) { G.combo = 0; G.sweetN = 0; }
           sfx.paddle(); burst(b.x, PADDLE_Y, '#bff8ff', 4, 110);
-          if (P === paddle) paddle.squish = 1;
+          if (P === paddle) { paddle.squish = 1; paddleSkill(b, sweet); }
           paddleBounce(b);
           if (G.fx.glue > 0 && P === paddle) { b.stuck = true; b.off = b.x - paddle.x; b.stuckT = 0; break; }
           continue;
@@ -831,6 +932,11 @@
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
           if (ballVsRect(b, B.x - B.w / 2, B.y, B.w, B.h) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
+          // a ball in the Auditor's tractor beam turns the beam around
+          if (B.state === 'tractor' && Math.abs(b.x - B.x) < 40 && b.y > B.y + B.h && b.y < PADDLE_Y - 60) {
+            B.state = 'idle'; B.atkT = 2; bossSay('That is MY money!');
+            say(B.x, B.y + B.h + 60, 'REFUND!', '#7cf2a8', 1.4, true); dropCoin(B.x, B.y + B.h + 10, 8); sfx.jackpot(); ring(B.x, B.y + B.h, 90, '#7cf2a8', 0.4, 4);
+          }
         }
         for (const e of G.eshots) if (!e.dead && Math.hypot(e.x - b.x, e.y - b.y) < e.r + b.r) { e.dead = true; burst(e.x, e.y, '#9cff57', 6, 100); }
         // bricks
@@ -846,7 +952,7 @@
           if (passes) {
             nowInside.add(k);
             if (!fire) b.pierce--;
-            hitBrick(k, dmg, true);
+            hitBrick(k, ballHit(b, dmg), true);
             continue;
           }
           // bounce
@@ -854,7 +960,7 @@
           const ox = k.w / 2 + b.r - Math.abs(b.x - kx), oy = k.h / 2 + b.r - Math.abs(b.y - ky);
           if (ox < oy) { const sg = Math.sign(b.x - kx) || 1; b.vx = sg * Math.abs(b.vx); b.x += sg * ox; }
           else { const sg = Math.sign(b.y - ky) || 1; b.vy = sg * Math.abs(b.vy); b.y += sg * oy; }
-          hitBrick(k, dmg, true);
+          hitBrick(k, ballHit(b, dmg), true);
           break;
         }
         b.inside = nowInside;
@@ -870,6 +976,31 @@
   const ballDmg = () => Math.round(((1 + lv('dmg')) * (G.fx.fire > 0 ? 3 : 1) * (feverOn() ? 2 : 1) + (mega() ? 2 : 0)) * power() * momentum());
   function paddles() {
     return relic('mirror') ? [paddle, { x: W - paddle.x, w: paddle.w * 0.7 }] : [paddle];
+  }
+  // Skill shots on the player's own paddle.
+  // Sweet spot: a bright mark that moves after each bounce. A hit on it rings, pays, and keeps the streak. Five in a row give a fireball.
+  // Smash: a tap just before the bounce doubles the damage and adds pierce until the next bounce.
+  const sweetX = () => paddle.x + G.sweet * paddle.w / 2;
+  function paddleSkill(b, sweet) {
+    if (sweet) {
+      const n = ++G.sweetN;
+      sfx.ding(n); ring(b.x, PADDLE_Y, 30 + n * 8, '#fff27a', 0.35); dropCoin(b.x, PADDLE_Y - 24, n, true);
+      say(b.x, PADDLE_Y - 30, n >= 5 ? 'PERFECT!' : 'DING ×' + n, '#fff27a', 0.9, n >= 5);
+      if (n >= 5) { G.sweetN = 0; setFx('fire', 3); flashScreen('#fff27a', 0.2); sfx.cheer(3); }
+    }
+    G.sweet = rand(-0.7, 0.7);
+    if (G.level >= FROM.smash && G.time - G.tapT < 0.2) {
+      G.tapT = -9; b.smash = true; b.pierce += 3;
+      say(b.x, PADDLE_Y - 46, 'SMASH!', '#ff9a3d', 0.8, true); ring(b.x, PADDLE_Y, 70, '#ff9a3d', 0.3, 4); sfx.whack(); shake(5);
+    }
+    if (relic('spin')) b.spin = clamp(paddle.vx / 300, -2, 2);
+  }
+  // The damage of one ball hit on a brick. The smash and the Bank Shot relic multiply it.
+  function ballHit(b, dmg) {
+    const m = (b.smash ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0));
+    b.banks = 0;
+    if (b.chicken) { sfx.squawk((G.combo / 5) | 0); burst(b.x, b.y, '#ffffff', 2, 90); }
+    return dmg * m;
   }
   const HYDRA_MAX = 5;
   // relics that trigger on a paddle bounce
@@ -946,7 +1077,7 @@
   function overclock() { return 1 + 0.25 * lv('d_over'); }
   function brickAbove(x, slack = 0) {
     for (const k of G.bricks) if (k.alive && k.type !== 'stone' && x >= k.x - slack && x <= k.x + k.w + slack) return true;
-    for (const f of G.foes) if (f.type !== 'blimp' && Math.abs(f.x - x) <= f.r + slack) return true;
+    for (const f of G.foes) if (!passive(f) && Math.abs(f.x - x) <= f.r + slack) return true;
     if (G.boss && !G.boss.dead && Math.abs(G.boss.x - x) <= G.boss.w / 2 + slack) return true;
     return false;
   }
@@ -956,7 +1087,7 @@
   const targetLive = (o) => (o.r || o.kind ? !o.dead : o.alive);
   function allTargets() {
     const out = G.bricks.filter((k) => k.alive && k.type !== 'stone');
-    for (const f of G.foes) if (!f.dead && f.type !== 'blimp') out.push(f);
+    for (const f of G.foes) if (!f.dead && !passive(f)) out.push(f);
     if (G.boss && !G.boss.dead) out.push(G.boss);
     return out;
   }
@@ -1215,7 +1346,7 @@
       } else if (d.type === 'ufo') {
         if (d.target && !d.target.alive) { d.target = null; d.beam = 0; }
         if (!d.target && active && (d.cd -= dt) <= 0) {
-          const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && !k.taken);
+          const opts = G.bricks.filter((k) => k.alive && k.type !== 'stone' && k.type !== 'pinata' && k.type !== 'runner' && !k.taken);
           d.target = opts.length ? pick(opts) : null;
           if (d.target) d.target.taken = true;
         }
@@ -1308,7 +1439,27 @@
     blimp: { r: 17, hp: 3, color: '#ffd23f', coins: 8 },
     splitter: { r: 20, hp: 9, color: '#8f5cff', coins: 4 },
     bomber: { r: 11, hp: 2, color: '#ff5c5c', coins: 3 },
+    pinata: { r: 42, hp: 1e9, color: '#ff7ad9', coins: 0 },
+    bumper: { r: 22, hp: 1e9, color: '#5ef0ff', coins: 0 },
   };
+  // Blimps and the targets of the bonus rounds: only a ball touches them, and guns do not aim at them.
+  const passive = (f) => f.type === 'blimp' || f.type === 'pinata' || f.type === 'bumper';
+  function bonusHit(f) {
+    f.flash = 0.12; G.popped++;
+    if (f.type === 'pinata') {
+      sfx.whack(); shake(3); burst(f.x, f.y, pick(RAINBOW), 10, 200);
+      dropCoin(f.x, f.y + 20, 2 + Math.floor(G.popped / 6), true);
+      if (G.popped % 8 === 0) { G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() }); say(f.x, f.y - 50, pick(['WHACK!', 'POW!', 'OOF!', 'CANDY!']), pick(RAINBOW), 0.8, true); }
+      return;
+    }
+    sfx.ping(G.popped); dropCoin(f.x, f.y, 1, true);
+    if (f.lit) return;
+    f.lit = true;
+    if (G.foes.some((o) => o.type === 'bumper' && !o.lit)) return;
+    G.rounds++;
+    say(W / 2, H * 0.6, 'JACKPOT! ×' + G.rounds, '#ffd23f', 1.4, true); sfx.jackpot(); flashScreen('#ffd23f', 0.3);
+    for (const o of G.foes) if (o.type === 'bumper') { o.lit = false; dropCoin(o.x, o.y, 3 * G.rounds, true); }
+  }
   // Blimps: bonus targets that cross the field. Only a ball can hurt a blimp, and each hit shakes loot out.
   // hits = ball hits to pop it, coins = coins on the pop, w = how often it comes, from = first level.
   const BLIMPS = {
@@ -1317,7 +1468,9 @@
     gold: { hits: 1, r: 12, speed: 150, coins: 30, w: 1, from: 16, body: '#fff3a0', band: '#ffb02e', mark: '★', call: 'GOLDEN BLIMP! Quick!' },
     bomb: { hits: 2, r: 18, speed: 52, coins: 4, w: 3, from: 20, body: '#ff5c5c', band: '#2b0b10', mark: '!', call: 'BOMBER BLIMP! Pop it!' },
     mother: { hits: 6, r: 28, speed: 34, coins: 16, w: 2, from: 24, body: '#ffb02e', band: '#c08cff', mark: '$$', call: 'MOTHER SHIP!' },
+    windbag: { hits: 12, r: 44, speed: 26, coins: 40, w: 1, from: 28, body: '#c08cff', band: '#ffd23f', mark: '', call: 'THE WINDBAG! Only the ball can pop it!' },
   };
+  const CONVOY_FROM = 18;
   function rollBlimp() {
     if (G.level === FROM.blimp && !G.safari) return 'loot';
     const opts = Object.entries(BLIMPS).filter(([k, d]) => (G.safari ? k === 'loot' || k === 'gift' || k === 'gold' || G.level >= d.from : G.level >= d.from) && !(G.safari && k === 'bomb'));
@@ -1344,12 +1497,34 @@
     shake(3);
     if (f.kind === 'gift') G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
     else if (f.kind !== 'gold') dropCoin(f.x, f.y, f.kind === 'mother' ? n + 2 : n, true);
+    if (f.kind !== 'windbag') return;
+    if (f.hp > 1 && (f.hp - 1) % 4 === 0) spawnBlimp('loot', f.x, f.y + f.r * 0.6, f.hp % 8 < 4 ? 1 : -1);
+    if (!f.leak && f.hp <= 5) { f.leak = true; f.la = 0; say(f.x, f.y - f.r - 12, "I'm full of hot air!", '#ffffff', 1.8); sfx.raspberry(); }
+  }
+  // A convoy: a leader and four small blimps in a line. All five popped pay a bonus.
+  function spawnConvoy() {
+    const dir = Math.random() < 0.5 ? 1 : -1, id = ++G.convoyN;
+    const lane = G.safari ? rand(HUD_H + 90, PADDLE_Y - 220) : clamp(brickBottom() + 70, TOP + 90, PADDLE_Y - 240);
+    G.convoys[id] = 0;
+    for (let i = 0; i < 5; i++) {
+      const f = spawnBlimp('loot', (dir > 0 ? -24 : W + 24) - dir * i * 44, lane, dir);
+      f.convoy = id; f.t = -i * 0.45; f.hitCd = 0;
+      if (i) { f.r = 12; f.small = true; f.hp = f.maxhp = 1; }
+    }
+    say(W / 2, lane - 46, 'BLIMP CONVOY! Pop all five!', '#ffd23f', 1.8); sfx.blimp();
   }
   function popBlimp(f) {
     G.popped++; run.stats.blimps++; shake(6);
     say(f.x, f.y - 20, f.kind === 'gold' ? 'GOLDEN JACKPOT!' : 'JACKPOT!', '#ffd23f', 1.2, f.kind === 'gold');
     if (f.kind === 'gold') { G.slowmo = Math.max(G.slowmo, 0.5); flashScreen('#ffd23f', 0.25); sfx.jackpot(); }
-    if (f.kind === 'loot' || f.kind === 'gift') G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
+    if ((f.kind === 'loot' && !f.small) || f.kind === 'gift') G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
+    if (f.convoy && ++G.convoys[f.convoy] === 5) {
+      say(W / 2, f.y - 40, 'CONVOY BONUS!', '#ffd23f', 1.6, true); dropCoin(f.x, f.y, 15, true); flashScreen('#ffd23f', 0.25); sfx.jackpot();
+    }
+    if (f.kind === 'windbag') {
+      G.slowmo = Math.max(G.slowmo, 0.6); sfx.roar(); flashScreen('#c08cff', 0.3);
+      for (let i = 0; i < 3; i++) G.pus.push({ x: f.x + (i - 1) * 40, y: f.y, vy: 110, k: rollPU() });
+    }
     if (f.kind === 'bomb') airStrike(4, 54, 4);
     if (f.kind === 'mother') [-26, 0, 26].forEach((dy, i) => spawnBlimp('loot', f.x, f.y + dy, i % 2 ? -1 : 1));
     if (relic('pirate')) airStrike(6, 40, 3);
@@ -1380,6 +1555,7 @@
   // ball = the hit comes from a ball. A blimp takes one hit per ball hit, whatever the damage.
   function damageFoe(f, dmg, ball = false) {
     if (f.dead) return;
+    if (f.type === 'pinata' || f.type === 'bumper') { if (ball && G.clearT < 0) bonusHit(f); return; }
     if (f.type === 'blimp') {
       // at the end of a level the blimps fly off
       if (G.clearT >= 0) { f.dead = true; burst(f.x, f.y, BLIMPS[f.kind].body, 10, 160); return; }
@@ -1390,7 +1566,7 @@
     if (f.hp > 0) return;
     f.dead = true; sfx.foePop(); burst(f.x, f.y, FOE[f.type].color, 16, 220); ring(f.x, f.y, f.r * 2.4, FOE[f.type].color);
     run.score += 50; run.stats.foes++; addFever(0.06);
-    if (f.type === 'blimp') dropCoin(f.x, f.y, BLIMPS[f.kind].coins, true);
+    if (f.type === 'blimp') dropCoin(f.x, f.y, f.small ? 3 : BLIMPS[f.kind].coins, true);
     else dropCoin(f.x, f.y, FOE[f.type].coins + lv('foebounty') + f.loot * 2);
     if (f.loot) say(f.x, f.y - 16, 'Loot back x2!', '#ffd84a');
     if (G.clearT >= 0) return;
@@ -1452,8 +1628,17 @@
       if (frozen || f.frozenT > 0) continue;
       f.t += dt;
       if (f.type === 'blimp') {
-        f.x += f.dir * f.speed * dt; f.y = f.baseY + Math.sin(f.t * 2) * 8;
-        if (f.x < -60 || f.x > W + 60) f.dead = true;
+        if (f.leak) {
+          // a Windbag with a leak shoots around like a balloon that you let go
+          f.la += dt * 5; f.x += Math.cos(f.la * 0.7) * 260 * dt * f.dir;
+          f.baseY = clamp(f.baseY + Math.sin(f.la) * 200 * dt, HUD_H + 60, PADDLE_Y - 210);
+          if (f.x < f.r) { f.x = f.r; f.dir = 1; } else if (f.x > W - f.r) { f.x = W - f.r; f.dir = -1; }
+          f.y = f.baseY; f.r = 18 + 5 * f.hp;
+          if (Math.random() < dt * 3) { sfx.raspberry(); burst(f.x - f.dir * f.r, f.y, '#ffffff', 3, 120); }
+        } else {
+          f.x += f.dir * f.speed * dt; f.y = f.baseY + Math.sin(f.t * 2) * (f.convoy ? 22 : 8);
+          if ((f.x < -60 && f.dir < 0) || (f.x > W + 60 && f.dir > 0)) f.dead = true;
+        }
       } else if (f.type === 'drifter' || f.type === 'splitter') {
         f.vx += Math.sin(f.t * 0.9) * 12 * dt; f.vy += Math.cos(f.t * 0.7) * 10 * dt;
         const sp = Math.hypot(f.vx, f.vy) || 1, want = f.type === 'splitter' ? 36 : 55; f.vx *= want / sp; f.vy *= want / sp;
@@ -1494,10 +1679,12 @@
           f.dead = true; f.escaped = true;
           say(clamp(f.x, 80, W - 80), HUD_H + 20, `Thief got away with ${f.loot}!`, '#ff6b8b', 1.4);
         }
+      } else if (f.type === 'pinata') {
+        f.x = W / 2 + Math.sin(f.t * 1.3) * 130; f.y = 225 + Math.cos(f.t * 2.6) * 22;
       } else if (f.type === 'bomber') {
         updateBomber(f, dt, z);
       }
-      if (f.type !== 'thief' && f.type !== 'blimp' && !f.dive) {
+      if (f.type !== 'thief' && !passive(f) && !f.dive) {
         if (f.x < f.r) { f.x = f.r; f.vx = Math.abs(f.vx); } if (f.x > W - f.r) { f.x = W - f.r; f.vx = -Math.abs(f.vx); }
         if (f.y < z.top) { f.y = Math.min(f.y + 60 * dt, z.top); f.vy = Math.abs(f.vy); }
         if (f.y > z.bot) { f.y = z.bot; f.vy = -Math.abs(f.vy); }
@@ -1572,6 +1759,8 @@
   function bossSay(s) { G.boss.talk = { s, t: 2.2 }; sfx.taunt(); }
   function damageBoss(dmg) {
     const B = G.boss; if (!B || B.dead) return;
+    // the Crate King lands on his head after a stomp
+    if (B.kind === 1 && B.state === 'rest') dmg *= 2;
     B.hp -= dmg; B.flash = 0.1; sfx.bossHit();
     // a boss leaks coins as it takes damage: 25 drops over the fight
     B.coinAcc += Math.min(dmg / B.maxhp, 0.2);
@@ -1587,6 +1776,7 @@
     if (B.hp > 0) return;
     B.dead = true; shake(16); sfx.bossDie(); buzz([40, 40, 40, 40, 120]);
     G.slowmo = 1.2; flashScreen('#ffffff', 0.6); G.lasers = []; G.eshots = [];
+    G.cam = { x: B.x, y: B.y + B.h / 2, t: 1.2, T: 1.2 }; sfx.roar();
     for (let i = 0; i < 7; i++) after(i * 0.07, () => { const x = B.x + rand(-60, 60), y = B.y + rand(-5, B.h); burst(x, y, pick(RAINBOW), 20, 260); ring(x, y, 50, '#ffd23f'); });
     dropCoin(B.x, B.y + 20, Math.round((15 + 10 * B.kind) * (1 + 0.25 * lv('foebounty'))));
     run.score += 2000 * B.kind;
@@ -1634,7 +1824,8 @@
       } else if (B.state === 'drop') {
         B.y += 900 * dt;
         if (B.y < STOMP_Y) return;
-        B.y = STOMP_Y; B.state = 'rest'; B.stateT = 1.2;
+        B.y = STOMP_Y; B.state = 'rest'; B.stateT = 1.8;
+        bossSay('This side up!'); say(B.x, B.y - 16, 'DIZZY! Double damage', '#ffd23f', 1.6);
         shake(12); sfx.boom(); ring(B.x, B.y + B.h, 130, '#c8874a', 0.5, 4);
         for (const a of [-1.1, -0.6, 0.6, 1.1]) enemyShot(B.x, B.y + B.h, a, 190);
       } else if (B.state === 'rest') {
@@ -1719,7 +1910,7 @@
   const tractorOn = (c) => G.boss && !G.boss.dead && G.boss.state === 'tractor' && Math.abs(c.x - G.boss.x) < 70 && c.y > G.boss.y;
 
   function foeAt(x, y, pad = 0) {
-    for (const f of G.foes) if (!f.dead && f.type !== 'blimp' && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
+    for (const f of G.foes) if (!f.dead && !passive(f) && Math.hypot(f.x - x, f.y - y) <= f.r + pad) return f;
     return null;
   }
   function bossAt(x, y, pad = 0) {
@@ -1748,11 +1939,39 @@
     ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - gap, y, r, 0, 7); ctx.arc(x + gap, y, r, 0, 7); ctx.fill();
     ctx.fillStyle = pupil; ctx.beginPath(); ctx.arc(x - gap + look, y + r * 0.3, r * 0.5, 0, 7); ctx.arc(x + gap + look, y + r * 0.3, r * 0.5, 0, 7); ctx.fill();
   }
+  function drawPinata(f) {
+    const flash = f.flash > 0, col = (c) => (flash ? '#ffffff' : c);
+    ctx.strokeStyle = '#c9d0ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(W / 2, HUD_H); ctx.lineTo(f.x, f.y - 18); ctx.stroke();
+    ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(Math.sin(f.t * 1.3) * 0.25); ctx.scale(1.25, 1.25);
+    RAINBOW.forEach((c, i) => { ctx.fillStyle = col(c); ctx.fillRect(-32 + i * 8, -18, 8, 36); });
+    ctx.fillStyle = col('#ff7ad9'); rr(24, -40, 26, 26, 6); ctx.fill();
+    ctx.fillStyle = col('#ffe066'); ctx.fillRect(30, -52, 6, 14); ctx.fillRect(40, -52, 6, 14);
+    ctx.fillStyle = col('#5ef0ff'); for (const lx of [-28, -14, 8, 22]) ctx.fillRect(lx, 18, 7, 16);
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(40, -30, 3, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  function drawBumper(f) {
+    ctx.globalCompositeOperation = 'lighter'; glow(f.x, f.y, f.r * (f.lit ? 2.4 : 1.6), f.lit ? '#ffd23f' : '#5ef0ff', f.lit ? 0.6 : 0.25);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    const r = f.r * (f.flash > 0 ? 1.15 : 1);
+    ctx.fillStyle = f.lit ? '#ffd23f' : '#1d2a52'; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = f.lit ? '#fff6c0' : '#5ef0ff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(f.x, f.y, r - 2, 0, 7); ctx.stroke();
+    ctx.fillStyle = f.lit ? '#7a5300' : '#5ef0ff'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', f.x, f.y + 1);
+  }
   function drawFoes(t) {
     for (const f of G.foes) {
       const d = FOE[f.type], wob = Math.sin(f.t * 4) * 1.5;
       ctx.fillStyle = f.flash > 0 ? '#ffffff' : d.color;
-      if (f.type === 'blimp') { drawBlimp(f.x, f.y, f.r, f.dir, BLIMPS[f.kind], f.flash > 0, f.hp); continue; }
+      if (f.type === 'pinata') { drawPinata(f); continue; }
+      if (f.type === 'bumper') { drawBumper(f); continue; }
+      if (f.type === 'blimp') {
+        drawBlimp(f.x, f.y, f.r, f.dir, BLIMPS[f.kind], f.flash > 0, f.hp);
+        if (f.kind === 'windbag' && f.flash <= 0) {
+          eyes(f.x, f.y - f.r * 0.1, f.r * 0.32, f.r * 0.16, clamp((paddle.x - f.x) / 60, -3, 3));
+          ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(f.x + f.r * 0.32, f.y - f.r * 0.1, f.r * 0.22, 0, 7); ctx.stroke();
+        }
+        continue;
+      }
       if (f.type === 'drifter' || f.type === 'splitter') {
         ctx.beginPath(); ctx.ellipse(f.x, f.y, f.r + wob, f.r - wob, 0, 0, 7); ctx.fill();
         if (f.type === 'splitter') { ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(f.x, f.y - f.r + 3); ctx.lineTo(f.x, f.y + f.r - 3); ctx.stroke(); ctx.setLineDash([]); }
@@ -1826,12 +2045,15 @@
     ctx.globalCompositeOperation = 'lighter'; glow(B.x, y + B.h / 2, B.w * 0.75, hot ? '#ff2a4d' : '#ffd23f', 0.3 + 0.1 * Math.sin(t * 5), 60);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     if (B.kind === 1) {
+      const flip = B.state === 'rest';
+      if (flip) { ctx.save(); ctx.translate(0, 2 * y + B.h); ctx.scale(1, -1); }
       ctx.fillStyle = body('#c8874a'); rr(x, y, B.w, B.h, 8); ctx.fill();
       ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 3; ctx.beginPath();
       ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + B.w - 6, y + B.h - 6); ctx.moveTo(x + B.w - 6, y + 6); ctx.lineTo(x + 6, y + B.h - 6); ctx.stroke();
       rr(x + 1.5, y + 1.5, B.w - 3, B.h - 3, 7); ctx.stroke();
       ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(x + 40, y); ctx.lineTo(x + 52, y - 16); ctx.lineTo(x + 75, y - 4); ctx.lineTo(x + 98, y - 16); ctx.lineTo(x + 110, y); ctx.fill();
       eyes(B.x, y + 22, 22, 8, look, hot ? '#ff2a4d' : '#1b1f33');
+      if (flip) ctx.restore();
     } else if (B.kind === 2) {
       ctx.fillStyle = '#3d4760'; for (const ox of [-55, 55]) { rr(B.x + ox - 9, y + B.h - 6, 18, 20, 4); ctx.fill(); }
       ctx.fillStyle = body('#8a9bb8'); rr(x, y, B.w, B.h, 12); ctx.fill();
@@ -1883,7 +2105,8 @@
     if (G.safari) {
       const record = G.levelCoins > (run.safariBest || 0);
       if (record) run.safariBest = G.levelCoins;
-      lastSummary = { safari: true, picked: G.levelCoins, popped: G.popped, record };
+      lastSummary = { safari: G.safari, picked: G.levelCoins, popped: G.popped, record };
+      run.fever = G.fever0;
       saveRun(); showTally(); return;
     }
     const lvl = run.level, late = G.timeUp, timed = clockOn();
@@ -1911,10 +2134,11 @@
     }
     lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat,
       combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.clock), par: G.par, flawless: G.flawless, late, timed, boss: !!G.def.boss };
-    run.bet = 0;
+    run.bet = 0; run.nextSpecial = null; run.wanted = false;
     run.score += 100 * lvl * stars;
     run.level++;
-    run.pendingRelic = lvl % 5 === 0 && relicChoices().length > 0;
+    if (G.wantedWon) run.wantedWon = (run.wantedWon || 0) + 1;
+    run.pendingRelic = (lvl % 5 === 0 || G.wantedWon) && relicChoices().length > 0;
     rollDeals();
     recordBest();
     saveRun();
@@ -1980,7 +2204,8 @@
   let shopCat = 'weap';
   function openShop() {
     mode = 'shop'; pauseBtn.style.display = 'none'; A.music(0);
-    shopRerolls = 0; shopMsg = '';
+    if (shopLevel !== run.level) { shopLevel = run.level; shopRerolls = 0; }
+    shopMsg = '';
     renderShop(false);
   }
   const SHOP_TABS_FROM = 10; // with fewer items than this, the shop is one short list without tabs
@@ -2048,7 +2273,8 @@
     if (act === 'newrun') { run = newRun(); lastSummary = null; store.del(SAVE_KEY); saveRun(); startLevel(); }
     else if (act === 'resume') {
       run = loadRun(); lastSummary = null;
-      if (run.pendingRelic && relicChoices().length) showRelics();
+      if (run.pendingSafari) startSafari();
+      else if (run.pendingRelic && relicChoices().length) showRelics();
       else if (run.level === 1 && run.coins === 0) startLevel();
       else openShop();
     }
@@ -2109,7 +2335,7 @@
   // ---------- fever ----------
   // Breaking bricks fills the gauge. A full gauge starts a fever: double coins and double ball damage.
   const feverOn = () => G.feverT > 0;
-  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0);
+  const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0);
   function addFever(v) {
     if (feverOn() || G.clearT >= 0 || G.level < FROM.fever) return;
     G.feverIdle = 0;
@@ -2137,7 +2363,7 @@
   function stormStrike() {
     const cands = [];
     for (const k of G.bricks) if (k.alive && k.type !== 'stone') cands.push({ x: k.x + k.w / 2, y: k.y + k.h / 2, hit: () => hitBrick(k, gunDmg(2), false) });
-    for (const f of G.foes) if (!f.dead && f.type !== 'blimp') cands.push({ x: f.x, y: f.y, hit: () => damageFoe(f, gunDmg(2)) });
+    for (const f of G.foes) if (!f.dead && !passive(f)) cands.push({ x: f.x, y: f.y, hit: () => damageFoe(f, gunDmg(2)) });
     if (G.boss && !G.boss.dead) cands.push({ x: G.boss.x + rand(-50, 50), y: G.boss.y + G.boss.h, hit: () => damageBoss(gunDmg(2)) });
     if (!cands.length) return;
     const c = pick(cands);
@@ -2209,6 +2435,8 @@
     { id: 'pirate', at: 10, icon: '🏴‍☠️', name: 'Sky Pirates', desc: 'Popping a blimp calls an air strike of 6 bombs.' },
     { id: 'balloons', at: 10, icon: '🎈', name: 'Balloon Party', desc: 'Every 40 bricks you break call a blimp.' },
     { id: 'stopwatch', at: 10, icon: '⏱️', name: 'Stopwatch', desc: 'The clock stops during a fever.' },
+    { id: 'bank', icon: '🎱', name: 'Bank Shot', desc: 'Each wall bounce since the paddle adds +100% damage to the next brick hit, up to +300%.' },
+    { id: 'spin', icon: '🌀', name: 'Curveball', desc: 'A moving paddle puts spin on the ball, and the ball curves.' },
   ];
   const relic = (id) => !!(run && run.relics[id]);
   function relicChoices() {
@@ -2242,7 +2470,8 @@
   // ---------- shop deals ----------
   function rollDeals() {
     run.deals = [];
-    run.offer = pick(SPECIALS).id;
+    const stone = levelDef(run.level).map.some((row) => row.includes('X'));
+    run.offer = pick(SPECIALS.filter((x) => !(x.open && stone))).id;
     if (run.level < FROM.sales) return;
     const pool = upgradePool();
     for (let i = 0; i < 2 && pool.length; i++) run.deals.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
@@ -2258,9 +2487,9 @@
     if (s.safari) {
       showOverlay(`<div class="center tally">
         <div class="tally-sub">BONUS ROUND</div>
-        <div class="tally-title">SAFARI OVER!</div>
+        <div class="tally-title">${BONUS[s.safari].over}</div>
         ${s.record ? '<div class="newbest">★ BEST HAUL ★</div>' : ''}
-        <div class="trows">${row('Blimps popped 🎈', s.popped)}${row('Coins grabbed', s.picked)}${purse}</div>
+        <div class="trows">${row(BONUS[s.safari].count, s.popped)}${row('Coins grabbed', s.picked)}${purse}</div>
         <button class="big gold" data-act="tallynext">${run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
       </div>`, 'see');
       countUp();
@@ -2286,7 +2515,7 @@
       ${heat}
       ${fresh.length ? `<div class="unlock">🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}</div>` : ''}
       ${s.late ? '<div class="nospin">No lucky spin after the clock runs out.</div>' : s.level >= FROM.spin ? '<div class="spin"><button class="big alt" data-act="spin">🎰 Free lucky spin</button></div>' : ''}
-      <button class="big gold" data-act="tallynext">${s.boss ? 'Bonus round: Blimp Safari 🎈' : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
+      <button class="big gold" data-act="tallynext">${s.boss ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶` : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶'}</button>
     </div>`, 'see');
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
     countUp();
@@ -2335,8 +2564,8 @@
   function afterTally() {
     const s = lastSummary;
     if (s && s.level === LEVELS.length && !run.champion) { run.champion = true; saveRun(); showVictory(); return; }
-    // every boss leaves a fleet of blimps behind
-    if (s && s.boss && !s.safariDone) { s.safariDone = true; startSafari(); return; }
+    // every boss pays with a bonus round
+    if (s && s.boss && !s.safariDone) { s.safariDone = true; startSafari(bossBonus(s.level)); return; }
     if (run.pendingRelic) { showRelics(); return; }
     openShop();
   }
@@ -2470,6 +2699,9 @@
       } else if (type === 'chest') {
         c.fillStyle = '#ffd23f'; c.fillRect(1, my - 2, BW - 2, 4);
         c.fillStyle = '#5a3b00'; c.beginPath(); c.arc(mx, my, 3.5, 0, TAU); c.fill();
+      } else if (type === 'pinata') {
+        RAINBOW.forEach((rc, i) => { c.fillStyle = rc; c.fillRect(3 + i * 4.75, 3, 4.75, BH - 6); });
+        c.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 7; i++) c.fillRect(4 + i * 5.5, BH - 6, 3, 3);
       } else if (type === 'dice') {
         c.fillStyle = '#1b1f33';
         for (const [dx, dy] of [[-9, -4], [9, -4], [0, 0], [-9, 4], [9, 4]]) { c.beginPath(); c.arc(mx + dx, my + dy + 0.5, 2, 0, TAU); c.fill(); }
@@ -2490,7 +2722,16 @@
       const sc = 1 + b.punch * 0.16, w = b.w * sc, h = b.h * sc, cx = b.x + b.w / 2, cy = b.y + b.h / 2 + oy;
       ctx.globalAlpha = it < 1 ? Math.min(1, it * 2) : 1;
       ctx.drawImage(brickSprite(b.type, brickColor(b)), cx - w / 2, cy - h / 2, w, h);
-      if ((b.type === 'normal' && b.maxhp > 1) || b.type === 'steel') {
+      if (b.type === 'runner') {
+        const k = Math.sin(b.hop * 18) * 5;
+        ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 2.5; ctx.beginPath();
+        ctx.moveTo(cx - 9, cy + h / 2 - 1); ctx.lineTo(cx - 9 + k, cy + h / 2 + 9); ctx.moveTo(cx + 9, cy + h / 2 - 1); ctx.lineTo(cx + 9 - k, cy + h / 2 + 9); ctx.stroke();
+      }
+      if (b.type === 'runner' || (G.fx.panic > 0 && b.type !== 'stone')) {
+        const ball = G.balls[0];
+        eyes(cx, cy - 1, 8, 4.5, ball ? clamp((ball.x - cx) / 60, -2.5, 2.5) : 0);
+        ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      } else if ((b.type === 'normal' && b.maxhp > 1) || b.type === 'steel' || b.type === 'pinata') {
         ctx.fillStyle = b.type === 'steel' ? '#26303f' : 'rgba(0,0,0,0.45)'; ctx.fillText(short(b.hp), cx, cy + 1);
       }
       if (b.type !== 'stone' && b.hp < b.maxhp) {
@@ -2500,6 +2741,12 @@
         ctx.stroke();
       }
       if (b.flash > 0) { ctx.globalAlpha = Math.min(1, b.flash * 8); ctx.fillStyle = '#ffffff'; rr(cx - w / 2, cy - h / 2, w, h, 5); ctx.fill(); }
+      if (b.wanted) {
+        const left = Math.ceil(WANTED_S - G.clock);
+        ctx.globalAlpha = 1; ctx.strokeStyle = Math.sin(t * 10) > 0 ? '#ff2a4d' : '#ffd23f'; ctx.lineWidth = 2.5; rr(b.x - 3, b.y - 3, b.w + 6, b.h + 6, 7); ctx.stroke();
+        ctx.fillStyle = left > 0 ? '#ffd23f' : '#8b93b8'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.fillText(left > 0 ? '🤠 WANTED ' + left : 'too late', cx, b.y - 10);
+        ctx.font = 'bold 12px system-ui, sans-serif';
+      }
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'lighter';
@@ -2515,6 +2762,7 @@
       else if (b.type === 'tnt') glow(cx, cy, 22 + 5 * Math.sin(t * 8 + b.col), '#ff8a3d', 0.55);
       else if (b.type === 'chest') glow(cx, cy, 14, '#ffd23f', 0.25 + 0.2 * Math.sin(t * 4 + b.col));
       else if (b.type === 'dice') glow(cx, cy, 14, rainbow(t * 0.4, b.col), 0.35);
+      else if (b.type === 'pinata') glow(cx, cy, 18, rainbow(t * 0.8, b.col), 0.4);
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
@@ -2540,6 +2788,12 @@
     const center = ['laser', 'rocket', 'scatter', 'arc'].filter((g2) => lv('gun_' + g2));
     center.forEach((g2, i) => { ctx.fillStyle = GUNS[g2].color; ctx.fillRect(paddle.x - center.length * 4 + i * 8 + 1, y - 6, 6, 7); });
     if (fire) { ctx.fillStyle = '#ff8a3d'; ctx.fillRect(x + 10, y + PADDLE_H - 3, w - 20, 2); }
+    if (G.level >= FROM.sweet && !stun) {
+      const sx = clamp(sweetX(), x + 7, x + w - 7), pulse = 0.6 + 0.4 * Math.sin(t * 8);
+      ctx.globalCompositeOperation = 'lighter'; glow(sx, y + 2, 12 + G.sweetN * 3, '#fff27a', 0.5 * pulse); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.fillStyle = '#fff27a'; rr(sx - 5, y - 3, 10, PADDLE_H + 3, 3); ctx.fill();
+      ctx.fillStyle = '#ffffff'; rr(sx - 2, y - 2, 4, PADDLE_H + 1, 2); ctx.fill();
+    }
     const ml = lv('magnet');
     if (ml) {
       ctx.strokeStyle = 'rgba(255,216,74,0.12)'; ctx.lineWidth = 2;
@@ -2551,6 +2805,17 @@
   }
   function drawBall(b) {
     const fire = G.fx.fire > 0;
+    if (b.chicken) {
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx) + Math.sin(tAcc * 20) * 0.3);
+      const r = b.r * 1.25;
+      ctx.fillStyle = '#ffe94a'; ctx.beginPath(); ctx.ellipse(0, 0, r * 1.3, r * 0.85, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(r * 1.25, -r * 0.35, r * 0.55, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.arc(r * 1.2, -r * 0.95, r * 0.28, 0, TAU); ctx.arc(r * 1.5, -r * 0.85, r * 0.22, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ff9a3d'; ctx.beginPath(); ctx.moveTo(r * 1.7, -r * 0.45); ctx.lineTo(r * 2.25, -r * 0.3); ctx.lineTo(r * 1.7, -r * 0.1); ctx.fill();
+      ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(r * 1.4, -r * 0.45, r * 0.12, 0, TAU); ctx.fill();
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = fire ? '#ffe2c0' : '#ffffff'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(120,200,255,0.35)'; ctx.beginPath(); ctx.arc(b.x + b.r * 0.25, b.y + b.r * 0.3, b.r * 0.6, 0, TAU); ctx.fill();
     if (b.pierce > 0 && !fire) { ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 1, 0, TAU); ctx.stroke(); }
@@ -2826,7 +3091,7 @@
       const s = 0.7 + 0.3 * easeOutBack(clamp((3.2 - G.banner) / 0.35, 0, 1));
       ctx.save(); ctx.translate(W / 2, H * 0.55); ctx.scale(s, s); ctx.globalAlpha = Math.min(1, G.banner);
       if (G.def.boss) { ctx.fillStyle = Math.sin(t * 14) > 0 ? '#ff2a4d' : '#ffd23f'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.fillText('⚠ WARNING ⚠', 0, -44); }
-      ctx.fillStyle = '#ffffff'; ctx.font = '900 42px system-ui, sans-serif'; ctx.fillText(G.safari ? '🎈 SAFARI 🎈' : 'LEVEL ' + G.level, 0, 0);
+      ctx.fillStyle = '#ffffff'; ctx.font = '900 42px system-ui, sans-serif'; ctx.fillText(G.safari ? G.def.title : 'LEVEL ' + G.level, 0, 0);
       ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.fillText(G.def.name, 0, 34);
       if (G.def.tip) {
         const isNew = G.def.tip.startsWith('NEW');
@@ -2867,6 +3132,10 @@
     const playing = mode === 'play';
     ctx.save();
     if (G.shake > 0 && playing) ctx.translate(rand(-G.shake, G.shake) * 0.45, rand(-G.shake, G.shake) * 0.45);
+    if (G.cam && G.cam.t > 0 && playing) {
+      const z = 1 + 0.3 * Math.sin((G.cam.t / G.cam.T) * Math.PI);
+      ctx.translate(G.cam.x, G.cam.y); ctx.scale(z, z); ctx.translate(-G.cam.x, -G.cam.y);
+    }
     drawCombo(t);
     drawBricks(t);
     drawNet(t);
@@ -2917,7 +3186,7 @@
     next() { lastSummary = null; startLevel(); },
     skip() { if (mode === 'tally' || mode === 'victory') afterTally(); if (mode === 'relic') takeRelic(relicChoices()[0].id); },
     relic(id) { run.relics[id] = true; }, fever() { startFever(); }, capsule(k) { collectPU({ k, x: paddle.x, y: PADDLE_Y }); },
-    blimp(kind) { return spawnBlimp(kind); }, safari() { startSafari(); },
+    blimp(kind) { return spawnBlimp(kind); }, panic() { startPanic(); }, safari(kind) { startSafari(kind); },
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
     get summary() { return lastSummary; },
