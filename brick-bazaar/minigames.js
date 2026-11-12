@@ -165,6 +165,80 @@
     return 0;
   }
 
+  // Scratch & Sniff: a 3x3 card with one sock. Each other cell gets a symbol by weight. Each symbol that shows three
+  // or more times on the open cells pays its value; a cash out pays the sum. The sock voids the card. An open cell
+  // next to the sock (not diagonal) smells.
+  const SCRATCH_SYMBOLS = [
+    { icon: '🍄', weight: 4, pay: 0.6 },
+    { icon: '🍓', weight: 2, pay: 1 },
+    { icon: '💎', weight: 1, pay: 2 },
+  ];
+  const SCRATCH_SOCK = -1;
+  // Eight safe cells hold at most two sets: the two best.
+  const SCRATCH_MAX = SCRATCH_SYMBOLS.map(x => x.pay).sort((a, b) => b - a).slice(0, 2).reduce((a, b) => a + b, 0);
+
+  function scratchPlan(rand) {
+    const total = SCRATCH_SYMBOLS.reduce((a, x) => a + x.weight, 0);
+    const sock = Math.floor(rand() * 9);
+    const cells = Array.from({ length: 9 }, (_, i) => {
+      if (i === sock) return SCRATCH_SOCK;
+      let r = rand() * total;
+      let k = 0;
+      while (k < SCRATCH_SYMBOLS.length - 1 && (r -= SCRATCH_SYMBOLS[k].weight) >= 0) k++;
+      return k;
+    });
+    return { sock, cells };
+  }
+
+  const scratchNear = (a, b) => Math.abs(a % 3 - b % 3) + Math.abs(Math.floor(a / 3) - Math.floor(b / 3)) === 1;
+  const scratchPay = found => Math.round(found.reduce((a, n, k) => a + (n >= 3 ? SCRATCH_SYMBOLS[k].pay : 0), 0) * 100) / 100;
+
+  // Salad Sling: a top view of SLING_W x SLING_H units. The lettuce lands opposite the pull, SLING_REACH times as
+  // far, plus wind. One snail customer walks in each row; the far one is small and pays most. Pays the sum of the
+  // shots.
+  const SLING_W = 300;
+  const SLING_H = 340;
+  const SLING_FROM = { x: 150, y: 290 };
+  const SLING_PULL = 110;
+  const SLING_MIN = 14;
+  const SLING_REACH = 2.6;
+  const SLING_WIND = 9;
+  const SLING_SHOTS = 3;
+  const SLING_ROWS = [
+    { y: 70, r: 11, pay: 0.65 },
+    { y: 140, r: 20, pay: 0.35 },
+    { y: 210, r: 26, pay: 0.2 },
+  ];
+
+  // Speed in track lengths per ms. The far row walks fastest.
+  function slingPlan(level, rand) {
+    const base = 0.00015 * (1 + level * 0.005);
+    return SLING_ROWS.map((row, i) => Object.assign({}, row, {
+      speed: base * (1 + 0.3 * (SLING_ROWS.length - 1 - i)),
+      phase: rand() * 2,
+    }));
+  }
+
+  // Mouth centre of a customer after ms. The track leaves room for the snail on the right of the mouth.
+  const slingX = (t, ms) => t.r + 8 + pingPong(ms + t.phase / t.speed, t.speed) * (SLING_W - 4 * t.r - 30);
+
+  function slingPull(dx, dy) {
+    const k = Math.min(1, SLING_PULL / (Math.hypot(dx, dy) || 1));
+    return { x: dx * k, y: dy * k };
+  }
+
+  function slingLand(dx, dy) {
+    const p = slingPull(dx, dy);
+    return { x: SLING_FROM.x - p.x * SLING_REACH, y: SLING_FROM.y - p.y * SLING_REACH };
+  }
+
+  const slingFlight = (x, y) => 350 + Math.hypot(x - SLING_FROM.x, y - SLING_FROM.y);
+
+  // The row whose mouth the lettuce lands in, or -1.
+  function slingHit(targets, x, y, ms) {
+    return targets.findIndex(t => Math.hypot(x - slingX(t, ms), y - t.y) < t.r);
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   // Session: owns every timer and listener of one game, calls done once.
 
@@ -870,6 +944,372 @@
   }
 
   ////////////////////////////////////////////////////////////////////////////
+  // Scratch & Sniff
+
+  const SCRATCH_RUB = [
+    'Rub, rub. Like my shell on bath day.', 'Gently. The ink is lettuce juice.',
+    'I smell nothing. Yet.', 'Another one? Brave.', 'Hm. Hm hm hm.',
+  ];
+  const SCRATCH_SET = ['Three mushrooms. Soup money!', 'Three berries! Sweet.', 'Three gems?! I printed too many.'];
+  const SCRATCH_SOCK_LINES = ['THE SOCK! I wore that one all week.', 'My gym sock. The card is void. Sorry.', 'Sock! Open a window, please.'];
+  // Rub this far, in cell widths, to clear the foil.
+  const SCRATCH_RUB_CELLS = 2;
+
+  function prepScratch(api) {
+    const pips = el('div', 'mg-pips', null, api.area);
+    SCRATCH_SYMBOLS.forEach(x => {
+      const pip = el('span', 'mg-pip', x.icon, pips);
+      el('span', 'mg-count', '○○○', pip);
+      el('span', null, '×' + x.pay, pip);
+    });
+    const card = el('div', 'mg-scratch', null, api.area);
+    for (let i = 0; i < 9; i++) {
+      const cell = el('button', 'mg-cell', null, card);
+      el('span', 'mg-sym', null, cell);
+      el('span', 'mg-foil', null, cell);
+      el('span', 'mg-smell', '💨', cell);
+    }
+    el('button', 'mg-big mg-gold mg-cash', null, api.area).hidden = true;
+  }
+
+  function runScratch(api) {
+    const { s, rand, rules, area } = api;
+    const talk = keeper(api);
+    const plan = scratchPlan(rand);
+    const cells = Array.from(area.querySelectorAll('.mg-cell'));
+    const pips = area.querySelectorAll('.mg-pip');
+    const counts = area.querySelectorAll('.mg-count');
+    const cash = area.querySelector('.mg-cash');
+    const found = SCRATCH_SYMBOLS.map(() => 0);
+    const open = cells.map(() => false);
+    const rub = cells.map(() => 0);
+    let active = -1;
+    let last = null;
+    let busy = false;
+    let over = false;
+    let smelled = false;
+    rules.textContent = 'Rub a cell. 💨 means the sock is next to it.';
+    talk('Rub gently. I printed these myself.');
+
+    const showPay = () => {
+      found.forEach((n, k) => {
+        counts[k].textContent = '●'.repeat(Math.min(3, n)) + '○'.repeat(Math.max(0, 3 - n));
+        pips[k].classList.toggle('mg-on', n >= 3);
+      });
+      const pay = scratchPay(found);
+      cash.textContent = 'Cash out ' + api.coins(pay);
+      cash.hidden = !pay || over;
+    };
+
+    // Show the cells that are still closed, faded, so that the player sees where the sock was.
+    const peek = () => cells.forEach((cell, i) => {
+      if (open[i]) return;
+      const k = plan.cells[i];
+      cell.querySelector('.mg-sym').textContent = k === SCRATCH_SOCK ? '🧦' : SCRATCH_SYMBOLS[k].icon;
+      cell.classList.add('mg-peek');
+    });
+
+    function scrub(i, amount) {
+      const before = Math.floor(rub[i] * 4);
+      rub[i] = Math.min(1, rub[i] + amount);
+      cells[i].style.setProperty('--mg-rub', rub[i].toFixed(2));
+      if (Math.floor(rub[i] * 4) > before) s.sfx('tick');
+      if (rub[i] >= 1) reveal(i);
+    }
+
+    function reveal(i) {
+      active = -1;
+      if (open[i]) return;
+      open[i] = true;
+      const cell = cells[i];
+      const k = plan.cells[i];
+      cell.classList.remove('mg-rubbing');
+      cell.classList.add('mg-open');
+
+      if (k === SCRATCH_SOCK) {
+        over = true;
+        cash.hidden = true;
+        cell.querySelector('.mg-sym').textContent = '🧦';
+        cell.classList.add('mg-sock');
+        talk(pick(SCRATCH_SOCK_LINES, rand));
+        s.sfx('eek');
+        s.later(peek, 600);
+        s.later(() => api.finish(0, 'The stinky sock! The card is void.'), 1500);
+        return;
+      }
+
+      cell.querySelector('.mg-sym').textContent = SCRATCH_SYMBOLS[k].icon;
+      const stinky = scratchNear(i, plan.sock);
+      cell.classList.toggle('mg-stinky', stinky);
+      found[k]++;
+      busy = true;
+      s.later(() => { busy = false; }, 250);
+
+      if (open.filter(Boolean).length === cells.length - 1) {
+        over = true;
+        showPay();
+        const pay = scratchPay(found);
+        talk(pay ? 'Every cell but the sock! I am impressed.' : 'All clean, and no set. That is rare.');
+        s.sfx('ding');
+        s.later(peek, 400);
+        s.later(() => api.finish(pay, 'Only the sock is left.'), 1300);
+        return;
+      }
+
+      showPay();
+      if (found[k] === 3) {
+        talk(SCRATCH_SET[k] + ' Cash out, or rub on?');
+        s.sfx('coin');
+      } else if (stinky && !smelled) {
+        smelled = true;
+        talk('Sniff… sniff… the sock is next to that one.');
+        s.sfx('eek');
+      } else {
+        talk(pick(SCRATCH_RUB, rand));
+        s.sfx('ding');
+      }
+    }
+
+    cells.forEach((cell, i) => {
+      s.on(cell, 'pointerdown', e => {
+        e.preventDefault();
+        if (busy || over || open[i] || active >= 0) return;
+        active = i;
+        last = { x: e.clientX, y: e.clientY };
+        try { cell.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+        cell.classList.add('mg-rubbing');
+        scrub(i, 0.15);
+      });
+      s.on(cell, 'pointermove', e => {
+        if (active !== i) return;
+        const d = Math.hypot(e.clientX - last.x, e.clientY - last.y);
+        last = { x: e.clientX, y: e.clientY };
+        scrub(i, d / ((cell.offsetWidth || 60) * SCRATCH_RUB_CELLS));
+      });
+      // A tap or a short rub clears the rest of the foil.
+      s.on(cell, 'pointerup', () => { if (active === i) reveal(i); });
+      s.on(cell, 'pointercancel', () => {
+        if (active !== i) return;
+        active = -1;
+        cell.classList.remove('mg-rubbing');
+      });
+      s.on(cell, 'contextmenu', e => e.preventDefault());
+    });
+
+    s.on(cash, 'click', () => {
+      const pay = scratchPay(found);
+      if (busy || over || !pay) return;
+      over = true;
+      cash.hidden = true;
+      talk('Cashing out? Wise. My nose agrees.');
+      peek();
+      s.later(() => api.finish(pay, 'Cashed out with ×' + pay + '.'), 1100);
+    });
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
+  // Salad Sling
+
+  const SLING_HIT = ['The tiny one ate it! Big tipper.', 'Caught it! Good manners.', 'Easy one. Still counts.'];
+  const SLING_MISS = ['Missed. The floor is fed now.', 'That lettuce was fresh. Was.', 'The wind took it. Blame the wind.'];
+
+  // The lettuce flies a lob; on the top view it bends towards the top of the field.
+  const quad = (a, c, b, u) => (1 - u) * (1 - u) * a + 2 * (1 - u) * u * c + u * u * b;
+  const slingBend = (x, y) => (SLING_FROM.y + y) / 2 - Math.hypot(x - SLING_FROM.x, y - SLING_FROM.y) * 0.35;
+
+  // Draws the field at ms. st: { pull, aim, fly, splats, fed, loaded }.
+  function drawSling(cv, plan, ms, st) {
+    const g = cv.getContext && cv.getContext('2d');
+    if (!g) return;
+    g.setTransform(cv.width / SLING_W, 0, 0, cv.height / SLING_H, 0, 0);
+    g.clearRect(0, 0, SLING_W, SLING_H);
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+
+    plan.forEach((t, i) => {
+      const x = slingX(t, ms);
+      g.fillStyle = '#ffffff0a';
+      g.fillRect(6, t.y - t.r - 6, SLING_W - 12, 2 * t.r + 12);
+      g.fillStyle = '#3a0d1e';
+      g.strokeStyle = '#ff4f8b';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(x, t.y, t.r, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.font = (2 * t.r + 8) + 'px sans-serif';
+      g.fillText('🐌', x + 2 * t.r + 4, t.y);
+      g.font = '800 11px sans-serif';
+      g.fillStyle = '#ffe680';
+      g.fillText(st.fed[i] > ms ? 'Yum!' : '×' + t.pay, x, t.y - t.r - 9);
+    });
+
+    g.globalAlpha = 0.55;
+    g.font = '12px sans-serif';
+    st.splats.forEach(p => g.fillText('🥬', p.x, p.y));
+    g.globalAlpha = 1;
+
+    const pull = st.pull ? slingPull(st.pull.x, st.pull.y) : { x: 0, y: 0 };
+    const pouch = { x: SLING_FROM.x + pull.x * 0.35, y: SLING_FROM.y + pull.y * 0.35 };
+    g.lineCap = 'round';
+    g.strokeStyle = '#c58a4a';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.moveTo(SLING_FROM.x, SLING_H - 4);
+    g.lineTo(SLING_FROM.x, SLING_FROM.y + 18);
+    g.lineTo(SLING_FROM.x - 18, SLING_FROM.y - 4);
+    g.moveTo(SLING_FROM.x, SLING_FROM.y + 18);
+    g.lineTo(SLING_FROM.x + 18, SLING_FROM.y - 4);
+    g.stroke();
+    g.strokeStyle = '#ff9aa8';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(SLING_FROM.x - 18, SLING_FROM.y - 4);
+    g.lineTo(pouch.x, pouch.y);
+    g.lineTo(SLING_FROM.x + 18, SLING_FROM.y - 4);
+    g.stroke();
+    if (st.loaded) {
+      g.font = '22px sans-serif';
+      g.fillText('🥬', pouch.x, pouch.y);
+    }
+
+    if (st.aim) {
+      const { x, y } = st.aim;
+      const cy = slingBend(x, y);
+      g.setLineDash([3, 6]);
+      g.strokeStyle = '#ffe680cc';
+      g.beginPath();
+      g.moveTo(SLING_FROM.x, SLING_FROM.y);
+      g.quadraticCurveTo((SLING_FROM.x + x) / 2, cy, x, y);
+      g.stroke();
+      g.beginPath();
+      g.arc(x, y, SLING_WIND * 1.6, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([]);
+    }
+
+    if (st.fly) {
+      const f = st.fly;
+      const u = Math.min(1, Math.max(0, (ms - f.t) / f.dur));
+      const cy = slingBend(f.x, f.y);
+      g.fillStyle = '#0006';
+      g.beginPath();
+      g.ellipse(SLING_FROM.x + (f.x - SLING_FROM.x) * u, SLING_FROM.y + (f.y - SLING_FROM.y) * u, 8, 4, 0, 0, Math.PI * 2);
+      g.fill();
+      g.save();
+      g.translate(quad(SLING_FROM.x, (SLING_FROM.x + f.x) / 2, f.x, u), quad(SLING_FROM.y, cy, f.y, u));
+      g.rotate(u * 7);
+      g.font = Math.round(16 + 12 * Math.sin(Math.PI * u)) + 'px sans-serif';
+      g.fillText('🥬', 0, 0);
+      g.restore();
+    }
+  }
+
+  function prepSling(api) {
+    api.plan = slingPlan(api.level, api.rand);
+    const cv = el('canvas', 'mg-field', null, api.area);
+    cv.width = SLING_W * 2;
+    cv.height = SLING_H * 2;
+    el('div', 'mg-shots', null, api.area);
+    drawSling(cv, api.plan, 0, { pull: null, aim: null, fly: null, splats: [], fed: [], loaded: true });
+  }
+
+  function runSling(api) {
+    const { s, rand, rules, area, plan } = api;
+    const talk = keeper(api);
+    const cv = area.querySelector('.mg-field');
+    const shots = area.querySelector('.mg-shots');
+    const st = { pull: null, aim: null, fly: null, splats: [], fed: plan.map(() => 0), loaded: true };
+    const pays = [];
+    const t0 = Date.now();
+    let grab = null;
+    let ready = true;
+
+    const showShots = () => {
+      shots.textContent = pays.map(m => '×' + m).concat(Array(SLING_SHOTS - pays.length).fill('🥬')).join('  ');
+    };
+    const toField = e => {
+      const r = cv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * SLING_W / (r.width || SLING_W), y: (e.clientY - r.top) * SLING_H / (r.height || SLING_H) };
+    };
+    const arm = () => {
+      ready = true;
+      st.loaded = true;
+      area.classList.add('mg-pick');
+      rules.textContent = 'Pull back and let go. Lead the walkers.';
+    };
+
+    s.every(() => {
+      const ms = Date.now() - t0;
+      if (st.fly && ms >= st.fly.t + st.fly.dur) land(ms);
+      drawSling(cv, plan, ms, st);
+    }, 30);
+
+    s.on(cv, 'pointerdown', e => {
+      e.preventDefault();
+      if (!ready || grab) return;
+      grab = toField(e);
+      st.pull = { x: 0, y: 0 };
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+      s.sfx('tick');
+    });
+    s.on(cv, 'pointermove', e => {
+      if (!grab) return;
+      const p = toField(e);
+      st.pull = { x: p.x - grab.x, y: p.y - grab.y };
+      st.aim = Math.hypot(st.pull.x, st.pull.y) < SLING_MIN ? null : slingLand(st.pull.x, st.pull.y);
+    });
+    s.on(cv, 'pointerup', letGo);
+    s.on(cv, 'pointercancel', () => {
+      grab = null;
+      st.pull = null;
+      st.aim = null;
+    });
+    s.on(cv, 'contextmenu', e => e.preventDefault());
+
+    function letGo() {
+      if (!grab) return;
+      grab = null;
+      const aim = st.aim;
+      st.pull = null;
+      st.aim = null;
+      if (!aim) {
+        talk('Pull back more. It is a sling, not a sneeze.');
+        return;
+      }
+      ready = false;
+      st.loaded = false;
+      area.classList.remove('mg-pick');
+      const x = aim.x + gauss(rand) * SLING_WIND;
+      const y = aim.y + gauss(rand) * SLING_WIND;
+      st.fly = { x, y, t: Date.now() - t0, dur: slingFlight(x, y) };
+      s.sfx('riser');
+    }
+
+    function land(ms) {
+      const { x, y } = st.fly;
+      st.fly = null;
+      const row = slingHit(plan, x, y, ms);
+      pays.push(row < 0 ? 0 : plan[row].pay);
+      showShots();
+      if (row >= 0) st.fed[row] = ms + 1200;
+      else st.splats.push({ x, y });
+      talk(row < 0 ? pick(SLING_MISS, rand) : SLING_HIT[row]);
+      s.sfx(row === 0 ? 'jackpot' : row > 0 ? 'coin' : 'nope');
+      if (pays.length < SLING_SHOTS) {
+        s.later(arm, 700);
+        return;
+      }
+      const total = Math.round(pays.reduce((a, b) => a + b, 0) * 100) / 100;
+      s.later(() => api.finish(total, 'Fed: ' + pays.map(m => '×' + m).join(' + ') + '.'), 1300);
+    }
+
+    showShots();
+    arm();
+    talk('Lunch rush! They walk, so aim ahead of them.');
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
   // Registry
 
   const GAMES = {
@@ -897,6 +1337,14 @@
       icon: '🥌', name: 'Snail Curling', rules: 'Slide two shells onto the lettuce.',
       win: coins => 'win up to ' + coins(CURL_RINGS[0][1]), prep: prepCurl, run: runCurl,
     },
+    scratch: {
+      icon: '🧦', name: 'Scratch & Sniff', rules: 'Find three alike. Cash out before the sock.',
+      win: coins => 'win up to ' + coins(SCRATCH_MAX), prep: prepScratch, run: runScratch,
+    },
+    sling: {
+      icon: '🥬', name: 'Salad Sling', rules: 'Fling lettuce into hungry mouths. Far ones pay most.',
+      win: coins => 'win up to ' + coins(SLING_ROWS[0].pay * SLING_SHOTS), prep: prepSling, run: runSling,
+    },
   };
 
   window.BBMini = {
@@ -907,6 +1355,8 @@
       { id: 'hilo', icon: '🃏', name: 'Higher or Lower', blurb: 'Mortimer deals. Three right: 3.2×.', at: 22 },
       { id: 'claw', icon: '🕹️', name: 'Claw Machine', blurb: 'Grab a prize. The diamond pays 5×.', at: 26 },
       { id: 'curl', icon: '🥌', name: 'Snail Curling', blurb: 'Slide shells to the lettuce. Up to 2×.', at: 30 },
+      { id: 'scratch', icon: '🧦', name: 'Scratch & Sniff', blurb: 'Rub a card. Mind the sock. Up to 3×.', at: 34 },
+      { id: 'sling', icon: '🥬', name: 'Salad Sling', blurb: 'Feed the snails from afar. Up to 1.95×.', at: 38 },
     ],
 
     play(id, host, ctx) {
@@ -925,6 +1375,9 @@
       gauss, CLAW_COLS, CLAW_PRIZES, clawPlan, clawPos, clawColumn, clawChance,
       HILO_PAY, hiloDraw, hiloWin, hiloChance,
       CURL_RINGS, CURL_SHOTS, curlPlan, pingPong, curlSlide, curlScore,
+      SCRATCH_SYMBOLS, SCRATCH_SOCK, SCRATCH_MAX, scratchPlan, scratchNear, scratchPay,
+      SLING_W, SLING_H, SLING_FROM, SLING_PULL, SLING_REACH, SLING_WIND, SLING_SHOTS, SLING_ROWS,
+      slingPlan, slingX, slingPull, slingLand, slingFlight, slingHit,
     },
   };
 })();

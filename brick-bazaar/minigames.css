@@ -148,3 +148,36 @@
 .mg-shots { min-height: 1.4em; font-weight: 900; color: #ffe680; }
 .mg-hold { touch-action: none; -webkit-touch-callout: none; }
 .mg-pick .mg-hold { animation: mg-pulse 0.7s ease-in-out infinite alternate; }
+
+/* Scratch & Sniff */
+.mg-game-scratch .mg-pips { flex-wrap: wrap; gap: 0.3em; margin-bottom: 0.5em; }
+.mg-game-scratch .mg-pip { padding: 0.2em 0.4em; font-size: 0.9em; white-space: nowrap; }
+.mg-count { margin: 0 0.25em; font-size: 0.8em; letter-spacing: 0.05em; }
+.mg-scratch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45em; width: 100%; max-width: 16em; margin: 0 auto; }
+.mg-cell { position: relative; aspect-ratio: 1; padding: 0; border-radius: 0.8em; border: 0; background: #f4f6ff;
+  cursor: pointer; overflow: hidden; touch-action: none; -webkit-touch-callout: none; box-shadow: 0 0.2em 0 #0006; }
+.mg-sym { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2.3em;
+  line-height: 1; pointer-events: none; }
+.mg-foil { position: absolute; inset: 0; pointer-events: none; opacity: calc(1 - var(--mg-rub, 0) * 0.55);
+  background: radial-gradient(circle at 30% 25%, #ffffff66, transparent 40%),
+    repeating-linear-gradient(135deg, #c9cfe8, #c9cfe8 0.35em, #9aa3d6 0.35em, #9aa3d6 0.7em); }
+.mg-foil::after { content: "?"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 1.6em; font-weight: 900; color: #ffffffaa; }
+.mg-cell.mg-rubbing .mg-foil { animation: mg-scrub 0.1s linear infinite alternate; }
+.mg-cell.mg-open .mg-foil { opacity: 0; animation: mg-peel 0.35s ease-in; }
+.mg-cell.mg-open .mg-sym { animation: mg-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.mg-cell.mg-peek .mg-foil { opacity: 0.2; }
+.mg-cell.mg-peek .mg-foil::after { content: none; }
+.mg-cell.mg-peek .mg-sym { opacity: 0.6; }
+.mg-smell { position: absolute; right: 0.15em; top: 0.1em; font-size: 1.1em; line-height: 1; opacity: 0; pointer-events: none; }
+.mg-cell.mg-stinky { background: #d8f2c4; }
+.mg-cell.mg-stinky .mg-smell { opacity: 1; animation: mg-wobble 0.5s ease-in-out infinite alternate; }
+.mg-cell.mg-sock { background: #b8f08a; box-shadow: 0 0 1em #b8f08a88; }
+.mg-cell.mg-sock .mg-sym { animation: mg-pop 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both, mg-wobble 0.3s ease-in-out 0.4s infinite alternate; }
+@keyframes mg-scrub { from { transform: translate(-0.06em, 0.04em); } to { transform: translate(0.06em, -0.04em); } }
+@keyframes mg-peel { from { opacity: calc(1 - var(--mg-rub, 0) * 0.55); } to { transform: translate(30%, -40%) rotate(18deg) scale(0.7); opacity: 0; } }
+
+/* Salad Sling */
+.mg-field { display: block; width: 100%; max-width: 17em; aspect-ratio: 300 / 340; margin: 0 auto 0.3em; border-radius: 0.9em;
+  background: linear-gradient(180deg, #1d2350, #161a36); touch-action: none; -webkit-touch-callout: none; cursor: grab; }
+.mg-pick .mg-field { animation: mg-pulse 0.7s ease-in-out infinite alternate; }

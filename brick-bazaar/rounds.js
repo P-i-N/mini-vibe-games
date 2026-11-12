@@ -499,5 +499,276 @@
     },
   };
 
-  window.BBRounds = { pachinko, tower, kart, karaoke };
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Gone Fishing: Mortimer rows a boat on the water. A tap drops the hook, a second tap reels it in. A catch uses a worm.
+  const FISH = { worms: 10, sea: 214, boatY: 206, bottom: 734, drop: 420, reel: 600, hookR: 30, rodX: 34, rodY: -54, most: 9 };
+  const CATCH = [
+    { f: '🐟', pay: 3, w: 5, v: [70, 110], y: [280, 700], size: 30 },
+    { f: '🐠', pay: 5, w: 3, v: [90, 140], y: [380, 700], size: 32 },
+    { f: '🐡', pay: 8, w: 1.6, v: [45, 75], y: [520, 710], size: 34 },
+    { f: '🦑', pay: 25, w: 0.5, v: [170, 220], y: [620, 712], size: 38, rare: true },
+    { f: '🥾', pay: 0, w: 1.3, v: [25, 45], y: [300, 700], size: 30, dud: true },
+  ];
+  const FISH_LINES = {
+    start: ['Quiet, please. The fish are shy.', 'I brought worms. They brought nothing.'],
+    rare: ['A SQUID! I will name it Gerald!', 'Rare catch! Frame it!', 'Look at it! Look at its arms!'],
+    boot: ['A boot. Size snail. Nice.', 'Free boot! Only one, sadly.', 'Who drops a boot in a lake?'],
+    fish: ['Dinner!', 'Hello, little one.', 'Into the bucket!', 'Splendid fin.'],
+    end: ['Out of worms. Out of patience.', 'Back to the shop. I smell of lake.'],
+  };
+  function fishKind() {
+    let r = Math.random() * CATCH.reduce((a, c) => a + c.w, 0);
+    for (const c of CATCH) if ((r -= c.w) <= 0) return c;
+    return CATCH[0];
+  }
+  function fishSpawn(api) {
+    const st = api.state, k = fishKind(), dir = api.pick([-1, 1]);
+    if (st.fish.length >= FISH.most || (k.rare && st.fish.some((f) => f.k.rare))) return;
+    const y = api.rand(k.y[0], k.y[1]);
+    st.fish.push({ k, x: dir > 0 ? -30 : api.W + 30, y, y0: y, vx: dir * api.rand(k.v[0], k.v[1]), ph: api.rand(0, TAU) });
+  }
+  function cast(api) {
+    const h = api.state.hook;
+    if (api.state.worms <= 0) return;
+    if (h.mode === 'up') { h.mode = 'down'; h.v = 60; api.sfx.spit(); return; }
+    if (h.mode === 'down') { h.mode = 'reel'; h.v = 0; api.sfx.tick(); }
+  }
+  function moveHook(api, dt) {
+    const st = api.state, h = st.hook;
+    if (h.mode === 'down') {
+      h.v = Math.min(FISH.drop, h.v + 1200 * dt); h.y += h.v * dt;
+      if (h.y >= FISH.bottom) { h.y = FISH.bottom; h.mode = 'reel'; h.v = 0; }
+    } else if (h.mode === 'reel') {
+      // fast at depth, slow at the top, so that the catch comes out with a little float
+      const top = FISH.sea + 10, max = (h.fish ? 0.8 : 1) * FISH.reel * api.clamp((h.y - top) / 90, 0.3, 1);
+      h.v = Math.min(max, h.v + 1800 * dt); h.y -= h.v * dt;
+      if (h.y <= top) landCatch(api);
+    } else h.y = FISH.sea + 10;
+    if (h.mode === 'up' || h.fish) return;
+    for (const f of st.fish) {
+      if (Math.abs(f.x - h.x) > FISH.hookR || Math.abs(f.y - h.y) > FISH.hookR * 0.8) continue;
+      h.fish = f; f.dead = true; h.mode = 'reel'; h.v = 0;
+      api.sfx.net(); api.burst(f.x, f.y, '#5ef0ff', 6, 90);
+      break;
+    }
+  }
+  function landCatch(api) {
+    const st = api.state, h = st.hook, f = h.fish, k = f && f.k;
+    h.mode = 'up'; h.fish = null; h.v = 0;
+    if (!f) return;
+    st.worms--; st.splash = 0.4;
+    st.flying.push({ k, x: h.x, y: h.y, t: 0 });
+    if (k.dud) {
+      api.sfx.raspberry(); api.say(h.x, FISH.sea - 70, 'OLD BOOT', '#c9d0ff'); talk(api, api.pick(FISH_LINES.boot));
+      return;
+    }
+    bank(api, k.pay); api.score(1);
+    if (k.rare) {
+      api.sfx.jackpot(); api.flash('#ff7ad9', 0.2); api.burst(h.x, FISH.sea, '#ff7ad9', 20, 240);
+      api.say(h.x, FISH.sea - 70, 'RARE! +' + k.pay, '#ff7ad9', true); talk(api, api.pick(FISH_LINES.rare));
+      return;
+    }
+    api.sfx.ding(k.pay); api.burst(h.x, FISH.sea, '#5ef0ff', 10, 160);
+    api.say(h.x, FISH.sea - 70, '+' + k.pay, '#ffd23f');
+    if (Math.random() < 0.35) talk(api, api.pick(FISH_LINES.fish), 1.4);
+  }
+  // emoji mirrored to face where it swims
+  function swimmer(ctx, ch, x, y, size, flip, rot = 0) {
+    ctx.save(); ctx.translate(x, y); if (flip) ctx.scale(-1, 1); emoji(ctx, ch, 0, 0, size, rot); ctx.restore();
+  }
+  const fishing = {
+    name: 'Gone Fishing', title: '🎣 FISHING 🎣', over: 'LINES IN!', count: 'Fish caught 🐟',
+    tip: 'BONUS ROUND! Move the boat, tap to drop the hook, tap to reel. Rare fish pay big', seconds: 24, ball: false, hidePaddle: true,
+    start(api) {
+      const x = api.W / 2;
+      Object.assign(api.state, {
+        boat: { x, v: 0, tilt: 0 }, hook: { x: x + FISH.rodX, y: FISH.sea + 10, v: 0, mode: 'up', fish: null },
+        fish: [], flying: [], worms: FISH.worms, spawnT: 0, splash: 0, done: false,
+      });
+      for (let i = 0; i < 4; i++) { fishSpawn(api); const f = api.state.fish[i]; if (f) f.x = api.rand(60, api.W - 60); }
+      talk(api, api.pick(FISH_LINES.start), 3);
+    },
+    tick(api, dt) {
+      const st = api.state, b = st.boat, h = st.hook;
+      settle(api, dt);
+      st.splash = Math.max(0, st.splash - dt);
+      // the boat follows the finger with ease and leans into the turn
+      const x0 = b.x;
+      b.x += (api.clamp(api.paddle.x, 50, api.W - 50) - b.x) * Math.min(1, dt * 5);
+      b.v = (b.x - x0) / Math.max(dt, 1e-3);
+      b.tilt += (api.clamp(-b.v / 1200, -0.25, 0.25) - b.tilt) * Math.min(1, dt * 6);
+      // the hook trails the rod, more slowly when it is deep
+      h.x += (b.x + FISH.rodX - h.x) * Math.min(1, dt * (h.mode === 'up' ? 14 : 2.6));
+      moveHook(api, dt);
+      if ((st.spawnT -= dt) <= 0) { st.spawnT = api.rand(0.35, 0.7); fishSpawn(api); }
+      for (const f of st.fish) { f.x += f.vx * dt; f.y = f.y0 + Math.sin(f.ph + api.time * 3) * 8; }
+      st.fish = st.fish.filter((f) => !f.dead && f.x > -50 && f.x < api.W + 50);
+      for (const c of st.flying) c.t += dt * 1.8;
+      st.flying = st.flying.filter((c) => c.t < 1);
+      if (!st.done && st.worms <= 0 && h.mode === 'up' && !st.flying.length) {
+        st.done = true; talk(api, api.pick(FISH_LINES.end)); cashOut(api); api.end();
+      }
+    },
+    draw(api, ctx, t) {
+      const st = api.state, b = st.boat, h = st.hook, W = api.W, sea = FISH.sea;
+      // water, waves and the lake bed
+      const g = ctx.createLinearGradient(0, sea, 0, api.H);
+      g.addColorStop(0, 'rgba(40,120,200,0.55)'); g.addColorStop(1, 'rgba(10,30,80,0.85)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, api.H);
+      for (let x = 0; x <= W; x += 12) ctx.lineTo(x, sea + Math.sin(x * 0.04 + t * 2) * 4);
+      ctx.lineTo(W, api.H); ctx.fill();
+      ctx.fillStyle = 'rgba(200,170,110,0.5)'; ctx.fillRect(0, FISH.bottom + 24, W, api.H - FISH.bottom - 24);
+      for (const x of [40, 150, 330, 440]) emoji(ctx, '🌿', x, FISH.bottom + 10, 34, Math.sin(t * 1.5 + x) * 0.15);
+      for (const f of st.fish) swimmer(ctx, f.k.f, f.x, f.y, f.k.size, f.vx > 0, f.k.dud ? t * 0.8 : Math.sin(t * 8 + f.ph) * 0.08);
+      // the boat bobs and leans; the rod tip moves with it
+      const bob = Math.sin(t * 2.2) * 3, rot = b.tilt + Math.sin(t * 1.7) * 0.04, by = FISH.boatY + bob;
+      const tipX = b.x + Math.cos(rot) * FISH.rodX - Math.sin(rot) * FISH.rodY, tipY = by + Math.sin(rot) * FISH.rodX + Math.cos(rot) * FISH.rodY;
+      const sway = h.mode === 'up' ? 0 : Math.sin(t * 2.4) * 5 * ((h.y - sea) / (FISH.bottom - sea)), hx = h.x + sway;
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(tipX, tipY);
+      ctx.quadraticCurveTo((tipX + hx) / 2 - b.v * 0.05, (tipY + h.y) / 2, hx, h.y); ctx.stroke();
+      if (h.fish) swimmer(ctx, h.fish.k.f, hx, h.y + 16, h.fish.k.size, false, Math.PI / 2 + Math.sin(t * 20) * 0.3);
+      else {
+        ctx.strokeStyle = '#c9d0ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(hx, h.y); ctx.lineTo(hx, h.y + 10); ctx.arc(hx - 6, h.y + 10, 6, 0, Math.PI * 0.9); ctx.stroke();
+        if (st.worms > 0 && h.mode !== 'up') emoji(ctx, '🪱', hx - 4, h.y + 16, 16, Math.sin(t * 9) * 0.3);
+      }
+      ctx.save(); ctx.translate(b.x, by); ctx.rotate(rot);
+      ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(4, -14); ctx.lineTo(FISH.rodX, FISH.rodY); ctx.stroke();
+      ctx.fillStyle = '#b5652a'; ctx.beginPath(); ctx.moveTo(-50, -8); ctx.lineTo(50, -8); ctx.quadraticCurveTo(40, 18, 0, 18); ctx.quadraticCurveTo(-40, 18, -50, -8); ctx.fill();
+      ctx.fillStyle = '#7a4a1e'; ctx.fillRect(-50, -10, 100, 5);
+      ctx.restore();
+      snail(api, ctx, b.x - 14, by - 22, 1.3, 1, st.splash > 0 && Math.sin(t * 30) > 0, rot);
+      if (st.splash > 0) { ctx.strokeStyle = 'rgba(255,255,255,' + st.splash * 2 + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(hx, sea + 4, 40 - st.splash * 60, 6, 0, 0, TAU); ctx.stroke(); }
+      // the catch flies into the boat
+      for (const c of st.flying) {
+        const x = c.x + (b.x - 30 - c.x) * c.t, y = c.y + (by - 10 - c.y) * c.t - Math.sin(c.t * Math.PI) * 70;
+        swimmer(ctx, c.k.f, x, y, c.k.size * (1 - c.t * 0.4), false, c.t * 6);
+      }
+      label(ctx, '🪱 ×' + st.worms, 50, api.HUD_H + 22, st.worms ? '#ffb3c7' : '#8a8fb0', 18);
+      if (st.worms > 0 && h.mode !== 'reel') label(ctx, h.mode === 'up' ? 'TAP = CAST' : 'TAP = REEL', W / 2, api.H - 34, Math.sin(t * 6) > 0 ? '#5ef0ff' : '#ffffff', 16);
+      drawBank(api, ctx);
+      drawTalk(api, ctx, b.x - 14, by - 46);
+    },
+    tap(api) { cast(api); },
+  };
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Stock Sort: Mortimer drives a crane over three bins. Move to carry the box, tap to drop it into the bin of its kind.
+  // Each kind has its own colour, shape and goods. The bins change places now and then.
+  const SORT = { boxes: 22, railY: 150, holdY: 236, binTop: 600, binY: 742, binW: 140, slots: [84, 240, 396], grav: 1500, hold: 2.6, reload: 0.4, shuffle: 6, tapR: 70 };
+  const KINDS = [
+    { text: 'FRUIT', c: '#ff5c5c', shape: 'circle', goods: ['🍎', '🍓', '🍒'] },
+    { text: 'TOYS', c: '#5ef0ff', shape: 'square', goods: ['🧸', '🎲', '🪀'] },
+    { text: 'CLOTHES', c: '#9cff57', shape: 'triangle', goods: ['🧦', '🧤', '🧣'] },
+  ];
+  const SORT_LINES = {
+    start: ['Stock day! Everything in its bin.', 'Sort it, and I pay. Simple.'],
+    streak: ['A natural shelf stacker!', 'You were born for this.', 'Faster than my last helper!'],
+    wrong: ['Strawberry socks. New product.', 'Teddy salad? I will sell it.', 'Close. No, not close.', 'The customers will be confused. Good.', 'A glove in the fruit. Bold.'],
+    shuffle: ['New layout! Management idea.', 'I moved the bins. For fun.', 'Shuffle! Keep up!'],
+    drop: ['Butterfingers! I have no fingers.', 'It slipped!'],
+    end: ['Shelves full. Shift over!', 'Inventory: perfect. Mostly.'],
+  };
+  function shape(ctx, k, x, y, r) {
+    ctx.fillStyle = k.c; ctx.beginPath();
+    if (k.shape === 'circle') ctx.arc(x, y, r, 0, TAU);
+    else if (k.shape === 'square') ctx.roundRect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8, 5);
+    else { ctx.moveTo(x, y - r * 1.1); ctx.lineTo(x + r * 1.1, y + r * 0.8); ctx.lineTo(x - r * 1.1, y + r * 0.8); ctx.closePath(); }
+    ctx.fill();
+  }
+  function sortBox(api) {
+    const k = api.pick(KINDS);
+    return { k, f: api.pick(k.goods) };
+  }
+  function release(api) {
+    const st = api.state, c = st.crane;
+    if (!st.held) return;
+    st.falling.push({ ...st.held, x: c.x + Math.sin(st.sw) * 40, y: SORT.holdY, vy: 0, rot: st.sw });
+    st.held = null; st.reloadT = SORT.reload; api.sfx.spit();
+  }
+  // the bin under x
+  function binAt(st, x) { return st.bins.reduce((a, b) => (Math.abs(b.x - x) < Math.abs(a.x - x) ? b : a)); }
+  function sortLand(api, box) {
+    const st = api.state, bin = binAt(st, box.x);
+    box.dead = true; st.sorted++; bin.flash = 0.5;
+    if (bin.k === box.k) {
+      st.streak++; st.best = Math.max(st.best, st.streak); bin.good = true;
+      const pay = 2 + Math.min(4, Math.floor(st.streak / 3));
+      bank(api, pay); api.score(1); api.sfx.ding(Math.min(st.streak, 6)); api.burst(bin.x, SORT.binTop, box.k.c, 10, 160);
+      api.say(bin.x, SORT.binTop - 30, '+' + pay, '#ffd23f');
+      if (st.streak % 5 === 0) { api.sfx.streak(st.streak / 5); api.say(api.W / 2, 340, 'STREAK ' + st.streak + '!', '#7cf2a8', true); talk(api, api.pick(SORT_LINES.streak), 1.6); }
+    } else {
+      st.streak = 0; bin.good = false;
+      api.sfx.squawk(); api.say(bin.x, SORT.binTop - 30, box.k.text + ' IN ' + bin.k.text + '?', '#ff9aa8'); talk(api, api.pick(SORT_LINES.wrong), 1.8);
+    }
+    if (st.sorted % SORT.shuffle || st.left === 0) return;
+    // the bins change places: a new order where no bin keeps its slot
+    const n = SORT.slots.length, r = api.pick([1, 2]);
+    for (const b of st.bins) b.slot = (b.slot + r) % n;
+    api.sfx.whack(); talk(api, api.pick(SORT_LINES.shuffle), 1.6);
+  }
+  const sort = {
+    name: 'Stock Sort', title: '🧺 STOCK SORT 🧺', over: 'SHIFT OVER!', count: 'Boxes sorted 🧺',
+    tip: 'BONUS ROUND! Move over the bin of the same kind, tap to drop. A streak pays more', seconds: 22, ball: false, hidePaddle: true,
+    start(api) {
+      Object.assign(api.state, {
+        crane: { x: api.W / 2, v: 0, dir: 1 }, sw: 0, swv: 0, bins: KINDS.map((k, i) => ({ k, slot: i, x: SORT.slots[i], flash: 0, good: true })),
+        held: sortBox(api), holdT: SORT.hold, reloadT: 0, falling: [], left: SORT.boxes - 1, sorted: 0, streak: 0, best: 0, done: false,
+      });
+      talk(api, api.pick(SORT_LINES.start), 3);
+    },
+    tick(api, dt) {
+      const st = api.state, c = st.crane;
+      settle(api, dt);
+      const v0 = c.v, x0 = c.x;
+      c.x += (api.clamp(api.paddle.x, 40, api.W - 40) - c.x) * Math.min(1, dt * 7);
+      c.v = (c.x - x0) / Math.max(dt, 1e-3);
+      if (Math.abs(c.v) > 30) c.dir = Math.sign(c.v);
+      // the box swings on its cable: a damped pendulum pushed by the crane's acceleration
+      const acc = (c.v - v0) / Math.max(dt, 1e-3);
+      st.swv += (-acc * 0.0004 - st.sw * 30) * dt; st.swv *= Math.max(0, 1 - dt * 4); st.sw = api.clamp(st.sw + st.swv * dt, -0.6, 0.6);
+      for (const b of st.bins) { b.x += (SORT.slots[b.slot] - b.x) * Math.min(1, dt * 5); b.flash = Math.max(0, b.flash - dt); }
+      if (st.held && (st.holdT -= dt) <= 0) { release(api); talk(api, api.pick(SORT_LINES.drop), 1.2); }
+      if (!st.held && st.left > 0 && (st.reloadT -= dt) <= 0) { st.held = sortBox(api); st.left--; st.holdT = SORT.hold; st.sw = 0.3; st.swv = 0; api.sfx.tick(); }
+      for (const box of st.falling) {
+        box.vy += SORT.grav * dt; box.y += box.vy * dt; box.rot *= 1 - dt * 3;
+        if (box.y >= SORT.binTop + 20) sortLand(api, box);
+      }
+      st.falling = st.falling.filter((box) => !box.dead);
+      if (!st.done && !st.left && !st.held && !st.falling.length) { st.done = true; talk(api, api.pick(SORT_LINES.end)); cashOut(api); api.end(); }
+    },
+    draw(api, ctx, t) {
+      const st = api.state, c = st.crane, W = api.W;
+      // bins: colour, shape and goods tell the kind
+      for (const b of st.bins) {
+        const x = b.x - SORT.binW / 2 + 6, w = SORT.binW - 12;
+        ctx.globalAlpha = 0.22 + b.flash * 0.6; ctx.fillStyle = b.flash > 0 && !b.good ? '#ffffff' : b.k.c; ctx.fillRect(x, SORT.binTop, w, SORT.binY - SORT.binTop);
+        ctx.globalAlpha = 1; ctx.strokeStyle = b.k.c; ctx.lineWidth = 3; ctx.strokeRect(x, SORT.binTop, w, SORT.binY - SORT.binTop);
+        shape(ctx, b.k, b.x, SORT.binTop + 46, 22); emoji(ctx, b.k.goods[0], b.x, SORT.binTop + 48, 24);
+        label(ctx, b.k.text, b.x, SORT.binTop + 100, b.k.c, 15);
+      }
+      // the rail, the crane and the box on its cable
+      ctx.fillStyle = '#9aa6e8'; ctx.fillRect(0, SORT.railY + 14, W, 6);
+      ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.roundRect(c.x - 30, SORT.railY + 4, 60, 22, 6); ctx.fill();
+      snail(api, ctx, c.x, SORT.railY - 10, 1.4, c.dir, st.bins.some((b) => b.flash > 0 && !b.good) && Math.sin(t * 30) > 0, api.clamp(-c.v / 3000, -0.15, 0.15));
+      if (st.held) {
+        const bx = c.x + Math.sin(st.sw) * 40, blink = st.holdT < 1 && Math.sin(t * 25) > 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(bx, SORT.holdY + 30); ctx.lineTo(bx, SORT.binTop); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = '#c9d0ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(c.x, SORT.railY + 26); ctx.lineTo(bx, SORT.holdY - 24); ctx.stroke();
+        ctx.save(); ctx.translate(bx, SORT.holdY); ctx.rotate(st.sw); ctx.globalAlpha = blink ? 0.5 : 1;
+        shape(ctx, st.held.k, 0, 0, 24); emoji(ctx, st.held.f, 0, 2, 26);
+        ctx.restore(); ctx.globalAlpha = 1;
+      }
+      for (const box of st.falling) {
+        ctx.save(); ctx.translate(box.x, box.y); ctx.rotate(box.rot); shape(ctx, box.k, 0, 0, 24); emoji(ctx, box.f, 0, 2, 26); ctx.restore();
+      }
+      label(ctx, '📦 ×' + (st.left + (st.held ? 1 : 0)), 50, api.HUD_H + 22, '#e8ecff', 18);
+      if (st.streak >= 3) label(ctx, '🔥 ' + st.streak, W / 2, api.HUD_H + 22, '#ffd23f', 18);
+      if (st.held) label(ctx, 'TAP THE CRANE = DROP', W / 2, api.H - 30, Math.sin(t * 6) > 0 ? '#7cf2a8' : '#ffffff', 16);
+      drawBank(api, ctx);
+      drawTalk(api, ctx, c.x, SORT.railY - 34);
+    },
+    tap(api, x) { if (Math.abs(x - api.state.crane.x) < SORT.tapR) release(api); },
+  };
+
+  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort };
 })();
