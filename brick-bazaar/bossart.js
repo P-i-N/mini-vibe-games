@@ -1,5 +1,5 @@
 'use strict';
-/* Brick Bazaar boss art: the bodies of the five bosses and the top hat of the Bazaar Baron. game.js draws the glow
+/* Brick Bazaar boss art: the bodies of the six bosses and the top hat of the Bazaar Baron. game.js draws the glow
    behind a boss and its speech bubble. A boss is drawn in local coordinates: (0, 0) = the middle of its top edge. */
 (() => {
   const TAU = Math.PI * 2, PI = Math.PI;
@@ -905,7 +905,222 @@
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  const ART = [null, crateKing, twinCannon, baron, queen, auditor];
+  // 6. Gullet, the Coin Purse: a fat purse with a brass kiss-lock clasp for a mouth, small arms and stubby legs. He
+  // fills his box: game.js makes B.w larger for each coin in him. Optional fields (a cameo has none of them):
+  // B.open = 0..1 how far the clasp is open, B.full = 0..1 how full he is, B.gulpT and B.hicT = seconds left of a
+  // gulp (from PURSE_GULP_S) and of a hiccup (from PURSE_HIC_S). Phase 3: the clasp is broken and hangs open.
+  // alt 1 = second hand: faded, patched, a safety pin, a dull clasp. alt 2 = evening bag: violet velvet, gold, jewels.
+  const PURSE = [
+    { hide: '#9a6232', light: '#c98d55', dark: '#5e3519', brass: '#e2b23e', brassL: '#fff0a6', brassD: '#946410', stitch: '#f2d9a6',
+      mouth: '#2a0f16', cheek: '#ff8a7a', lid: '#9a6232' },
+    { hide: '#8f7a62', light: '#b8a386', dark: '#54463a', brass: '#b9a46e', brassL: '#e6dcb4', brassD: '#6e6040', stitch: '#e9e1c6',
+      mouth: '#23160f', cheek: '#d98a7a', lid: '#8f7a62', patch: '#6a8a9a', patch2: '#a8553a' },
+    { hide: '#5b2384', light: '#9b5ccc', dark: '#2a0c40', brass: GOLD, brassL: '#fff6c0', brassD: '#a87400', stitch: '#e8d6ff',
+      mouth: '#12061c', cheek: '#ff6ad0', lid: '#3a8fd0', gem: '#ff2a6d', gem2: '#2fd6ff', gem3: '#7cf2a8', pearl: '#f4f0ff' },
+  ];
+  const PURSE_GULP_S = 0.6, PURSE_HIC_S = 0.3;
+  const clamp01 = (v) => Math.max(0, Math.min(1, v || 0));
+  // The leather, from the frame at y0 down to the feet.
+  function purseBody(ctx, hw, fw, y0, h) {
+    ctx.beginPath(); ctx.moveTo(-fw, y0);
+    ctx.bezierCurveTo(-hw - 3, y0 + 6, -hw - 1, h - 16, -hw * 0.72, h - 9);
+    ctx.quadraticCurveTo(0, h - 3, hw * 0.72, h - 9);
+    ctx.bezierCurveTo(hw + 1, h - 16, hw + 3, y0 + 6, fw, y0);
+    ctx.closePath();
+  }
+  function gem(ctx, x, y, r, c) {
+    ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+    fill(ctx, c); stroke(ctx, INK, 1);
+    circ(ctx, x - r * 0.3, y - r * 0.3, r * 0.25); fill(ctx, WHITE, 0.8);
+  }
+  function knob(ctx, x, y, P, c) {
+    circ(ctx, x, y, 4.2); fill(ctx, c || P.brass); stroke(ctx, INK, 1.3);
+    circ(ctx, x - 1.3, y - 1.3, 1.3); fill(ctx, P.brassL, 0.9);
+  }
+  // The kiss-lock frame. The lower jaw is fixed; the upper jaw opens with `open`. Broken: the right hinge is gone, the
+  // upper jaw hangs from the left hinge and its knob is lost.
+  function purseClasp(ctx, P, fw, y0, open, broken, t, alt) {
+    const cy = y0 - 4 - open * 34, ex = broken ? fw * 0.82 : fw, ey = broken ? y0 + 9 + Math.sin(t * 5) * 2 : y0;
+    const jaw = () => { ctx.beginPath(); ctx.moveTo(-fw, y0); ctx.quadraticCurveTo(0, cy, ex, ey); };
+    const lip = () => { ctx.beginPath(); ctx.moveTo(-fw, y0); ctx.quadraticCurveTo(0, y0 + 4, fw, y0); };
+    const mouth = () => { jaw(); ctx.lineTo(fw, y0); ctx.quadraticCurveTo(0, y0 + 4, -fw, y0); ctx.closePath(); };
+    if (open > 0.04 || broken) {
+      mouth(); fill(ctx, P.mouth);
+      ctx.save(); mouth(); ctx.clip();
+      for (let i = 0; i < 3; i++) { ell(ctx, (i - 1) * fw * 0.42, y0 - 3 - open * 7 + (i % 2) * 4, 6, 3); fill(ctx, GOLD, 0.85); stroke(ctx, '#7a5300', 1); }
+      if (open > 0.5) { ell(ctx, 0, y0 + 1, fw * 0.32, 6 * open); fill(ctx, '#ff7a9a'); stroke(ctx, INK, 1.2); }
+      if (broken) {
+        ctx.beginPath();
+        for (let x = -fw * 0.75; x < fw * 0.75; x += 9) { ctx.moveTo(x, y0 + 2); ctx.lineTo(x + 4.5, y0 - 5); ctx.lineTo(x + 9, y0 + 2); }
+        fill(ctx, WHITE); stroke(ctx, INK, 0.8);
+      }
+      ctx.restore();
+    }
+    for (const [c, lw] of [[INK, 7], [P.brass, 4]]) { lip(); stroke(ctx, c, lw); }
+    ctx.beginPath(); ctx.moveTo(-fw * 0.7, y0 + 0.6); ctx.quadraticCurveTo(-fw * 0.2, y0 + 2.6, fw * 0.2, y0 + 2); stroke(ctx, P.brassL, 1.2, 0.7);
+    for (const [c, lw] of [[INK, 7], [P.brass, 4]]) { jaw(); stroke(ctx, c, lw); }
+    if (alt === 1) { ctx.beginPath(); for (const x of [-0.6, -0.15, 0.45]) { const px = x * fw; ctx.moveTo(px + 1.6, y0 + 1.5); ctx.arc(px, y0 + 1.5, 1.6, 0, TAU); } fill(ctx, P.brassD, 0.8); }
+    // hinges and knobs
+    circ(ctx, -fw, y0, 4); fill(ctx, P.brassD); stroke(ctx, INK, 1.4);
+    if (broken) {
+      ctx.beginPath(); ctx.moveTo(fw, y0); for (let i = 1; i <= 5; i++) ctx.lineTo(fw + (i % 2 ? 3 : -1), y0 - i * 2.4); stroke(ctx, P.brassD, 1.4);
+      circ(ctx, ex, ey, 2.6); fill(ctx, P.brassD); stroke(ctx, INK, 1.2);
+    } else { circ(ctx, fw, y0, 4); fill(ctx, P.brassD); stroke(ctx, INK, 1.4); }
+    const mx = (-fw + ex) / 4, my = (y0 + 2 * cy + ey) / 4;
+    line(ctx, 3.5, y0 + 1, 3.5, y0 - 4); stroke(ctx, P.brassD, 2);
+    knob(ctx, 3.5, y0 - 5, P, alt === 2 ? P.gem : null);
+    if (!broken) { line(ctx, mx - 3.5, my, mx - 3.5, my - 4); stroke(ctx, P.brassD, 2); knob(ctx, mx - 3.5, my - 5, P, alt === 2 ? P.gem2 : null); }
+    if (alt === 2) for (const u of [0.22, 0.78]) {
+      const q = 1 - u, gx = u * u * ex - q * q * fw, gy = q * q * y0 + 2 * q * u * cy + u * u * ey;
+      gem(ctx, gx, gy, 3, P.gem3);
+    }
+  }
+  function gullet(ctx, B, env, o) {
+    const P = PURSE[o.alt], { w, h, t, look, hot, hurt } = o, hw = w / 2, st = B.state;
+    const aim = st === 'aim', drop = st === 'drop', rest = st === 'rest', rise = st === 'rise', inhale = st === 'inhale';
+    const open = hot ? 1 : clamp01(B.open), full = clamp01(B.full);
+    const gulp = clamp01((B.gulpT || 0) / PURSE_GULP_S), hic = clamp01((B.hicT || 0) / PURSE_HIC_S);
+    const y0 = 14, fw = hw * 0.78, ex = Math.min(hw * 0.32, 28), ey = 31;
+    if (aim) {
+      // the belly flop warning: arrows that run down below him
+      for (let i = 0; i < 3; i++) {
+        const on = (((Math.floor(t * 9) - i) % 3) + 3) % 3 === 0, y = h + 6 + i * 7;
+        ctx.beginPath(); ctx.moveTo(-9, y); ctx.lineTo(0, y + 5); ctx.lineTo(9, y); stroke(ctx, RED, 3, on ? 1 : 0.3);
+      }
+      ctx.translate(Math.sin(t * 60) * 1.2, 0);
+    }
+    if (drop) {
+      ctx.beginPath(); for (const u of [-0.6, -0.2, 0.2, 0.6]) { ctx.moveTo(u * hw, -4); ctx.lineTo(u * hw, -14 - (Math.abs(u) < 0.5 ? 10 : 0)); }
+      stroke(ctx, WHITE, 2, 0.55);
+    }
+    ctx.save();
+    // squash and stretch about the feet
+    let sx = 1, sy = 1;
+    if (rest) { sx = 1.1; sy = 0.78; }
+    else if (gulp > 0) { sx = 1 + 0.06 * gulp; sy = 1 - 0.08 * gulp; }
+    else if (inhale) { const p = 0.03 * Math.sin(t * 10); sx = 1.04 + p; sy = 1.02 - p; }
+    else { const b = Math.sin(t * 8) * 0.015; sx = 1 - b; sy = 1 + b; }
+    ctx.translate(0, h - hic * 6); ctx.scale(sx, sy); ctx.translate(0, -h);
+
+    // legs; he waddles
+    const step = aim || rest ? 0 : Math.sin(t * 8) * 3;
+    for (const s of [-1, 1]) {
+      const lx = s * hw * 0.34, lift = drop ? 4 + Math.sin(t * 30 + s) * 2 : Math.max(0, s * step), fx = rest ? lx + s * 8 : lx;
+      rr(ctx, lx - 5, h - 13 - lift, 10, 9, 3); fill(ctx, P.dark); stroke(ctx, INK, 1.6);
+      ell(ctx, fx + s * 2, h - 3.5 - lift, 9, 4.5); fill(ctx, P.dark); stroke(ctx, INK, 1.8);
+    }
+    // arms
+    for (const s of [-1, 1]) {
+      let hx = s * (hw + 9), hy = 38 + Math.sin(t * 3 + s) * 3;
+      if (aim || drop) { hx = s * (hw + 6); hy = 4 + (drop ? Math.sin(t * 30 + s) * 3 : Math.sin(t * 20) * 1.5); }
+      else if (rest) { hx = s * (hw + 14); hy = h - 8; }
+      else if (inhale) { hx = s * (hw + 13); hy = 22 + Math.sin(t * 10) * 1.5; }
+      else if (hot) hy = 30 + Math.sin(t * 20 + s) * 3;
+      line(ctx, s * (hw - 6), 32, hx, hy); stroke(ctx, INK, 7);
+      line(ctx, s * (hw - 6), 32, hx, hy); stroke(ctx, P.hide, 4);
+      circ(ctx, hx, hy, hot ? 4.6 : 5.2); fill(ctx, WHITE); stroke(ctx, INK, 1.6);
+    }
+
+    // the purse
+    purseBody(ctx, hw, fw, y0, h);
+    ctx.fillStyle = o.alt === 2 ? rad(ctx, -hw * 0.3, y0 + 8, 4, 0, y0 + 16, hw + 10, [[0, P.light], [0.5, P.hide], [1, P.dark]])
+      : lin(ctx, 0, y0, 0, h - 4, [[0, P.light], [0.4, P.hide], [1, P.dark]]);
+    ctx.fill();
+    ctx.save(); purseBody(ctx, hw, fw, y0, h); ctx.clip();
+    if (o.alt === 2) {
+      // quilted velvet
+      ctx.beginPath();
+      for (let x = -hw - 40; x < hw + 40; x += 16) { ctx.moveTo(x, y0); ctx.lineTo(x + 40, h); ctx.moveTo(x + 40, y0); ctx.lineTo(x, h); }
+      stroke(ctx, P.dark, 1, 0.5);
+      ell(ctx, -hw * 0.35, y0 + 12, hw * 0.35, 6, -0.2); fill(ctx, WHITE, 0.16);
+    } else {
+      ctx.beginPath(); ctx.moveTo(-hw * 0.55, 44); ctx.quadraticCurveTo(-hw * 0.45, 41, -hw * 0.35, 44); ctx.moveTo(hw * 0.3, 22); ctx.quadraticCurveTo(hw * 0.42, 20, hw * 0.52, 23);
+      stroke(ctx, P.dark, 1, 0.45);
+    }
+    // coins that press against the leather
+    const bumps = Math.round(full * 6);
+    for (let i = 0; i < bumps; i++) {
+      const bx = (-0.5 + (i + 0.5) / 6) * w * 0.62, by = h - 15 - (i % 2) * 5;
+      circ(ctx, bx, by, 5); stroke(ctx, P.dark, 1.3, 0.55);
+      ctx.beginPath(); ctx.arc(bx, by, 3.6, PI * 1.1, PI * 1.6); stroke(ctx, P.light, 1, 0.7);
+    }
+    // stitches under the frame and along the bottom seam
+    ctx.beginPath();
+    for (let x = -fw + 6; x < fw - 6; x += 6) { ctx.moveTo(x, y0 + 6); ctx.lineTo(x + 3, y0 + 6); }
+    for (let i = 0; i < 16; i++) {
+      const a = PI * (0.12 + (i * 0.76) / 15), cx = Math.cos(a) * (hw - 7), cy = (y0 + h - 9) / 2 + Math.sin(a) * ((h - 9 - y0) / 2 - 4);
+      ctx.moveTo(cx, cy); ctx.lineTo(cx - Math.sin(a) * 3, cy + Math.cos(a) * 1.2);
+    }
+    stroke(ctx, P.stitch, 1.3, 0.8);
+    if (o.alt === 1) {
+      for (const [x, y, pw, ph, r, c] of [[-hw * 0.62, 36, 14, 11, -0.2, P.patch], [hw * 0.38, 18, 12, 9, 0.15, P.patch2]]) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(r);
+        rr(ctx, -pw / 2, -ph / 2, pw, ph, 1.5); fill(ctx, c); stroke(ctx, INK, 0.9);
+        ctx.beginPath(); for (let i = 0; i < 4; i++) { const px = -pw / 2 + 2 + i * ((pw - 4) / 3); ctx.moveTo(px, -ph / 2 - 1.5); ctx.lineTo(px, -ph / 2 + 1.5); ctx.moveTo(px, ph / 2 - 1.5); ctx.lineTo(px, ph / 2 + 1.5); }
+        stroke(ctx, P.stitch, 1);
+        ctx.restore();
+      }
+    }
+    if (hot) { purseBody(ctx, hw, fw, y0, h); fill(ctx, RED, 0.12 + 0.08 * Math.sin(t * 8)); }
+    ctx.restore();
+    purseBody(ctx, hw, fw, y0, h); stroke(ctx, INK, 3);
+
+    // face
+    const cover = rest ? 0 : Math.max(o.blink, gulp > 0 ? 0.65 : inhale ? 0.4 : aim ? 0.35 : hot ? 0.22 : rise ? 0.45 : 0);
+    const tilt = hot || aim ? 0.42 : drop ? -0.3 : rise ? -0.15 : inhale ? 0.2 : 0.05;
+    for (const s of [-1, 1]) {
+      if (rest) { ell(ctx, s * ex, ey, 8, 9); fill(ctx, WHITE); stroke(ctx, INK, 2); spiral(ctx, s * ex, ey, 7, t * 6 * s); continue; }
+      eye(ctx, s * ex, ey, 8, 9, look, { lid: P.lid, cover, tilt, side: s, pupil: hot ? RED : INK, pr: hic > 0 || drop ? 0.3 : 0.55 });
+      brow(ctx, s * ex, ey - 13, 13, tilt * 1.2, s, P.dark, 3);
+      if (o.alt === 2) { ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = -PI / 2 + s * (0.5 + i * 0.35); ctx.moveTo(s * ex + Math.cos(a) * 8, ey + Math.sin(a) * 9); ctx.lineTo(s * ex + Math.cos(a) * 12, ey + Math.sin(a) * 13); } stroke(ctx, INK, 1.5); }
+    }
+    for (const s of [-1, 1]) { ell(ctx, s * (ex + 14), ey + 8, inhale ? 7 : 5, inhale ? 4.5 : 3); fill(ctx, hot ? RED : P.cheek, hot ? 0.35 : 0.45); }
+    if (o.alt === 2) gem(ctx, 0, ey + 12, 5, P.gem);
+    else { rr(ctx, -8, ey + 8, 16, 9, 2); fill(ctx, P.brass); stroke(ctx, INK, 1.2); txt(ctx, '$', 0, ey + 12.8, 7, P.brassD); }
+
+    // damage: a stitched tear, a patch, a loose button
+    if (hurt) {
+      crack(ctx, -hw * 0.5, 40, 16, 0.35, P.dark);
+      ctx.beginPath(); for (let i = 0; i < 3; i++) { const cx = -hw * 0.5 + 3 + i * 4.5, cy = 40 + i * 1.6; ctx.moveTo(cx - 2, cy - 3); ctx.lineTo(cx + 2, cy + 3); ctx.moveTo(cx + 2, cy - 3); ctx.lineTo(cx - 2, cy + 3); }
+      stroke(ctx, P.stitch, 1.2);
+      plaster(ctx, ex + 8, ey - 15, 0.5, 0.3);
+      const bx = hw * 0.5 + Math.sin(t * 3) * 4, by = h - 2;
+      line(ctx, hw * 0.5, h - 12, bx, by - 3); stroke(ctx, INK, 0.8);
+      circ(ctx, bx, by, 3.5); fill(ctx, P.brass); stroke(ctx, INK, 1);
+      ctx.beginPath(); ctx.moveTo(bx - 0.8, by); ctx.arc(bx - 1.2, by, 0.6, 0, TAU); ctx.moveTo(bx + 1.8, by); ctx.arc(bx + 1.2, by, 0.6, 0, TAU); fill(ctx, INK);
+    }
+    if (o.alt === 1) {
+      ctx.save(); ctx.translate(hw * 0.62, 30); ctx.rotate(0.6);
+      line(ctx, -8, 0, 7, 0); stroke(ctx, '#c9d0e0', 1.6);
+      ctx.beginPath(); ctx.arc(7, -1.5, 1.8, -PI / 2, PI / 2); stroke(ctx, '#c9d0e0', 1.4);
+      rr(ctx, -11, -2.2, 4, 4.4, 1); fill(ctx, '#c9d0e0'); stroke(ctx, INK, 0.8);
+      ctx.restore();
+    }
+    if (o.alt === 2) {
+      // a string of pearls from the left hinge
+      for (let i = 0; i < 5; i++) { const u = (i + 0.5) / 5; circ(ctx, -fw - u * (hw - fw + 8), y0 + u * 22 + Math.sin(u * PI) * 3, 2.4); fill(ctx, P.pearl); stroke(ctx, INK, 0.8); }
+      for (let i = 0; i < 2; i++) twinkle(ctx, i ? hw * 0.5 : -hw * 0.45, i ? 44 : 20, Math.max(0, Math.sin(t * 3 + i * 2.1)) * 4.5);
+    }
+    purseClasp(ctx, P, fw, y0, open, hot, t, o.alt);
+    if (hic > 0) for (let i = 0; i < 3; i++) { circ(ctx, 6 + i * 5, y0 - 10 - (1 - hic) * 14 - i * 6, 2 + i); stroke(ctx, WHITE, 1.4, hic); }
+    if (o.frozen) icicles(ctx, -hw * 0.7, hw * 0.7, h - 9, o.time);
+    ctx.restore();
+
+    // around him: the pull of an inhale, rage, dizzy stars, sweat
+    if (inhale) for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {
+      const p = frac(t * 2.4 + i / 3 + (s > 0 ? 0.5 : 0)), x = s * (fw + 8 + (1 - p) * 44), y = y0 - 6 + (i - 1) * 8 * (1 - p);
+      line(ctx, x, y, x - s * 11, y - (i - 1) * 1.5); stroke(ctx, WHITE, 2, 0.2 + 0.6 * p);
+    }
+    if (hot && !rest) { vein(ctx, hw * 0.55, 24, 0.75, t); for (const s of [-1, 1]) steam(ctx, s * fw, y0 - 4, t, s); }
+    if (rest) for (let i = 0; i < 3; i++) {
+      const a = t * 3 + (i * TAU) / 3;
+      star(ctx, Math.cos(a) * hw * 0.45, h * 0.22 - 14 + Math.sin(a) * 4, 5, a); fill(ctx, GOLD); stroke(ctx, INK, 1.2);
+    }
+    if (rise) sweat(ctx, hw - 18, 18 + Math.sin(t * 6), 1);
+  }
+
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const ART = [null, crateKing, twinCannon, baron, queen, auditor, gullet];
   function draw(ctx, B, env) {
     const fn = ART[B.kind];
     if (!fn) return;

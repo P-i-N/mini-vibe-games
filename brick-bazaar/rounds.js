@@ -243,7 +243,7 @@
         if (Math.abs(it.x - topX) > (h ? 30 : p.w / 2 + 8)) continue;
         it.dead = true; st.stack.push(it.f); api.score(1); api.sfx.ping(h);
       }
-      st.items = st.items.filter((it) => !it.dead && it.y < api.H + 20);
+      st.items = st.items.filter((it) => !it.dead && it.y < (api.bottom || api.H) + 20);
       // the stack leans against the paddle's speed; a tall stack leans more
       const n = st.stack.length, target = (-(p.vx || 0) / 600) * (n / 7);
       st.lean += (target - st.lean) * Math.min(1, dt * 4);
@@ -251,7 +251,7 @@
       if (Math.abs(st.lean) > 0.65 && (st.warnT -= dt) <= 0) { st.warnT = 0.8; api.sfx.eek(); talk(api, api.pick(TOWER_LINES.warn), 1); }
       if (Math.abs(st.lean) > 1) topple(api);
       for (const d of st.debris) { d.vy += 900 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += dt * 8; }
-      st.debris = st.debris.filter((d) => d.y < api.H + 30);
+      st.debris = st.debris.filter((d) => d.y < (api.bottom || api.H) + 30);
       if (st.served) {
         for (const s of st.served) s.t += dt * 2;
         if (st.served[0].t >= 1) { eat(api, st.served.length); st.served = null; }
@@ -348,7 +348,7 @@
       if (api.left <= 2.6 && !st.finish) st.finish = { y: api.HUD_H - 20, crossed: false };
       if ((st.propT -= dt) <= 0) { st.propT = 0.35; st.props.push({ f: api.pick(PROPS), x: api.pick([22, api.W - 22]), y: api.HUD_H - 20 }); }
       for (const pr of st.props) pr.y += v * dt;
-      st.props = st.props.filter((pr) => pr.y < api.H + 30);
+      st.props = st.props.filter((pr) => pr.y < (api.bottom || api.H) + 30);
       for (const o of st.things) {
         o.y += v * dt; o.x += (o.vx || 0) * dt;
         if (o.k === 'pigeon' && (o.x < KART.left + 20 || o.x > KART.right - 20)) o.vx = -o.vx;
@@ -360,7 +360,7 @@
         bank(api, st.boost > 0 ? 2 : 1); api.score(1); api.sfx.coin(line.got);
         if (line.got === KART.line) { bank(api, 2); api.say(st.x, KART.y - 60, 'FULL LINE!', '#ffd23f'); if (Math.random() < 0.4) talk(api, api.pick(KART_LINES.line), 1.4); }
       }
-      st.things = st.things.filter((o) => !o.dead && o.y < api.H + 40);
+      st.things = st.things.filter((o) => !o.dead && o.y < (api.bottom || api.H) + 40);
       if (st.finish) {
         st.finish.y += v * dt;
         if (!st.finish.crossed && st.finish.y >= KART.y) {
@@ -473,7 +473,7 @@
         if (n.checked && under) karaCatch(api, n, false);
         else if (age >= n.T + KARA.late) karaMiss(api, n);
       }
-      st.notes = st.notes.filter((n) => n.done !== 'hit' && n.y < api.H + 30);
+      st.notes = st.notes.filter((n) => n.done !== 'hit' && n.y < (api.bottom || api.H) + 30);
       if (!st.ended && api.left < 0.6) { st.ended = true; talk(api, api.pick(KARA_LINES.end)); }
     },
     draw(api, ctx, t) {
@@ -1086,5 +1086,230 @@
     tap(api) { pump(api); },
   };
 
-  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort, pusher, balloon };
+  ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Cousin Curling: Pip's cousins curl into balls. Move to aim, tap to roll one up the table, tap again to make him
+  // uncurl and skid to a stop. Near the far edge pays most; over the edge he falls into the pond. A roller knocks the
+  // cousins that are already on the table. The pay is where the cousins rest at the end.
+  const CURL = { cousins: 10, r: 16, left: 40, right: 384, brink: 210, launch: 690, v: [470, 560], roll: 50, skid: 1400, bounce: 0.85,
+    steps: 4, cd: 0.3, rest: 12, calm: 0.8, pond: 112, snailX: 432, snailY: 560, quillX: 440, quillY: 164 };
+  // a band goes from the band above it (the first from the brink) down to y
+  const CURL_BANDS = [{ y: 250, pay: 10, c: '#ffd23f' }, { y: 320, pay: 5, c: '#ff7ad9' }, { y: 400, pay: 2, c: '#5ef0ff' }, { y: 480, pay: 1, c: '#9cff57' }];
+  const CURL_LINES = {
+    start: ['Pip brought his cousins. Roll them!', 'Curling! Like bowling, but rounder.'],
+    brink: ['Toes over the water! Pays well!', 'On the edge! Brave cousin!', 'Do not look down, Doris!'],
+    splash: ['Cousin overboard!', 'He can swim. I think.', 'Pip, count your cousins.'],
+    bump: ['Bonk! Family reunion.', 'Cousin bowling!', 'He pushed his own cousin!'],
+    shy: ['That one is shy.', 'A nap in the middle. Lovely.'],
+    end: ['Family photo! Everyone smile.', 'All curled up. Tea time.'],
+  };
+  const QUILL_CAW = ['CAW! HA HA!', 'NICE SWIM, BUG!', 'CAW! TEN POINTS!'];
+  const curlPay = (y) => { for (const b of CURL_BANDS) if (y < b.y) return b.pay; return 0; };
+  function curlTap(api) {
+    const st = api.state, a = st.active;
+    if (a && a.mode === 'roll') { a.mode = 'skid'; api.sfx.eek(); return; }
+    if (a || st.next <= 0 || st.cd > 0) return;
+    st.next--; st.cd = CURL.cd;
+    st.active = { x: st.ax, y: CURL.launch, vx: 0, vy: -api.rand(CURL.v[0], CURL.v[1]), mode: 'roll', spin: 0 };
+    st.pucks.push(st.active); api.sfx.spit();
+  }
+  // equal masses: the overlap is split, and the push along the line of centres goes from one cousin to the other
+  function curlHit(api, a, b) {
+    const st = api.state, dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy), R = CURL.r * 2;
+    if (d >= R) return;
+    const nx = d ? dx / d : 0, ny = d ? dy / d : 1, o = (R - d) / 2;
+    a.x -= nx * o; a.y -= ny * o; b.x += nx * o; b.y += ny * o;
+    const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+    if (rel >= 0) return;
+    const j = (-(1 + CURL.bounce) * rel) / 2;
+    a.vx -= j * nx; a.vy -= j * ny; b.vx += j * nx; b.vy += j * ny;
+    for (const p of [a, b]) if (p.mode === 'rest' && Math.hypot(p.vx, p.vy) > CURL.rest) p.mode = 'skid';
+    if (-rel < 60) return;
+    api.sfx.whack(); api.burst((a.x + b.x) / 2, (a.y + b.y) / 2, '#c9d0ff', 6, 120); st.bonk = 0.3;
+    if (Math.random() < 0.35) talk(api, api.pick(CURL_LINES.bump), 1.4);
+  }
+  function curlStop(api, p) {
+    const st = api.state, pay = curlPay(p.y);
+    p.mode = 'rest'; p.vx = p.vy = 0;
+    if (p === st.active) st.active = null;
+    if (!pay) { api.sfx.nope(); api.say(p.x, p.y - 30, 'zzz', '#8a8fb0'); if (Math.random() < 0.4) talk(api, api.pick(CURL_LINES.shy), 1.4); return; }
+    api.sfx.ding(pay >> 1); api.say(p.x, p.y - 30, '+' + pay, CURL_BANDS.find((b) => b.pay === pay).c, pay === CURL_BANDS[0].pay);
+    if (pay < CURL_BANDS[0].pay) return;
+    api.burst(p.x, p.y, '#ffd23f', 12, 180); st.wow = 0.8;
+    if (Math.random() < 0.6) talk(api, api.pick(CURL_LINES.brink), 1.6);
+  }
+  function curlSplash(api, p) {
+    const st = api.state;
+    p.mode = 'fall'; p.t = 0; st.out.push(p);
+    if (p === st.active) st.active = null;
+    api.sfx.squawk(); api.burst(p.x, CURL.brink - 30, '#5ef0ff', 12, 160); st.caw = 1.2;
+    api.say(CURL.quillX - 40, CURL.quillY - 50, api.pick(QUILL_CAW), '#c9d0ff'); talk(api, api.pick(CURL_LINES.splash), 1.6);
+  }
+  function curlStep(api, h) {
+    const st = api.state, L = CURL.left + CURL.r, R = CURL.right - CURL.r;
+    for (const p of st.pucks) {
+      if (p.mode === 'rest') continue;
+      const v = Math.hypot(p.vx, p.vy), k = v ? Math.max(0, v - (p.mode === 'roll' ? CURL.roll : CURL.skid) * h) / v : 0;
+      p.vx *= k; p.vy *= k; p.x += p.vx * h; p.y += p.vy * h; p.spin += (v * h) / CURL.r;
+      if (p.x < L) { p.x = L; p.vx = Math.abs(p.vx) * 0.6; }
+      if (p.x > R) { p.x = R; p.vx = -Math.abs(p.vx) * 0.6; }
+      if (p.y > CURL.launch + 20) { p.y = CURL.launch + 20; p.vy = -Math.abs(p.vy) * 0.5; }
+    }
+    for (let i = 0; i < st.pucks.length; i++) {
+      for (let j = i + 1; j < st.pucks.length; j++) {
+        const a = st.pucks[i], b = st.pucks[j];
+        if (a.mode !== 'rest' || b.mode !== 'rest') curlHit(api, a, b);
+      }
+    }
+    for (const p of st.pucks) {
+      if (p.y < CURL.brink) curlSplash(api, p);
+      else if (p.mode !== 'rest' && Math.hypot(p.vx, p.vy) < CURL.rest) curlStop(api, p);
+    }
+    st.pucks = st.pucks.filter((p) => p.mode !== 'fall');
+  }
+  function curlFinish(api) {
+    const st = api.state;
+    st.done = true; api.score(st.pucks.filter((p) => p.mode === 'rest' && curlPay(p.y)).length);
+    talk(api, api.pick(CURL_LINES.end)); cashOut(api); api.end();
+  }
+  // a cousin rolled up: plates turn as he rolls
+  function pillBall(ctx, x, y, r, spin) {
+    ctx.fillStyle = '#8d97b8'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    const gap = r * 0.55, off = (((spin * r * 0.5) % gap) + gap) % gap;
+    ctx.strokeStyle = '#5d6688'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let dy = -r + off; dy < r; dy += gap) { const w = Math.sqrt(r * r - dy * dy); ctx.moveTo(x - w, y - dy); ctx.lineTo(x + w, y - dy); }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.4, r * 0.25, r * 0.15, -0.5, 0, TAU); ctx.fill();
+  }
+  // a cousin uncurled, seen from above, head to the pond; the legs run while he skids
+  function cousin(ctx, p, t) {
+    const run = p.mode === 'skid';
+    ctx.save(); ctx.translate(p.x, p.y);
+    ctx.strokeStyle = '#4a5170'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const y = -7 + i * 6, w = run ? Math.sin(t * 40 + i * 1.7) * 3 : 0;
+      ctx.moveTo(-9, y); ctx.lineTo(-15, y + 2 + w); ctx.moveTo(9, y); ctx.lineTo(15, y + 2 - w);
+    }
+    ctx.moveTo(-4, 15); ctx.lineTo(-6, 21); ctx.moveTo(4, 15); ctx.lineTo(6, 21);
+    ctx.moveTo(-3, -17); ctx.quadraticCurveTo(-5, -24, -10, -27); ctx.moveTo(3, -17); ctx.quadraticCurveTo(5, -24, 10, -27);
+    ctx.stroke();
+    ctx.fillStyle = '#8d97b8'; ctx.beginPath(); ctx.ellipse(0, 2, 11, 15, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#5d6688'; ctx.beginPath();
+    for (let y = -6; y <= 10; y += 5) { const w = 11 * Math.sqrt(1 - ((y - 2) / 15) ** 2); ctx.moveTo(-w, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+    ctx.fillStyle = '#a3acc9'; ctx.beginPath(); ctx.ellipse(0, -13, 8, 6, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-3, -14, 2.4, 0, TAU); ctx.arc(3, -14, 2.4, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(-3, run ? -13 : -15, 1.2, 0, TAU); ctx.arc(3, run ? -13 : -15, 1.2, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // Pip, standing, in his cap; the arms reach up to the cousin on the line
+  function pip(ctx, x, y, reach) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.strokeStyle = '#4a5170'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < 3; i++) { const ly = 2 + i * 6; ctx.moveTo(-10, ly); ctx.lineTo(-16, ly + 5); ctx.moveTo(10, ly); ctx.lineTo(16, ly + 5); }
+    if (reach) { ctx.moveTo(-9, -8); ctx.lineTo(-13, -30); ctx.moveTo(9, -8); ctx.lineTo(13, -30); }
+    else { ctx.moveTo(-9, -8); ctx.lineTo(-17, 0); ctx.moveTo(9, -8); ctx.lineTo(17, 0); }
+    ctx.moveTo(-3, -26); ctx.quadraticCurveTo(-8, -34, -14, -34); ctx.moveTo(3, -26); ctx.quadraticCurveTo(8, -34, 14, -34);
+    ctx.stroke();
+    ctx.fillStyle = '#8d97b8'; ctx.beginPath(); ctx.ellipse(0, 2, 12, 17, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#5d6688'; ctx.beginPath();
+    for (let ly = -8; ly <= 14; ly += 5) { const w = 12 * Math.sqrt(1 - ((ly - 2) / 17) ** 2); ctx.moveTo(-w, ly); ctx.lineTo(w, ly); }
+    ctx.stroke();
+    ctx.fillStyle = '#a3acc9'; ctx.beginPath(); ctx.ellipse(0, -19, 9, 7, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(-4, -20, 2.6, 0, TAU); ctx.arc(4, -20, 2.6, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(-4, -21, 1.3, 0, TAU); ctx.arc(4, -21, 1.3, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -17, 3, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+    ctx.fillStyle = '#ff5c5c'; ctx.beginPath(); ctx.arc(0, -25, 8, Math.PI, 0); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(-2, -26, 15, 3, 1.5); ctx.fill();
+    ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(0, -33, 2, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  // Quill Cheapwing on a post in the pond, facing the table; he flaps and opens his beak when he laughs
+  function quill(ctx, x, y, laugh, t) {
+    const flap = laugh > 0 ? Math.sin(t * 30) * 0.5 : 0, open = laugh > 0 ? 4 + Math.sin(t * 25) * 2 : 0;
+    ctx.fillStyle = '#7a4a1e'; ctx.fillRect(x - 5, y + 14, 10, CURL.brink - y - 14);
+    ctx.save(); ctx.translate(x, y); ctx.scale(-1, 1);
+    ctx.strokeStyle = '#ffb84d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-3, 9); ctx.lineTo(-3, 16); ctx.moveTo(4, 9); ctx.lineTo(4, 16); ctx.stroke();
+    ctx.fillStyle = '#22263a'; ctx.beginPath(); ctx.moveTo(-12, -2); ctx.lineTo(-28, 6); ctx.lineTo(-24, -6); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 0, 15, 11, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(11, -11, 8.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffb84d'; ctx.beginPath(); ctx.moveTo(18, -14); ctx.lineTo(29, -12 - open / 2); ctx.lineTo(18, -10); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(18, -10); ctx.lineTo(27, -9 + open); ctx.lineTo(18, -8); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(13, -13, 3, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(14, -13, 1.5, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#8a8fb0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(9, -18); ctx.lineTo(17, -16); ctx.stroke();
+    ctx.save(); ctx.translate(-2, -2); ctx.rotate(-0.3 - flap);
+    ctx.fillStyle = '#2f3550'; ctx.beginPath(); ctx.ellipse(-4, 0, 13, 7, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.restore();
+  }
+  const curling = {
+    name: 'Cousin Curling', title: '🥌 COUSIN CURLING 🥌', over: 'ALL CURLED UP!', count: 'Cousins on the table 🥌',
+    tip: 'BONUS ROUND! Tap to roll, tap again to stop. Near the edge pays most. Too far: SPLASH', seconds: 20, ball: false, hidePaddle: true,
+    start(api) {
+      Object.assign(api.state, { pucks: [], out: [], active: null, next: CURL.cousins, ax: api.W / 2, cd: 0, calmT: 0, bonk: 0, caw: 0, wow: 0, done: false });
+      talk(api, api.pick(CURL_LINES.start), 3);
+    },
+    tick(api, dt) {
+      const st = api.state;
+      settle(api, dt);
+      st.cd -= dt; st.bonk = Math.max(0, st.bonk - dt); st.caw = Math.max(0, st.caw - dt); st.wow = Math.max(0, st.wow - dt);
+      st.ax += (api.clamp(api.paddle.x, CURL.left + CURL.r, CURL.right - CURL.r) - st.ax) * Math.min(1, dt * 10);
+      for (let i = 0; i < CURL.steps; i++) curlStep(api, dt / CURL.steps);
+      for (const p of st.out) p.t += dt * 2;
+      st.out = st.out.filter((p) => p.t < 1);
+      // the bank shows what the resting cousins pay now; a knock can change it until the end
+      if (!st.cashed) {
+        const n = st.pucks.reduce((s, p) => s + (p.mode === 'rest' ? curlPay(p.y) : 0), 0);
+        if (n !== (st.bank || 0)) { st.bank = n; st.bankPop = 1; }
+      }
+      if (st.done) return;
+      st.calmT = !st.next && st.pucks.every((p) => p.mode === 'rest') ? st.calmT + dt : 0;
+      if (st.calmT > CURL.calm || api.left < 0.3) curlFinish(api);
+    },
+    draw(api, ctx, t) {
+      const st = api.state, W = api.W, L = CURL.left, R = CURL.right;
+      // the pond behind the far edge
+      ctx.fillStyle = 'rgba(40,120,200,0.55)'; ctx.beginPath(); ctx.moveTo(0, CURL.brink);
+      for (let x = 0; x <= W; x += 12) ctx.lineTo(x, CURL.pond + Math.sin(x * 0.05 + t * 2) * 3);
+      ctx.lineTo(W, CURL.brink); ctx.fill();
+      // the table and its pay bands; the band at the edge blinks
+      ctx.fillStyle = 'rgba(200,230,255,0.14)'; ctx.fillRect(L, CURL.brink, R - L, CURL.launch + 36 - CURL.brink);
+      let top = CURL.brink;
+      for (const b of CURL_BANDS) {
+        ctx.globalAlpha = b === CURL_BANDS[0] ? 0.25 + 0.12 * Math.sin(t * 6) : 0.16; ctx.fillStyle = b.c; ctx.fillRect(L, top, R - L, b.y - top);
+        ctx.globalAlpha = 1; label(ctx, '+' + b.pay, L + 24, (top + b.y) / 2, b.c, b === CURL_BANDS[0] ? 18 : 14);
+        top = b.y;
+      }
+      ctx.fillStyle = '#7a4a1e'; ctx.fillRect(L - 8, CURL.brink, 8, CURL.launch + 36 - CURL.brink); ctx.fillRect(R, CURL.brink, 8, CURL.launch + 36 - CURL.brink);
+      ctx.fillStyle = '#ffd23f'; ctx.fillRect(L, CURL.brink - 2, R - L, 4);
+      // falling cousins drop into the pond and leave a ring
+      for (const p of st.out) {
+        const y = p.y - 30 * p.t;
+        ctx.globalAlpha = 1 - p.t; pillBall(ctx, p.x, y, CURL.r * (1 - p.t * 0.5), p.spin + p.t * 8);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p.x, CURL.brink - 30, 10 + p.t * 30, 3 + p.t * 6, 0, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      quill(ctx, CURL.quillX, CURL.quillY, st.caw, t);
+      const ready = !st.active && st.next > 0;
+      if (ready) { ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(st.ax, CURL.launch - 24); ctx.lineTo(st.ax, CURL.brink); ctx.stroke(); ctx.setLineDash([]); }
+      for (const p of st.pucks) {
+        if (p.mode === 'roll') { pillBall(ctx, p.x, p.y, CURL.r, p.spin); continue; }
+        cousin(ctx, p, t);
+        if (p.mode === 'rest') { const pay = curlPay(p.y); label(ctx, pay ? '+' + pay : 'z', p.x + 18, p.y - 20, pay ? '#ffffff' : '#8a8fb0', 12); }
+      }
+      if (ready) pillBall(ctx, st.ax, CURL.launch, CURL.r, 0);
+      pip(ctx, st.ax, CURL.launch + 44, ready);
+      label(ctx, '×' + st.next, st.ax + (st.ax > R - 50 ? -44 : 44), CURL.launch + 40, st.next ? '#e8ecff' : '#8a8fb0', 20);
+      // Mortimer beside the table
+      ctx.fillStyle = '#7a4a1e'; ctx.fillRect(CURL.snailX - 22, CURL.snailY + 20, 44, 6); ctx.fillRect(CURL.snailX - 3, CURL.snailY + 26, 6, 50);
+      snail(api, ctx, CURL.snailX, CURL.snailY, 1.4, -1, (st.wow > 0 || st.bonk > 0) && Math.sin(t * 30) > 0);
+      if (st.active && st.active.mode === 'roll') label(ctx, 'TAP = STOP', W / 2, api.H - 30, Math.sin(t * 12) > 0 ? '#ff7ad9' : '#ffffff', 18);
+      else if (ready) label(ctx, 'TAP = ROLL', W / 2, api.H - 30, Math.sin(t * 6) > 0 ? '#7cf2a8' : '#ffffff', 16);
+      drawBank(api, ctx);
+      drawTalk(api, ctx, CURL.snailX, CURL.snailY - 30);
+    },
+    tap(api) { curlTap(api); },
+  };
+
+  window.BBRounds = { pachinko, tower, kart, karaoke, fishing, sort, pusher, balloon, curling };
 })();

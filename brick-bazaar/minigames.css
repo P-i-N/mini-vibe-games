@@ -255,3 +255,44 @@
 .mg-sky.mg-shake { animation: mg-shake 0.4s ease-in-out; }
 .mg-btns .mg-big.mg-on { transform: translateY(0.2em); box-shadow: 0 0.1em 0 #1b4fa0; filter: brightness(1.2); }
 @keyframes mg-float { to { transform: translate(3em, -7em); } }
+
+/* Tiptoe Till. The floor is 1em from the bottom of the shop; tiptoeLeft sets the left of each thing. */
+.mg-clock { flex: none; width: 100%; max-width: 22em; margin: 0 auto 0.4em; }
+.mg-shop { position: relative; flex-shrink: 0; width: 100%; max-width: 22em; height: 9em; margin: 0 auto; border-radius: 0.9em;
+  background: linear-gradient(180deg, #1d2350, #161a36 75%, #3a2a1c 75%); overflow: hidden; touch-action: none;
+  -webkit-touch-callout: none; }
+.mg-pick .mg-shop { animation: mg-pulse 0.7s ease-in-out infinite alternate; }
+.mg-loot { position: absolute; bottom: 1em; font-size: 1.1em; line-height: 1; transform: translateX(-50%); }
+.mg-loot.mg-got { opacity: 0; transform: translate(-50%, -2.5em) scale(1.4); transition: transform 0.4s ease-out, opacity 0.4s ease-in; }
+.mg-jar { position: absolute; bottom: 0.9em; font-size: 2em; line-height: 1; transform: translateX(-50%); }
+.mg-nap { position: absolute; right: 0.2em; bottom: 0.8em; width: 3em; text-align: center; }
+.mg-mort { display: inline-block; font-size: 2.4em; line-height: 1; transition: transform 0.15s; }
+.mg-nap.mg-sleep .mg-mort { transform: scaleX(-1); }
+.mg-nap.mg-stir .mg-mort { transform: scaleX(-1); animation: mg-toss 0.1s linear infinite alternate; }
+.mg-nap.mg-look .mg-mort { transform: scale(1.15); }
+.mg-nap.mg-mad .mg-mort { animation: mg-shake 0.3s ease-in-out 3; }
+.mg-zzz { position: absolute; left: 1.8em; top: -1.2em; font-size: 1.1em; line-height: 1; opacity: 0; }
+.mg-nap.mg-sleep .mg-zzz { opacity: 1; animation: mg-wobble 0.8s ease-in-out infinite alternate; }
+.mg-alarm { position: absolute; left: 0; right: 0; top: -1.5em; font-size: 1.4em; line-height: 1; }
+.mg-nap.mg-look .mg-alarm { animation: mg-pop 0.25s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.mg-broom { position: absolute; right: 2.6em; bottom: 1.5em; font-size: 2em; line-height: 1; opacity: 0; transform-origin: 80% 20%;
+  pointer-events: none; z-index: 3; }
+.mg-shop.mg-swat .mg-broom { opacity: 1; animation: mg-swat 0.5s ease-in 2; }
+.mg-coon { position: absolute; bottom: 0.8em; width: 0; height: 0; z-index: 2; pointer-events: none; }
+.mg-face { position: absolute; left: 0; bottom: 0; font-size: 2.2em; line-height: 1; transform: translateX(-50%); }
+.mg-coon.mg-walk .mg-face { animation: mg-tiptoe 0.25s ease-in-out infinite alternate; }
+.mg-plant { position: absolute; left: 0; bottom: -0.1em; font-size: 2.1em; line-height: 1; z-index: 1; opacity: 0;
+  transform: translateX(-30%) scale(0.6); transition: opacity 0.1s, transform 0.15s; }
+.mg-coon.mg-still .mg-plant { opacity: 1; transform: translateX(-30%); }
+.mg-sack { position: absolute; left: -1.6em; bottom: 0.2em; font-size: 1.1em; line-height: 1; opacity: 0; }
+.mg-coon.mg-flee { left: -15% !important; transition: left 1s ease-in; }
+.mg-coon.mg-flee .mg-sack, .mg-coon.mg-hug .mg-sack { opacity: 1; }
+.mg-coon.mg-hug .mg-face { animation: mg-tiptoe 0.15s ease-in-out 6 alternate; }
+.mg-coon.mg-caught .mg-face { animation: mg-tiptoe 0.06s linear infinite alternate; }
+.mg-coon.mg-fly .mg-face { transform: translate(-6em, -5em) rotate(-540deg); opacity: 0;
+  transition: transform 0.9s ease-out, opacity 0.5s ease-in 0.4s; animation: none; }
+.mg-btns:has(.mg-cash[hidden]) .mg-sneak { grid-column: 1 / -1; }
+.mg-pick .mg-sneak { animation: mg-pulse 0.7s ease-in-out infinite alternate; }
+@keyframes mg-tiptoe { from { transform: translate(-50%, 0) rotate(-5deg); } to { transform: translate(-50%, -0.25em) rotate(5deg); } }
+@keyframes mg-swat { 50% { transform: rotate(-70deg); } }
+@keyframes mg-toss { from { transform: scaleX(-1) rotate(-8deg); } to { transform: scaleX(-1) rotate(8deg); } }

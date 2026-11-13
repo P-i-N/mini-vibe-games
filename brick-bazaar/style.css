@@ -8,6 +8,7 @@ html, body {
 body { display: flex; align-items: center; justify-content: center; }
 #wrap { position: relative; }
 canvas { display: block; touch-action: none; }
+#game { position: fixed; left: 0; top: 0; }
 
 #pauseBtn {
   position: absolute; top: 0.5em; right: 0.5em; width: 2.6em; height: 2.6em;
@@ -15,10 +16,11 @@ canvas { display: block; touch-action: none; }
   font-weight: 800; font-size: 1em; letter-spacing: -0.1em; cursor: pointer; display: none;
 }
 
-#overlay {
-  position: absolute; inset: 0; display: none; flex-direction: column;
+#overlay { position: absolute; inset: 0; display: none; flex-direction: column; touch-action: pan-y; isolation: isolate; }
+/* A menu has the size of the field. Its shade covers the whole window, also the margins around the field. */
+#overlay::before {
+  content: ''; position: fixed; inset: 0; z-index: -1;
   background: rgba(6, 7, 18, 0.92); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  touch-action: pan-y;
 }
 #overlay.show { display: flex; }
 
@@ -63,7 +65,7 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .card .top { display: flex; align-items: center; gap: 0.4em; }
 .card .ic { font-size: 1.6em; line-height: 1; }
 .card .nm { font-weight: 800; font-size: 0.95em; line-height: 1.15; }
-.card .ds { font-size: 0.75em; color: #a3abd9; line-height: 1.3; flex: 1; }
+.card .ds { font-size: 0.8em; color: #a3abd9; line-height: 1.3; flex: 1; }
 .pips { display: flex; gap: 0.2em; }
 .pip { width: 0.7em; height: 0.35em; border-radius: 0.2em; background: #ffffff1f; }
 .pip.on { background: #5ef0ff; }
@@ -78,7 +80,7 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 @keyframes fl { 0% { transform: scale(1); } 40% { transform: scale(1.04); background: #2a3a6a; } 100% { transform: scale(1); } }
 
 /* Translucent overlay: the canvas stays visible behind menus and results */
-#overlay.see { background: rgba(6, 7, 18, 0.62); backdrop-filter: blur(1.5px); -webkit-backdrop-filter: blur(1.5px); }
+#overlay.see::before { background: rgba(6, 7, 18, 0.62); backdrop-filter: blur(1.5px); -webkit-backdrop-filter: blur(1.5px); }
 .pair { display: flex; gap: 0.5em; max-width: 20.7em; margin: 0.6em auto; }
 .pair .big { margin: 0; font-size: 1em; padding: 0.8em 0.4em; }
 .logo { filter: drop-shadow(0 0 0.35em #ff9a3d88); animation: logo 2.6s ease-in-out infinite; }
@@ -206,6 +208,6 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 /* Seals, sets and the price lock */
 .purse { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25em; }
 .coins.seals { font-size: 0.95em; color: #bfe9ff; background: #12233f; border-color: #5ef0ff55; }
-.setline { font-size: 0.68em; line-height: 1.25; color: #9aa3d6; border-top: 1px dashed #ffffff22; padding-top: 0.3em; }
+.setline { font-size: 0.72em; line-height: 1.25; color: #9aa3d6; border-top: 1px dashed #ffffff22; padding-top: 0.3em; }
 .setline.on { color: #7cf2a8; }
 .sale.lock { background: #2f8cff; }
