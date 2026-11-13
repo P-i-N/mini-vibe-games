@@ -546,6 +546,7 @@
       layer: 'ground', trans: null, visited: { sky: 0, ground: 0, dig: 0 }, used: { sky: false, dig: false },
       time: 0, banner: LORE.chapters && LORE.chapters[n - 1] ? 10 : 5, clearT: -1, shake: 0, flash: 0, sel: null, heckled: {}, heckle: null, idleT: 0, thinkT: 0, digSfx: 0, toast: null,
       balls: [], reg: false, potN: 0, treeN: 0, pondN: 0,
+      boxes: [],
       bubbles: [], barkT: 3, voiceT: {}, letter: null, letterFound: false, idleSay: 20,
       geysers: [], kettle: 0, stompN: 0, swatN: 0, builtN: 0, hazN: 0, boltKills: 0, lucky: 0, links: 0, lastL: '', comboMul: 2, chalk: false, banner2: null, barNote: null, bossDown: null, sapperSeen: false, fxLayer: null, drag: null, spyT: 0,
     });
@@ -587,7 +588,7 @@
   function bubble(x, y, z, s, o) {
     if (!s || !G) return;
     if (G.bubbles.length > 3) G.bubbles.shift();
-    G.bubbles.push(Object.assign({ x, y, z, s: String(s), t: 2.4, T: 2.4, layer: G.fxLayer || 'ground' }, o));
+    G.bubbles.push(Object.assign({ x, y, z, s: String(s), t: 3.4, T: 3.4, layer: G.fxLayer || 'ground' }, o));
   }
   function bark(e, ev, chance = 1) {
     const list = VO.barks && VO.barks[e.k] && VO.barks[e.k][ev];
@@ -606,14 +607,14 @@
   function bossSay(e, ev) {
     const b = VO.boss && VO.boss[e.k], list = b && b[ev];
     if (!list || !list.length) return;
-    bubble(e.x, e.y, e.z + 1.5, pick(list), { e, t: 4, T: 4, boss: true });
+    bubble(e.x, e.y, e.z + 1.5, pick(list), { e, t: 7, T: 7, boss: true });
   }
   function shake(v) { G.shake = Math.min(14, Math.max(G.shake, v)); }
   // runs fn with effects sent to another layer than the ground
   function onLayer(layer, fn) { const prev = G.fxLayer; G.fxLayer = layer; try { fn(); } finally { G.fxLayer = prev; } }
   // the gnome's bubble during play: once per id and level
   function heckle(id, n) {
-    if (G.heckled[id] || (G.heckle && G.heckle.t > 0)) return;
+    if (G.heckled[id]) return;
     const s = keeperLine(id, n); if (!s) return;
     G.heckled[id] = true; G.heckle = { text: s, t: 4.5 };
   }
@@ -1387,7 +1388,7 @@
     if (G.letterFound || lettersLeft() <= 0 || Math.random() > (G.digs >= 6 ? 0.4 : 0.15)) return;
     const idx = meta.letters.length, L = LORE.letters[idx];
     G.letterFound = true; meta.letters.push(idx); saveMeta(); G.loot += 2; sfx.relic();
-    G.letter = { idx, t: 14, T: 14 };
+    G.letter = { idx, t: 1 }; G.banner = 0;
     onLayer('dig', () => { say(x, y, DIG_Z + 1, 'A LETTER! +2 gems', '#fff1c9', true); burst(x, y, DIG_Z + 0.4, '#fff1c9', 14, 2.4); });
     if (lettersLeft() === 0) { G.loot += 12; G.banner2 = { text: 'THE WHOLE STORY!', sub: `all ${LORE.letters.length} letters: +12 gems`, t: 3 }; }
     return L;
@@ -1584,7 +1585,6 @@
     G.texts = G.texts.filter((t) => t.t > 0);
     for (const b of G.bubbles) { b.t -= dt; if (b.e && !b.e.dead) { b.x = b.e.x; b.y = b.e.y; } }
     G.bubbles = G.bubbles.filter((b) => b.t > 0);
-    if (G.letter && G.letter.t > 0) G.letter.t -= dt;
     // small talk while the garden waits
     G.idleSay -= dt;
     if (G.idleSay <= 0) {
@@ -1605,11 +1605,8 @@
     if (G.swatT > 0) G.swatT -= dt;
     if (G.doorT > 0) G.doorT -= dt;
     if (G.bellT > 0) G.bellT -= dt;
-    if (G.banner > 0) G.banner -= dt;
     if (G.banner2 && G.banner2.t > 0) G.banner2.t -= dt;
     if (G.barNote && G.barNote.t > 0) G.barNote.t -= dt;
-    if (G.heckle && G.heckle.t > 0) G.heckle.t -= dt;
-    if (G.toast && G.toast.t > 0) G.toast.t -= dt;
     if (G.streak.t > 0) { G.streak.t -= dt; if (G.streak.t <= 0) { G.streak.n = 0; A.streak(0); } }
     if (G.combo > 0) { G.combo -= dt; if (G.combo <= 0) { G.combo = 0; G.links = 0; G.comboMul = 2; G.comboCd = G.time + 10; for (const l of LAYERS) G.act[l] = -99; A.fever(false); } }
     // the gnome notices a layer that nobody uses
@@ -2164,8 +2161,9 @@
   const BELL = [W / 2 - 44, HUD_H + 10, 88, 56];
   function tap(sx, sy) {
     if (G.trans) return;
-    if (G.banner > 0.4) G.banner = 0.4;
-    if (G.letter && G.letter.t > 0.3 && G.letter.t < G.letter.T - 1) { G.letter.t = 0.3; if (sy < HUD_H + 190 && sy > HUD_H) return; }
+    if (G.layer !== 'ground' && ringing() && inRect(BELL, sx, sy)) { swat(); return; } // the bell comes before any box
+    // info boxes stay until they are closed: a tap on a box (or its X) puts it away
+    for (let k = G.boxes.length - 1; k >= 0; k--) { const q = G.boxes[k]; if (sx >= q.x - 6 && sx <= q.x + q.w + 10 && sy >= q.y - 10 && sy <= q.y + q.h + 6) { q.close(); sfx.tab(); return; } }
     if (sy >= H - BAR_H) {
       const R = barRects();
       for (const l of LAYERS) if (inRect(R[l], sx, sy)) { setLayer(l); return; }
@@ -2769,17 +2767,26 @@
       ctx.globalAlpha = 1;
     }
   }
+  // An info box stays open until its X is tapped. Each frame the open boxes register their rectangles for tap().
+  function closeBox(x, y, w, h, close, dark) {
+    G.boxes.push({ x, y, w, h, close });
+    const cx = x + w - 4, cy = y + 4;
+    ctx.beginPath(); ctx.arc(cx, cy, 12, 0, 7); ctx.fillStyle = dark ? '#3a2a12' : '#ff5a7a'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 4.5, cy - 4.5); ctx.lineTo(cx + 4.5, cy + 4.5); ctx.moveTo(cx + 4.5, cy - 4.5); ctx.lineTo(cx - 4.5, cy + 4.5); ctx.lineCap = 'round'; ctx.lineWidth = 2.5; ctx.stroke();
+  }
   function drawLetter() {
     const L = G.letter; if (!L || L.t <= 0 || !LORE.letters) return;
-    const D = LORE.letters[L.idx], lines = wrapLines(D.text, 13, W - 110), h = 58 + lines.length * 17, a = Math.min(1, L.t * 3, (L.T - L.t) * 4), y0 = HUD_H + 16;
+    const D = LORE.letters[L.idx], lines = wrapLines(D.text, 13, W - 110), h = 58 + lines.length * 17, a = 1, y0 = HUD_H + 16;
     ctx.globalAlpha = a; ctx.save(); ctx.translate(W / 2, y0 + h / 2); ctx.rotate(-0.012); ctx.translate(-W / 2, -(y0 + h / 2));
     panel(34, y0, W - 68, h, 6, '#f6e7c1', '#8a6a3a');
     text(`LETTER ${L.idx + 1} OF ${LORE.letters.length}`, W / 2, y0 + 16, '#8a6a3a', 10);
     lines.forEach((l, k) => text(l, W / 2, y0 + 38 + k * 17, '#3a2a12', 13, 'center', false, false));
     text(D.from ? `from ${D.from}`.replace(/^from from /i, 'from ') : '', W - 52, y0 + h - 12, '#8a6a3a', 11, 'right', false, false);
     ctx.restore(); ctx.globalAlpha = 1;
+    closeBox(34, y0, W - 68, h, () => { G.letter = null; }, true);
   }
   function drawNotices() {
+    G.boxes.length = 0;
     drawBubbles(); drawLetter();
     // who comes next, while the garden waits
     if (G.layer === 'ground' && !G.trans && canCallWave() && !(G.banner > 0) && !(G.banner2 && G.banner2.t > 0)) {
@@ -2797,24 +2804,24 @@
       panel(BELL[0], BELL[1], BELL[2], BELL[3], 14, 'rgba(255,42,77,0.92)', '#ffffff');
       blit(art('bell'), W / 2 - 22 + Math.sin(T * 34) * 2, BELL[1] + 44, 1.3 * k, 1.3 * k); text(G.swatT > 0 ? 'wait...' : 'SWAT!', W / 2 + 16, BELL[1] + 28, '#ffffff', 14);
     }
+    let boxY = VIEW_Y1 - 8;
     if (G.toast && G.toast.t > 0) {
-      const lines = wrapLines(G.toast.text, 12, W - 70), h = lines.length * 16 + 12, y = VIEW_Y1 - h - 8;
-      ctx.globalAlpha = Math.min(1, G.toast.t * 3);
-      panel(20, y, W - 40, h, 10, 'rgba(12,14,30,0.9)', '#ffffff33');
-      lines.forEach((l, k) => text(l, W / 2, y + 14 + k * 16, '#e8ecff', 12, 'center', false, false));
-      ctx.globalAlpha = 1;
+      const lines = wrapLines(G.toast.text, 12, W - 96), h = lines.length * 16 + 12, y = boxY - h;
+      panel(20, y, W - 40, h, 10, 'rgba(12,14,30,0.92)', '#ffffff33');
+      lines.forEach((l, k) => text(l, W / 2 - 8, y + 14 + k * 16, '#e8ecff', 12, 'center', false, false));
+      closeBox(20, y, W - 40, h, () => { G.toast = null; });
+      boxY = y - 16;
     }
     const hk = G.heckle;
-    if (hk && hk.t > 0 && !(G.toast && G.toast.t > 0)) {
-      const lines = wrapLines(hk.text, 12, W - 130), h = Math.max(44, lines.length * 16 + 14), y = VIEW_Y1 - h - 8;
-      ctx.globalAlpha = Math.min(1, hk.t * 3, (4.5 - hk.t) * 6);
+    if (hk && hk.t > 0) {
+      const lines = wrapLines(hk.text, 12, W - 150), h = Math.max(44, lines.length * 16 + 14), y = boxY - h;
       const gs = art('gnome', { mood: 0 }); ctx.drawImage(gs.cv, 8, y + h - 52, gs.w * 0.72, gs.h * 0.72);
       panel(70, y, W - 84, h, 12, '#f4f6ff'); ctx.fillStyle = '#f4f6ff'; ctx.beginPath(); ctx.moveTo(70, y + h - 24); ctx.lineTo(60, y + h - 18); ctx.lineTo(70, y + h - 12); ctx.fill();
       lines.forEach((l, k) => text(l, 80, y + (h - lines.length * 16) / 2 + 8 + k * 16, '#1b1f33', 12, 'left', false, false));
-      ctx.globalAlpha = 1;
+      closeBox(70, y, W - 84, h, () => { G.heckle = null; });
     }
     if (G.banner > 0) {
-      const a = Math.min(1, G.banner * 2, ((G.banner0 || 5) - G.banner) * 4), tip = tipFor(G.n), isNew = tip.startsWith('NEW:');
+      const a = 1, tip = tipFor(G.n), isNew = tip.startsWith('NEW:');
       const ch = LORE.chapters && LORE.chapters[G.n - 1], story = ch ? wrapLines(ch.text, 13, W - 84) : [];
       const lines = tip ? wrapLines(isNew ? tip.slice(4).trim() : tip, 13, W - 80) : [], sh = story.length ? story.length * 17 + 30 : 0, h = 62 + sh + lines.length * 17 + (isNew ? 18 : 0);
       ctx.globalAlpha = a;
@@ -2825,6 +2832,7 @@
       if (isNew) { text('NEW', W / 2, y, '#ffe680', 13); y += 18; }
       lines.forEach((l, k) => text(l, W / 2, y + k * 17, isNew ? '#fff6c9' : '#c9d0ff', 13, 'center', false, false));
       ctx.globalAlpha = 1;
+      closeBox(24, HUD_H + 14, W - 48, h, () => { G.banner = 0; });
     }
     const b = G.banner2;
     if (b && b.t > 0 && (mode === 'play' || mode === 'pause')) {
