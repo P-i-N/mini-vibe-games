@@ -6,7 +6,7 @@
 window.SS_LORE = {
   premise: [
     "A castle the size of a shed holds the Everlasting Biscuit Tin: take one out, another appears. The vermin say they are owed.",
-    "Grandma Marigold Bramble, eighty-three, kettle-throwing champion, answers the door with Doris, her rolling pin. You are her grandchild.",
+    "Grandma Marigold Bramble, 83, kettle-throwing champion, answers the door with Doris, her rolling pin. You are her grandchild.",
     "Grandpa Bertie grew too tall for the castle and lives above the clouds. Point at the path and his Boot stomps it. He never looks.",
     "Under the lawn lies the first Castle Bramble, sunk 150 years ago. Hamsters call its pantry the Mother Lode. Rats call it evidence.",
     "The clouds are Grandma's knitting and go where family points. The Cheek and Shovel Union hamsters dig for a biscuit a shift.",
@@ -15,25 +15,25 @@ window.SS_LORE = {
   chapters: [
     // Arc one: the garden. Levels 1-10, ending at Mama Hen.
     { title: "The Doorbell", text: "A rat rang twice for a biscuit and got Doris. Forty more are queuing. A snail called Sidney has set off too." },
-    { title: "Air Mail", text: "Balloon rats say the sky is not technically the garden. Grandma builds a kite. Sidney is eleven centimetres in." },
-    { title: "Downstairs", text: "The hut hides a mine. Eight Cheek and Shovel Union hamsters sign on. Big Kevin reads Rule 3: three items a backpack." },
-    { title: "Cold Comfort", text: "Forty years on, Grandma defrosts the freezer. Out comes the Brain Freeze. Professor Nibs finds numbers in the dirt." },
+    { title: "Air Mail", text: "Balloon rats say the sky is not technically the garden. Grandma builds a kite. Sidney is 11 centimetres in." },
+    { title: "Downstairs", text: "The hut hides a mine. Eight union hamsters sign on. Big Kevin reads out Rule 3: three items a backpack." },
+    { title: "Cold Comfort", text: "Grandma defrosts the freezer after forty years. Out comes the Brain Freeze. Nibs finds numbers in the dirt." },
     { title: "His Majesty", text: "King Whiskerton the Sixth demands 'back pay', trips, and becomes several rats. The clouds come down to help." },
-    { title: "Slapstick", text: "Gnorman sells Grandma a Banana Peeler that fell off a lorry. There are no lorries. Under the lawn, a crystal hums." },
+    { title: "Slapstick", text: "Gnorman sells Grandma a Banana Peeler that fell off a lorry. There are no lorries. A crystal hums below." },
     { title: "Gold Rush", text: "Golden puffs appear when you are busy everywhere at once. Weather, showing off. Sidney reaches the first bend." },
     { title: "Tea Time", text: "Grandma's second-best teapot becomes a mortar. Is it still tea? Sprocket finds dynamite. Everyone stands back." },
     { title: "Helmets", text: "Sapper moles in tiny helmets tunnel for the castle, on orders from the Tyrant. One is 'only passing under'." },
-    { title: "The Big Egg", text: "Mama Hen is sure the castle is an egg Grandma pinched. She has come to sit on it. Nobody can talk her out of it." },
+    { title: "The Big Egg", text: "Mama Hen is sure the castle is an egg Grandma pinched. She has come to sit on it. Nobody can talk her down." },
 
     // Arc two: the mine. Levels 11-20, ending at the Tunnel Tyrant.
-    { title: "Toast", text: "A crackling toaster falls from the sky. 'Bertie,' sighs Grandma. It makes lightning now. And toast, on Sundays." },
-    { title: "Chimney Pot", text: "Little Clive finds a chimney pot deep under the lawn, carved BRAMBLE. Grandma says that is not possible. It is." },
+    { title: "Toast", text: "A crackling toaster falls from the sky. 'Bertie,' sighs Grandma. It makes lightning now. And Sunday toast." },
+    { title: "Chimney Pot", text: "Little Clive digs up a chimney pot carved BRAMBLE. Grandma says that is not possible. It is." },
     { title: "Strike Talk", text: "Brenda Ten-Pockets demands bigger backpacks. Grandma offers custard creams. Motion carried, mouths full." },
     { title: "Storm Watch", text: "A bored storm digs the mine. Marjorie sings to it. High in the clouds, something very large honks back." },
     { title: "Two Kings", text: "Two King Whiskerton the Sixths arrive. Perfectly normal, they say. Grandma counts twenty-four feet." },
     { title: "Signed, Primrose", text: "A dug-up note is signed Primrose Bramble. 'Great-Granny,' says Grandma. 'She always did write on everything.'" },
     { title: "Upwards", text: "A stink pocket blasts up into the rats. Dougal faints in sympathy. A note names Sir Whiskerton, Royal Taster." },
-    { title: "Back Pay", text: "Great-Granny promised the rats a biscuit a day, for ever. Then the castle sank. The rats have waited ever since." },
+    { title: "Back Pay", text: "Great-Granny promised the rats a biscuit a day, for ever. Then the castle sank. The rats have waited since." },
     { title: "Bowled Over", text: "Hedgehogs roll in; the Boot bowls them back. On a napkin, Grandma tots up the back pay: 54,750 biscuits." },
     { title: "The Tyrant", text: "The Tunnel Tyrant has circled the old pantry for years. He is bonked, then kindly pointed the right way." },
 
@@ -176,7 +176,7 @@ window.SS_LORE = {
     "Pond frogs are paid in pond weed. They negotiate very hard.",
     "Grandpa Bertie has never looked down. He trusts your aim.",
     "Beetles polish their armour every evening. Some of them polish twice.",
-    "A ginger biscuit lasts for ever if uneaten. That is rarely the problem.",
+    "A ginger biscuit lasts for ever if uneaten. That is rarely the issue.",
     "The Garden Gazette is printed on biscuit wrappers. Delivered by snail.",
     "Thunder is only the Thunder Goose clearing her throat.",
     "Gnome Depot has one shelf. It is a very good shelf.",

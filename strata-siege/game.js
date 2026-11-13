@@ -156,7 +156,7 @@
   const TWISTS = {
     conga: { name: 'CONGA!', sub: 'they come in one long line', gap: 0.3 },
     sports: { name: 'SPORTS DAY', sub: 'faster, and worth double', spd: 1.4, coin: 2 },
-    fancy: { name: 'FANCY DRESS', sub: 'party hats are armour. The Boot flips beetles', armor: 2 },
+    fancy: { name: 'FANCY DRESS', sub: 'armoured party hats. Stomp beetles', armor: 2 },
   };
   // Towers on neighbouring tiles that like each other. The key is the two kinds in alphabetical order.
   const PALS = {
@@ -826,7 +826,7 @@
           }
         }
         if (e.dead) continue;
-        if (e.d >= G.len && e.reg) { e.dead = true; sfx.bell(); say(G.castle.x, G.castle.y, 1.7, 'Tea for Sir Reginald. No hearts lost', '#ffe680', true); grandma('idle', 1); continue; }
+        if (e.d >= G.len && e.reg) { e.dead = true; sfx.bell(); say(G.castle.x, G.castle.y, 1.7, 'Tea for Sir Reginald. No harm done', '#ffe680', true); grandma('idle', 1); continue; }
         if (e.d >= G.len) { e.state = 'ring'; e.ring = ringS(); G.bellT = 0.5; sfx.bell(); buzz(30); }
       }
     }
@@ -1151,7 +1151,7 @@
       while (G.spawnQ.length && G.spawnQ[0].at <= G.spawnT) {
         const q = G.spawnQ.shift(), tw = q.tw ? TWISTS[q.tw] : null, e = spawnFoe(q.k);
         if (q.wanted) { e.wanted = true; const w = LORE2.wantedNames && pick(LORE2.wantedNames); if (w) { e.wname = w.name; bubble(e.x, e.y, 0.8, `WANTED: ${w.name}, ${w.crime}`, { e, t: 5, T: 5 }); } }
-        if (q.reg) { e.reg = 3; e.hearts = 0; e.spd *= 1.7; e.armor = 0; G.banner2 = { text: 'SIR REGINALD!', sub: 'the Snail of Fortune: stomp him thrice', t: 3 }; sfx.relic(); bubble(e.x, e.y, 0.8, 'Good day. Do mind the shell.', { e, t: 3.5, T: 3.5 }); }
+        if (q.reg) { e.reg = 3; e.hearts = 0; e.spd *= 1.7; e.armor = 0; G.banner2 = { text: 'SIR REGINALD!', sub: 'Snail of Fortune: stomp him thrice', t: 3 }; sfx.relic(); bubble(e.x, e.y, 0.8, 'Good day. Do mind the shell.', { e, t: 3.5, T: 3.5 }); }
         if (tw && !e.F.boss) { e.tw = q.tw; if (tw.spd) e.spd *= tw.spd; if (tw.armor) e.armor += tw.armor; if (tw.coin) e.coinK = tw.coin; }
       }
     } else if (G.waveIdx < G.waves.length) { G.countdown -= dt; if (G.countdown <= 0) launchWave(); }
@@ -1193,7 +1193,7 @@
     const c = G.ug.filter((t) => !t.dug && !t.pot && !HAZARDS[t.content] && t.content !== 'lode' && dug.some((d) => Math.abs(d.i - t.i) + Math.abs(d.j - t.j) <= 2));
     if (!c.length) return;
     const t = pick(c); t.pot = G.time + 45;
-    toast('The rainbow ends in the mine. Dig the marked dirt within 45 s for the pot');
+    toast('The rainbow ends in the mine. Dig the marked dirt in 45 s for the pot');
   }
   function mergeClouds(a, b) {
     const r = mergeResult(a, b);
@@ -1582,7 +1582,7 @@
       let n = 0;
       for (const e of G.enemies) if (!e.dead && !e.fly && !hidden(e) && dist(e.x, e.y, b.x, b.y) < 1 + e.F.r) { e.stun = Math.max(e.stun, 0.8); hurt(e, bootDmg() * 1.5, { boot: true, splash: true }); n++; }
       ring(b.x, b.y, 0.05, 1, '#ffd9a0'); burst(b.x, b.y, 0.1, '#ffd9a0', 10, 2.4); shake(4); sfx.stompHit();
-      say(b.x, b.y, 1, n ? `${b.name || 'HAMSTER'} LANDS ON ${n}!` : `${b.name || 'A hamster'} lands. Hazard pay: 5`, '#ffe680', n > 0); G.coins = Math.max(0, G.coins - 5);
+      say(b.x, b.y, 1, n ? `${(b.name || 'HAMSTER').split(' ').pop()} LANDS ON ${n}!` : `${(b.name || 'Hamster').split(' ').pop()} lands. Pay: 5`, '#ffe680', n > 0); G.coins = Math.max(0, G.coins - 5);
     }
     G.balls = G.balls.filter((b) => b.t > 0);
     for (const g of G.geysers) g.t -= dt;
@@ -2192,7 +2192,7 @@
     if (!t) return;
     if (!t.dug && G.chalk) { if (t.queued) cancelDig(t); t.chalk = !t.chalk; sfx.tap(); mark('dig'); return; }
     if (!t.dug) {
-      if (t.chalk) { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Chalked. Use the chalk to rub it out', '#c9d0ff')); }
+      if (t.chalk) { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Chalked. Rub it out with the chalk', '#c9d0ff')); }
       else if (t.queued) cancelDig(t);
       else if (canQueue(t)) orderDig(t);
       else { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Dig next to a tunnel', '#c9d0ff')); }
@@ -2218,8 +2218,8 @@
       if (inRect(R.tool, sx, sy)) {
         if (G.layer === 'dig') { // the tool of the mine: pick, chalk, dynamite
           sfx.tab();
-          if (!G.chalk && !G.armed) { G.chalk = true; toast('Chalk: tap dirt that you think is dangerous. Hamsters leave it alone, and a right mark pays a gem at the end'); }
-          else if (G.chalk && G.n >= FROM.dynamite && G.dyn > 0) { G.chalk = false; G.armed = true; toast('Dynamite: tap a tunnel to place the stick. It opens the tiles around it and shakes the garden above'); }
+          if (!G.chalk && !G.armed) { G.chalk = true; toast('Chalk: mark risky dirt. Hamsters avoid it. A right mark pays a gem'); }
+          else if (G.chalk && G.n >= FROM.dynamite && G.dyn > 0) { G.chalk = false; G.armed = true; toast('Dynamite: tap a tunnel. It opens nearby tiles and shakes the lawn'); }
           else { G.chalk = false; G.armed = false; }
         }
         else if (G.layer === 'ground') toast(`The Boot: tap the path to stomp. ${G.boot.n} of ${bootMax()} ready`);

@@ -119,7 +119,7 @@
 
     boss: {
       hen: {
-        title: 'Her Clucking Majesty, Mother of Many',
+        title: 'Her Clucking Majesty',
         intro: [
           'Somebody has been counting my eggs. Wrongly.',
           'I am Mama Hen. I have come for a word with the manager.',
@@ -137,7 +137,7 @@
         ],
       },
       tyrant: {
-        title: 'His Subterranean Highness, Lord of Below',
+        title: 'His Highness, Lord of Below',
         intro: [
           'I am the Tunnel Tyrant. Every lawn is my ceiling.',
           'You have been walking on my roof. Without asking.',
@@ -155,7 +155,7 @@
         ],
       },
       goose: {
-        title: 'The Most Honkable Lord of Weather',
+        title: 'Most Honkable Lord of Weather',
         intro: [
           'HONK. I am the Thunder Goose. The sky is my pond.',
           'Your clouds answer to me now. Mostly. HONK.',
