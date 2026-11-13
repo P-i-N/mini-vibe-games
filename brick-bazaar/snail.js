@@ -43,6 +43,12 @@ window.BB_SNAIL = {
       'Boss level. I recommend everything. Mostly the pricey bits.',
       'He is big. You are brave. I am a snail. We each have a role.',
       'Tell the Slime Queen I said hello. We dated. It was sticky.',
+      'Boss next. I closed the shutters. On my eyes.',
+      'The next level has a big tenant. Evict him.',
+      'A boss. Stock up. I mean: buy.',
+      'Boss ahead. I sell courage. Not much. It is pricey.',
+      'Something big lives next door. Hit it until it moves out.',
+      'Bosses are rich. Bring me the change.',
     ],
     // Shop: the player just beat a boss.
     afterBoss: [
@@ -54,6 +60,12 @@ window.BB_SNAIL = {
       'You flattened him. Remind me never to owe you money.',
       'The Auditor is gone? I can finally relax my receipts.',
       'A hero walks in. Please wipe the boss off your shoes.',
+      'You won! The street is quiet. My till is loud.',
+      'The neighbours want to buy you lunch. I sell lunch.',
+      'A big one fell. I felt the floor shake. Slowly.',
+      'Well done. Heroes get a discount. Not here.',
+      'I put up a sign: HERO SHOPS HERE. Prices went up.',
+      'The boss is gone. I can come out of my shell. Halfway.',
     ],
     // Shop: the last level ran out of time.
     lateVisit: [
@@ -814,6 +826,19 @@ window.BB_SNAIL = {
       'Careful. Some of these hum. One of them sings.',
       'Old things for a young run. Pick one.',
     ],
+    // After the boss of level 30 and 40: the player picks the street for his stall.
+    districtPick: [
+      'Moving day. Pick a street. I will get there. Eventually.',
+      'New street, new rules. Same snail. Pick one.',
+      'The landlord wants the stall back. Where to now?',
+      'Pick a street. I packed already. It took a week.',
+      'Every street has a trick. Choose the one you like.',
+      'I carry the house on my back. The shop is your job. Pick.',
+      'A new address. Choose well. I hate moving twice.',
+      'Rent is cheaper on some streets. Not on any of these.',
+      'Where shall we sell? You pick. I will crawl.',
+      'A fresh street. Fresh customers. Well, you again.',
+    ],
     // The player chooses a starting kit.
     kits: [
       'Pick a kit. It is like a lunchbox, but for violence.',
@@ -876,6 +901,30 @@ window.BB_SNAIL = {
       'A quake capsule. My shelves hate this. Bounce away.',
       'Bounce the ball and the bricks shake. Coins rain down. Be under them.',
     ],
+    // Play: the capsule "Soap Suds". New coins float up in bubbles; a ball pops one and the coin is worth double.
+    suds: [
+      'Soap Suds! Pop the bubbles. Double coins.',
+      'Clean money. Pop it and it counts twice.',
+      'Bubbles! Each one holds a coin. Pop them.',
+      'Washed coins. Pop the bubble, pay double.',
+      'My coins never had a bath. They look nervous.',
+      'Pop a bubble with the ball. Twice the coin.',
+      'Suds everywhere. I will mop later. Much later.',
+      'A bubble bath for money. Pop it before it floats.',
+      'Bubbles up, coins up. Pop, pop, profit.',
+    ],
+    // Play: the capsule "Barnacle Ball". The ball carries the coins it touches; the paddle banks them, the sweet spot double.
+    barn: [
+      'Barnacle Ball! It grabs every coin it touches.',
+      'The ball has sticky fingers now. I am proud.',
+      'It carries the coins. Bring them home to the paddle.',
+      'Bank them on the paddle. Sweet spot pays double.',
+      'Do not drop that ball. It holds your savings.',
+      'A ball with pockets. I want one.',
+      'It picks coins off the bricks. Rude. Very good.',
+      'If the ball falls, the coins go too. No pressure.',
+      'Barnacles. Slow, sticky, greedy. My kind of people.',
+    ],
     // Play: Wall Thump. The paddle slams into a side wall; the bricks near it crack and drop their coins.
     thump: [
       'Thump! The wall shook. So did my shelves.',
@@ -920,6 +969,30 @@ window.BB_SNAIL = {
       'Lost. I will add it to my list of sad coins.',
       'Gravity collected. Gravity always collects.',
       'Double or nothing. Nothing came up.',
+    ],
+    // Play: a gobble brick (green, with a mouth) breaks and burps out the coins it ate, at 1.5 times.
+    gobble: [
+      'It ate them. It gave them back with interest. Odd bank.',
+      'BURP. Rude, but generous.',
+      'A brick with a mouth. Better savings than mine.',
+      'It swallowed coins. Now it coughs up half again.',
+      'That brick ate your lunch. You took it back. Plus some.',
+      'Gobbled and returned. With a burp on top.',
+      'Feed it coins. Break it. Get more back. I want one.',
+      'The hungry brick paid up. Catch the burp.',
+      'Excuse him. Bricks have no manners. Good interest.',
+    ],
+    // Play: Old Lumpy (one brick with a plaster for every level he was broken) retires from level 45 and pays a pension.
+    lumpyPension: [
+      'Lumpy retires! Here is his pension. Catch it.',
+      'Old Lumpy is done. He pays you for all the bumps.',
+      'A party hat and a pension. Lumpy earned both.',
+      'Lumpy broke for you every level. Now he pays.',
+      'Goodbye, Lumpy. Mind the plasters on the way out.',
+      'Pension paid. More plaster than brick, that one.',
+      'Lumpy retires rich. Richer than me. Hmm.',
+      'All those plasters. All those coins. Good old Lumpy.',
+      'He worked one level at a time. Now he rests.',
     ],
     // Play: the special of the day "PIP'S SHIFT" starts. Pip steers when the player lets go.
     dayoff: [
@@ -1072,6 +1145,159 @@ window.BB_SNAIL = {
       'They dance. You hit. Everyone has a job.',
       'Conga! Even I cannot dance that slowly.',
       'One, two, three, smash. That is the dance.',
+    ],
+    // Play: the event "Low-Gravity Lunch" starts. Coins and capsules float down slowly for 12 seconds.
+    moon: [
+      'Low-Gravity Lunch. The coins take their time.',
+      'Everything falls slowly. At last, my speed.',
+      'Coins in no hurry. I respect them.',
+      'Slow coins. Plenty of time to get under them.',
+      'Lunch on the moon. Bring your own lettuce.',
+      'Gravity is on a break. Twelve seconds. Use them.',
+      'Capsules drift down like leaves. Catch one.',
+      'Floaty coins. Even I could catch these.',
+      'Moon lunch. No air, no crumbs, lots of coins.',
+    ],
+    // Play, district Kiln Row: the first level on the street.
+    kilnRow: [
+      'Kiln Row. Hot brick, hot ball. Not my fingers.',
+      'Kiln Row. Touch a red brick. The ball catches fire.',
+      'Hot street. A red brick makes a fireball.',
+      'Kiln Row. Warm rent, warm bricks. Find the red one.',
+      'Watch for the glowing brick. Hit it. Fireball.',
+      'Kiln Row. My shell is baking. Keep going.',
+      'Give the red brick the ball. Get it back hot.',
+      'Everything here is warm. Even the coins.',
+      'Hot bricks, hotter balls. Mittens advised.',
+    ],
+    // Play, Kiln Row: the ball touched the red-hot brick and is a fireball.
+    kilnFire: [
+      'Fireball. Mind the awnings.',
+      'Sizzle! The ball is hot now. Do not touch it.',
+      'A fireball. It goes through bricks like butter.',
+      'Hot ball! I smell toast. I hope it is not me.',
+      'Fire! Insured? No? Break things quickly, then.',
+      'Fired up. The bricks did not sign up for this.',
+      'Fireball! I move my shelves back. Slowly.',
+      'The kiln gave you fire. Spend it fast.',
+      'Hot, hot, hot. That ball needs a nap after this.',
+    ],
+    // Play, district Clockwork Lane: the first level on the street.
+    clockLane: [
+      'Clockwork Lane. Count your bounces. The wall does.',
+      'Every sixth bounce, the bricks move one column.',
+      'Clockwork Lane. The wall turns. The rent does not.',
+      'Tick, tock, bounce. Six of those and the wall moves.',
+      'A street that keeps time. I never do.',
+      'The wall slides here. It keeps the bricks fresh.',
+      'Clockwork Lane. Wind it up. Knock it down.',
+      'Six bounces, one turn. Plan your shots.',
+      'Gears in the street. Mind my slime.',
+    ],
+    // Play, Clockwork Lane: the sixth paddle bounce moved every row of bricks one column.
+    clockTick: [
+      'Tick. Everything moved one stall. The rent did not.',
+      'The wall moved. Aim again.',
+      'Click. The bricks shuffled. They do that here.',
+      'Six bounces. One step. Like a slow dance.',
+      'Tock. The bricks slid right. Rude bricks.',
+      'The street turned the wall. Keep up.',
+      'One column over. The bricks are moving house too.',
+      'Clunk. New layout. Same bricks.',
+      'The gears turned. Now you turn your aim.',
+    ],
+    // Play, district Gull Pier: the first level on the street.
+    gullPier: [
+      'Gull Pier. They take what lies on a brick. Hit them.',
+      'Sea air. Gulls. Hold your coins tight.',
+      'Gull Pier. Hit a gull and it drops double.',
+      'Gulls everywhere. Worse than crows. Louder, too.',
+      'The gulls like coins. The ball likes gulls.',
+      'Lovely view. Terrible birds. Guard the bricks.',
+      'Gull Pier. Knock the coins down before the gulls land.',
+      'A gull with a coin is a gull to hit.',
+      'Salt on my shell. Gulls on the bricks. Go.',
+    ],
+    // Play, Gull Pier: a gull took a coin off a brick.
+    gullSteal: [
+      'A gull took a coin. He did not ask for a receipt.',
+      'Thief with wings! Hit him. He pays double.',
+      'He took it. Gulls have no shame. Or pockets.',
+      'A coin went up. In a beak.',
+      'Gull got one. Ball him. Politely.',
+      'That was my rent. In a bird.',
+      'Snatched. Hit the gull and get it back. Twice.',
+      'He pecked a coin. He did not even say thanks.',
+      'Gull tax. I hate taxes I do not collect.',
+    ],
+    // Play, Gull Pier: the ball hit a gull with coins and he dropped them at double value.
+    gullHit: [
+      'He dropped it. Gulls are bad with money.',
+      'Bonk! Double back. The gull paid interest.',
+      'SKRAA! That is gull for sorry.',
+      'Coins rain from a bird. Catch them.',
+      'Hit! The gull gave it all back. And more.',
+      'That gull is poor now. Good.',
+      'Double coins from one bird. Nice trade.',
+      'He let go. Gulls cannot hold anything. Or a job.',
+      'A gull refund. My favourite kind.',
+    ],
+    // Play, district Bell Yard: the first level on the street.
+    bellYard: [
+      'Bell Yard. Left bell, right bell, capsule.',
+      'Two bells on the walls. Ring both with the ball.',
+      'Bell Yard. Noisy street. Good capsules.',
+      'A bell on each wall. Hit one, then the other.',
+      'Ring the bells. I will cover my stalks.',
+      'Bell Yard. Both bells ring, a capsule falls.',
+      'A quiet yard. Until you play. So play.',
+      'Ring them. Not too hard. They are old.',
+      'The ball is the hammer. You are the ringer.',
+    ],
+    // Play, Bell Yard: the ball rang one bell; the other is still quiet.
+    bellOne: [
+      'One bell. The other one feels left out.',
+      'Ding! Now the other wall.',
+      'Half a peal. Ring the other side.',
+      'One down. The other bell is waiting.',
+      'Nice ding. Now find its partner.',
+      'It rang. Now the other one. Quick.',
+      'One bell rang. The yard holds its breath.',
+      'Ding. That was half a capsule.',
+    ],
+    // Play, Bell Yard: both bells rang and a capsule falls.
+    bellPeal: [
+      'Both bells. The yard sends a capsule.',
+      'DING DONG! A capsule. Catch it.',
+      'A full peal. The yard pays in capsules.',
+      'Both rang. Here comes the prize.',
+      'Lovely music. I would pay. I will not.',
+      'Two bells, one capsule. Good trade.',
+      'Ding dong! My stalks are humming.',
+      'Peal! The street likes your rhythm.',
+    ],
+    // Play, district Pennant Row: the first level on the street.
+    pennantRow: [
+      'Pennant Row. Break under the flag. It pays.',
+      'Bricks under the flag pay extra. Aim there.',
+      'Pennant Row. Festive and profitable.',
+      'See the flag? Break the bricks below it.',
+      'Flags! The bricks under them pay three more.',
+      'Pennant Row. Follow the flag. Follow the coins.',
+      'The flag marks the money. Mostly.',
+      'Party street. Bricks under the flag tip well.',
+      'The flag moves. Your aim moves after it.',
+    ],
+    // Play, Pennant Row: three bricks broke under the pennant and it moved to a new column.
+    pennantMove: [
+      'The flag moved. Flags do that.',
+      'New column, new flag. Chase it.',
+      'The flag found a new spot. Follow it.',
+      'It moved on. Flags get bored.',
+      'Flag moved. The bonus moved too.',
+      'There goes the flag. Aim over there now.',
+      'Three broken. The flag wants new bricks.',
+      'The pennant packed up. Like me, but faster.',
     ],
     // Play: Quill Cheapwing, the crow who steals the coins that lie on bricks, flies in.
     quill: [

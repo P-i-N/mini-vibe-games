@@ -25,17 +25,26 @@
   };
 
   // ---------- sizing ----------
-  let scale = 1, dpr = 1;
+  // The canvas covers the whole window. The field of W x H is in its centre, at the largest scale that fits, and the
+  // menus (#wrap) have the size of the field. The rest of the window is margin: it shows the background and it takes
+  // touches. offX, offY = the corner of the field in CSS px; padX, padY = the margins in field units.
+  const CANVAS_PX = 8e6;
+  let scale = 1, dpr = 1, offX = 0, offY = 0, padX = 0, padY = 0;
   function resize() {
     const vw = window.innerWidth, vh = window.innerHeight;
     scale = Math.min(vw / W, vh / H);
-    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5, Math.sqrt(CANVAS_PX / (vw * vh)));
     const cw = Math.floor(W * scale), ch = Math.floor(H * scale);
-    canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
-    canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+    canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
+    canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
     wrap.style.width = cw + 'px'; wrap.style.height = ch + 'px';
     wrap.style.fontSize = Math.max(11, 16 * scale) + 'px';
+    const r = wrap.getBoundingClientRect();
+    offX = Math.max(0, r.left); offY = Math.max(0, r.top); padX = offX / scale; padY = offY / scale;
   }
+  // The bottom of the window in field units. What falls is gone below it.
+  const bottom = () => H + padY;
+  function fillView() { ctx.fillRect(-padX, -padY, W + 2 * padX, H + 2 * padY); }
   window.addEventListener('resize', resize);
   resize();
 
@@ -92,7 +101,7 @@
     const t = GUN_TEXT[g];
     if (!l) return t[0] + ' Fires by itself. Paddle bounces reload it.';
     const next = l < 3 ? ` Level 3: ${t[1]}` : l < 5 ? ` Level 5: ${t[2]}` : l < SUPER_LV ? ` Level ${SUPER_LV}: every second clip ends with a super shot. ${t[3]}` : l === SUPER_LV ? ' Next level: every clip ends with the super shot.' : '';
-    return `${t[0]} Paddle bounces reload it. Each level: faster and stronger.${next}${l >= 5 && l >= gunMax() && gunMax() < 7 ? ' The Gun Workshop allows a higher level.' : ''}`;
+    return `${t[0]} Each level: faster and stronger.${next}${l >= 5 && l >= gunMax() && gunMax() < 7 ? ' The Gun Workshop allows a higher level.' : ''}`;
   }
   // Two guns at level COMBO_LV work together.
   const COMBO_LV = 5;
@@ -120,6 +129,19 @@
   const AUCTION_S = 12, AUCTION_BID = 3, AUCTION_STEP = 2, AUCTION_MAX = 20; // Going Once: length, first price, rise per second, top price (in coins)
   const STAMPEDE_S = 8, STAMPEDE_V = 70, STAMPEDE_MIN = 3; // Penny Stampede: length, walk speed, coins on bricks that it needs
   const HAPPY_EVERY = 15, HAPPY_S = 3; // HAPPY HOUR: seconds between bells, seconds of triple coins
+  // Soap Suds: a coin that drops floats up in a bubble for SUDS_LIFE seconds. A ball that pops the bubble doubles the coin.
+  const SUDS_S = 10, SUDS_LIFE = 5, SUDS_V = 45, SUDS_R = 13, SUDS_ARM = 0.5; // SUDS_ARM = seconds before a ball can pop a new bubble
+  // Barnacle Ball: a ball takes the coins that it touches, up to BARN_MAX. Each one adds BARN_K to its damage. A
+  // paddle bounce banks them; a sweet-spot hit banks them double. A ball that is lost takes them with it.
+  const BARN_S = 14, BARN_MAX = 8, BARN_K = 0.15, BARN_REACH = 4;
+  // Low-Gravity Lunch: the share of the gravity that is left, and the share of the ball speed
+  const MOON_S = 12, MOON_G = 0.25, MOON_BALL = 0.75;
+  // Bricks with manners of their own: [type, first level]. A level gets one or two of a type with the chance ODD_CHANCE.
+  const ODD_BRICKS = [['pillow', 14], ['jelly', 18], ['gobble', 22]], ODD_CHANCE = 0.4;
+  const JELLY_V = 260, GOBBLE_K = 1.5, GOBBLE_COINS = 12, PILLOW_CELLS = 2, PILLOW_PUSH = 80, PILLOW_GAP = 0.25;
+  // Old Lumpy: one brick in each level. He gets a plaster for each level in which he broke; from LUMPY_PENSION he pays.
+  const LUMPY_FROM = 4, LUMPY_PENSION = 45, LUMPY_PAY = 2;
+  const LUMPY_OW = ['Ow.', 'Again?', 'Every level. Every level.', 'I have a family. They are also bricks.', 'Mind the plaster.', 'Why always me?'];
   // Penny Toss: a tap just before a fat coin lands on the paddle throws it back up and doubles it, TOSS_MAX times.
   const TOSS_MAX = 3, TOSS_TAP = 0.25, TOSS_V = 430, TOSS_HINT = 170;
   // Wall Thump: the paddle hits a side wall faster than THUMP_V px/s. The bricks in the THUMP_COLS columns at that
@@ -427,7 +449,7 @@
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
   const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, pin: 14, smash: 16 };
   // The first level on which each capsule can drop.
-  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, pip: 12, storm: 14, gold: 17, nuke: 20, quake: QUAKE_FROM, jar: 25, potato: 28 };
+  const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, pip: 12, storm: 14, gold: 17, nuke: 20, quake: QUAKE_FROM, suds: 15, barn: 18, jar: 25, potato: 28 };
   const unlocked = (it) => (run.level >= it.at || lv(it.id) > 0) && (!it.seals || run.sealsEver > 0) && (!it.show || it.show());
   // upgrades that can still go up: the pool for sales and the Mystery Box
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
@@ -764,7 +786,7 @@
     const foes = {};
     const count = Math.min(7, 4 + Math.floor(over / 4));
     for (let i = 0; i < count; i++) { const k = kinds[Math.floor(rnd() * kinds.length)]; foes[k] = (foes[k] || 0) + 1; }
-    return { name: boss ? BOSSES[boss].name + ' returns' : 'Endless ' + over, map, foes: boss ? {} : foes, boss };
+    return { name: boss ? BOSSES[boss].name + (n > 10 * boss ? ' returns' : '') : 'Endless ' + over, map, foes: boss ? {} : foes, boss };
   }
   function levelDef(n) { return n <= LEVELS.length ? LEVELS[n - 1] : endlessLevel(n); }
   // The Upside-Down Map oddity turns the map over. Boss maps stay as they are.
@@ -1040,7 +1062,7 @@
           w.gone = true; dropCoin(w.x, PADDLE_Y - 20, WALKER_PAY, true); say(w.x, PADDLE_Y - 34, 'thanks!', '#7cf2a8', 1.2); sfx.pu();
           run.caught = (run.caught || 0) + 1;
           if (run.caught >= 5) sticker('lifeguard');
-        } else if (w.y > H + 20) w.gone = true;
+        } else if (w.y > bottom() + 20) w.gone = true;
       }
     }
   }
@@ -1112,7 +1134,7 @@
   const CAMEO_CHANCE = 0.12, CAMEO_S = 6, CAMEO_PAY = 5, CAMEO_EDGE = 20;
   function startCameo() {
     if (G.clearT >= 0 || G.cameo) return;
-    const beaten = [1, 2, 3, 4, 5].filter((k) => run.level > 10 * k);
+    const beaten = [1, 2, 3, 4, 5, 6].filter((k) => run.level > 10 * k);
     if (!beaten.length) return;
     const kind = pick(beaten), d = BOSSES[kind], side = Math.random() < 0.5 ? -1 : 1;
     G.cameo = { kind, side, w: d.w, h: d.h, x: side < 0 ? -d.w / 2 - 10 : W + d.w / 2 + 10, y: clamp(brickBottom() + 30, 180, PADDLE_Y - 280),
@@ -1587,6 +1609,403 @@
     updateMole(dt);
     updateRaccoon(dt);
   }
+  // ---------- districts ----------
+  // The Long Move: after the boss of level DISTRICT_FROM, and after each later boss, the snail moves his stall to a
+  // district that the player picks from DISTRICT_OFFER. The district holds for DISTRICT_SPAN levels. It gives them its
+  // own sky and backdrop (bgSprite) and one rule that the ball triggers. A rule never takes a life, never breaks a
+  // brick by itself and never moves a brick down. It is off on boss levels and in bonus rounds. Not in the daily run.
+  // A district is picked once per run. run.districts = the picked ids in order; run.districtAt = the first level of
+  // the last one. Each district has start(S), update(S, dt), ball(S, b), draw(S, t) and paint(c, rnd, hue); S is
+  // G.dist, the state of the district in this level.
+  const DISTRICT_FROM = 30, DISTRICT_SPAN = 9, DISTRICT_OFFER = 3;
+  const DISTRICT_PICK_LINE = 'The lease is up. Pick a street. I bring the shelves.';
+  const KILN_GAP = 5, KILN_HOT = 7, KILN_FIRE = 3, KILN_EDGE = 2;
+  const CLOCK_EVERY = 6, CLOCK_SLIDE = 0.3;
+  const GULL_N = 2, GULL_R = 9, GULL_FLY = 230, GULL_SIT = 2.5, GULL_PECK = 0.8, GULL_REACH = 14, GULL_SACK = 6, GULL_K = 2, GULL_FOOT = 7, GULL_HIT_CD = 0.4;
+  const BELL_Y = H * 0.54, BELL_X = 14, BELL_R = 20, BELL_PAIR_S = 8, BELL_REST = 8, BELL_GAP = 0.5;
+  const PENNANT_PAY = 3, PENNANT_N = 3;
+  const DISTRICTS = {
+    kiln: { icon: '🏺', name: 'Kiln Row', hue: 340, color: '#ff8a5c', key: 'kilnRow', rule: 'A red-hot brick makes the ball a fireball',
+      text: 'Now and then a brick glows red-hot. A ball that touches it turns into a fireball.', line: 'Warm neighbours. Bring your own mittens.',
+      intro: 'Kiln Row. Hot brick, hot ball. Not my fingers.', start: startKiln, update: updateKiln, ball: kilnBall, draw: drawKiln, paint: paintKiln },
+    clockwork: { icon: '⚙️', name: 'Clockwork Lane', hue: 215, color: '#9fc4ff', key: 'clockLane', rule: `Every ${CLOCK_EVERY} paddle bounces the wall turns one column`,
+      text: `The street counts your paddle bounces. Every ${CLOCK_EVERY}th one, each row of bricks moves one column to the right.`, line: 'The landlord winds it on Sundays. Every day is Sunday.',
+      intro: 'Clockwork Lane. Count your bounces. The wall does.', start: startClock, update: updateClock, ball: null, draw: drawClock, paint: paintClockwork },
+    gulls: { icon: '⚓', name: 'Gull Pier', hue: 188, color: '#bff4ff', key: 'gullPier', rule: `Gulls take coins off bricks. Hit one: ×${GULL_K} back`,
+      text: `Gulls take the coins that lie on bricks. Hit a gull with the ball and it drops them at ${GULL_K} times the value.`, line: 'Lovely sea air. Hold on to your coins.',
+      intro: 'Gull Pier. They take what lies on a brick. Hit them.', start: startGulls, update: updateGulls, ball: gullBall, draw: drawGulls, paint: paintGulls },
+    bells: { icon: '🔔', name: 'Bell Yard', hue: 282, color: '#ffe680', key: 'bellYard', rule: 'Ring both wall bells with the ball for a capsule',
+      text: 'A bell hangs on each side wall. Ring both with the ball, one after the other, and a capsule falls.', line: 'A quiet yard. Until somebody plays.',
+      intro: 'Bell Yard. Left bell, right bell, capsule. Easy. For a bell.', start: startBells, update: updateBells, ball: bellBall, draw: drawBells, paint: paintBells },
+    pennant: { icon: '🚩', name: 'Pennant Row', hue: 165, color: '#ffd23f', key: 'pennantRow', rule: `Bricks under the pennant pay ${PENNANT_PAY} coins more`,
+      text: `A pennant marks one column. Each brick that your ball breaks there pays ${PENNANT_PAY} coins more.`, line: 'Festive. The flags are not for sale. Yet.',
+      intro: 'Pennant Row. Break under the flag. It pays.', start: startPennant, update: updatePennant, ball: null, draw: drawPennant, paint: paintPennant },
+  };
+  for (const k in DISTRICTS) DISTRICTS[k].id = k;
+  let districtThen = null; // what comes after the pick: afterTally or startLevel
+  function districtOf(n) {
+    if (!run || run.daily || !run.districts || !run.districts.length || n < run.districtAt || n >= run.districtAt + DISTRICT_SPAN) return null;
+    return DISTRICTS[run.districts[run.districts.length - 1]] || null;
+  }
+  // The district whose rule works in this level, or null.
+  const districtLive = () => (G && !G.safari && !G.def.boss ? districtOf(G.level) : null);
+  const districtChoices = () => Object.keys(DISTRICTS).filter((k) => !(run.districts || []).includes(k));
+  // True on the first level after a boss from DISTRICT_FROM on, until the player picks. One open district is no choice.
+  function districtDue() {
+    if (!run || run.daily || run.districtAt === run.level) return false;
+    const boss = run.level - 1;
+    return boss >= DISTRICT_FROM && !!levelDef(boss).boss && districtChoices().length > 1;
+  }
+  function showDistricts(then) {
+    mode = 'district'; pauseBtn.style.display = 'none'; districtThen = then;
+    const pool = districtChoices();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const cards = pool.slice(0, DISTRICT_OFFER).map((k, i) => `<button class="relic kit" data-district="${k}" style="animation-delay:${i * 0.12}s"><span class="ric">${DISTRICTS[k].icon}</span>
+      <span class="rnm">${DISTRICTS[k].name}</span><span class="rds">${DISTRICTS[k].text}<br><i>🐌 "${DISTRICTS[k].line}"</i></span></button>`).join('');
+    showOverlay(`<div class="center"><div class="tally-sub">THE LONG MOVE</div><h2>Where does the stall go?</h2>
+      <div class="keeper"><span class="snail">🐌</span><span class="bubble">${snailSay('districtPick') || DISTRICT_PICK_LINE}</span></div>
+      <div class="relics">${cards}</div><div class="hint">The street holds for ${DISTRICT_SPAN} levels. A boss keeps his own rules.</div></div>`, 'see');
+    sfx.relic();
+  }
+  function takeDistrict(id) {
+    if (!DISTRICTS[id]) return;
+    run.districts = (run.districts || []).concat(id); run.districtAt = run.level;
+    saveRun(); sfx.buy(); bgKey = -1;
+    const then = districtThen || afterTally;
+    districtThen = null; then();
+  }
+  // Debug: district id holds from the current level on. An unknown id returns the known ids.
+  function debugDistrict(id) {
+    if (!run || !DISTRICTS[id]) return Object.keys(DISTRICTS);
+    run.districts = (run.districts || []).filter((k) => k !== id).concat(id); run.districtAt = run.level;
+    bgKey = -1; if (G) G.dist = null;
+    return id;
+  }
+  const districtTag = () => { const d = districtOf(run.level); return d ? ` · ${d.icon} ${d.name}` : ''; };
+  const districtHue = (n) => { const d = districtOf(n); return d ? d.hue : 0; };
+  function updateDistrict(dt) {
+    const d = districtLive();
+    if (!d) return;
+    if (!G.dist || G.dist.id !== d.id) {
+      G.dist = { id: d.id }; d.start(G.dist);
+      after(1.5, () => heckle(d.key, d.intro));
+    }
+    d.update(G.dist, dt);
+  }
+  function districtBall(b) {
+    const d = G.dist && districtLive();
+    if (d && d.ball && d.id === G.dist.id) d.ball(G.dist, b);
+  }
+  function drawDistrict(t) {
+    const d = G.dist && districtLive();
+    if (d && d.id === G.dist.id) d.draw(G.dist, t);
+  }
+  // Two lines above the name of the level, over the special of the day when there is one.
+  function drawDistrictBanner() {
+    const d = districtLive();
+    if (!d) return;
+    const y = G.special ? -118 : -70;
+    ctx.fillStyle = d.color; ctx.font = 'bold 17px system-ui, sans-serif'; ctx.fillText(`${d.icon} ${d.name.toUpperCase()}`, 0, y);
+    ctx.fillStyle = '#e8ecff'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(d.rule, 0, y + 22);
+  }
+  // The backdrop of the district of level n, on the sky canvas c (half size). It is cached with the sky.
+  function paintDistrict(c, n) {
+    const d = districtOf(n);
+    if (!d) return;
+    c.save(); c.globalCompositeOperation = 'source-over'; c.scale(c.canvas.width / W, c.canvas.height / H);
+    d.paint(c, mulberry32(n * 31 + 5), d.hue);
+    c.restore();
+  }
+
+  // Kiln Row: every KILN_GAP seconds one brick glows red-hot for KILN_HOT seconds. A ball that touches it is a
+  // fireball for KILN_FIRE seconds (b.fireT), and the brick cools. Guns do not touch it.
+  function startKiln(S) { S.hot = null; S.hotT = 0; S.gapT = 2; }
+  function updateKiln(S, dt) {
+    if (S.hot && (!S.hot.alive || (S.hotT -= dt) <= 0)) { S.hot = null; S.gapT = KILN_GAP; }
+    if (S.hot || !G.started || G.clearT >= 0 || (S.gapT -= dt) > 0) return;
+    const all = G.bricks.filter((k) => hurtable(k) && !k.mimic && k.row < 90);
+    if (all.length) { S.hot = pick(all); S.hotT = KILN_HOT; }
+  }
+  // Called before the ball meets the bricks, so that a hit that breaks the hot brick still lights the ball.
+  function kilnBall(S, b) {
+    const k = S.hot, e = b.r + KILN_EDGE;
+    if (!k || b.x + e < k.x || b.x - e > k.x + k.w || b.y + e < k.y || b.y - e > k.y + k.h) return;
+    b.fireT = Math.max(b.fireT || 0, KILN_FIRE); S.hot = null; S.gapT = KILN_GAP;
+    burst(b.x, b.y, '#ff8a3d', 12, 200); say(clamp(b.x, 60, W - 60), k.y - 14, 'SIZZLE!', '#ff8a3d', 0.9, true); sfx.launch();
+    heckle('kilnFire', 'Fireball. Mind the awnings.');
+  }
+  function drawKiln(S, t) {
+    const k = S.hot;
+    if (!k) return;
+    ctx.globalAlpha = Math.min(1, S.hotT * 2);
+    ctx.fillStyle = `rgba(255,70,30,${0.35 + 0.15 * Math.sin(t * 10)})`; rr(k.x - 2, k.y - 2, k.w + 4, k.h + 4, 5); ctx.fill();
+    ctx.strokeStyle = '#ffb36b'; ctx.lineWidth = 2; rr(k.x - 1, k.y - 1, k.w + 2, k.h + 2, 4); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,170,110,0.6)'; ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const x = k.x + k.w * (0.25 + 0.25 * i), y = k.y - 2 - ((t * 18 + i * 5) % 12);
+      ctx.moveTo(x + Math.sin(t * 9 + i) * 2, y); ctx.quadraticCurveTo(x + Math.sin(t * 7 + i) * 4, y - 6, x + Math.sin(t * 9 + i + 1) * 2, y - 12);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  function paintKiln(c, rnd, h) {
+    for (let i = 0; i < 4; i++) {
+      const w = 22 + rnd() * 16, x = 20 + i * 120 + rnd() * 50, top = 480 + rnd() * 100;
+      c.fillStyle = `hsla(${h},35%,16%,0.9)`; c.fillRect(x, top, w, H - top);
+      c.fillStyle = `hsla(${(h + 30) % 360},90%,55%,0.35)`; c.fillRect(x - 3, top - 5, w + 6, 5);
+    }
+  }
+
+  // Clockwork Lane: every CLOCK_EVERY paddle bounces the bricks of the wall move one column to the right; the last
+  // column wraps to the first. A brick keeps its row. Rows that the level moves itself (conveyors) and rows with a
+  // bumper or a portal stay. Wheel bricks, runners and conga dancers are not in the grid (row >= 90). What sits on a
+  // brick moves with it. A tick waits while the conga dances.
+  function startClock(S) { S.n = 0; S.seen = G.paddleHits; S.moves = null; S.k = 0; }
+  function updateClock(S, dt) {
+    S.n += G.paddleHits - S.seen; S.seen = G.paddleHits;
+    if (S.moves) slideClock(S, dt);
+    if (S.moves || S.n < CLOCK_EVERY || G.conga || G.clearT >= 0) return;
+    S.n = Math.min(S.n - CLOCK_EVERY, CLOCK_EVERY - 1);
+    tickClock(S);
+  }
+  function tickClock(S) {
+    const map = levelMap(G.def), step = BW + GAP;
+    for (const w of G.walkers) w.ride = w.state === 'walk' ? floorAt(w.row, w.x) : null;
+    S.moves = []; S.k = 0;
+    for (const b of G.bricks) {
+      if (!b.alive || b.row >= 90 || b.slide || /[O()]/.test(map[b.row] || '')) continue;
+      const col = (b.col + 1) % COLS, to = LEFT + col * step;
+      // the brick that wraps comes in from beyond the left wall
+      if (!col) { for (const c of G.coins) if (c.on === b) c.on = null; carry(b, to - step - b.x); b.x = to - step; }
+      b.col = col;
+      S.moves.push({ b, from: b.x, to });
+    }
+    sfx.tick(); heckle('clockTick', 'Tick. Everything moved one stall. The rent did not.');
+  }
+  function slideClock(S, dt) {
+    S.k = Math.min(1, S.k + dt / CLOCK_SLIDE);
+    const e = S.k * S.k * (3 - 2 * S.k);
+    for (const m of S.moves) {
+      const b = m.b;
+      if (!b.alive) continue;
+      // a dancer goes back to its new cell after the conga
+      if (b.conga) { b.conga.x = m.to; continue; }
+      const x = m.from + (m.to - m.from) * e;
+      carry(b, x - b.x); b.x = x;
+    }
+    if (S.k >= 1) S.moves = null;
+  }
+  // Moves what sits on brick b by dx: coins, pigeons, frogs, Quill, the raccoon and the walkers on it.
+  function carry(b, dx) {
+    if (!dx) return;
+    for (const c of G.coins) if (c.on === b) c.x += dx;
+    for (const p of G.birds) if (p.on === b && !p.fly) p.x += dx;
+    for (const f of G.frogs) if (f.on === b && !f.hop) f.x += dx;
+    for (const w of G.walkers) if (w.ride === b) w.x += dx;
+    const Q = G.quill, R = G.raccoon;
+    if (Q && Q.on === b && !Q.fly) { Q.x += dx; Q.tx += dx; }
+    if (R && R.on === b) { R.x += dx; R.tx += dx; }
+  }
+  function drawClock(S, t) {
+    const near = S.n === CLOCK_EVERY - 1, gap = 9, x0 = paddle.x - ((CLOCK_EVERY - 1) * gap) / 2, y = PADDLE_Y + PADDLE_H + 9;
+    for (let i = 0; i < CLOCK_EVERY; i++) {
+      ctx.fillStyle = i < S.n ? (near ? (Math.sin(t * 12) > 0 ? '#ffffff' : '#9fc4ff') : '#9fc4ff') : 'rgba(159,196,255,0.25)';
+      ctx.beginPath(); ctx.arc(x0 + i * gap, y, 2.8, 0, TAU); ctx.fill();
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = 'bold 13px system-ui, sans-serif'; ctx.fillStyle = '#9fc4ff';
+    ctx.fillText(`⚙️ ${S.n}/${CLOCK_EVERY}`, 8, HUD_H + 12); ctx.textAlign = 'center';
+  }
+  function paintClockwork(c, rnd, h) {
+    c.strokeStyle = `hsla(${h},40%,32%,0.55)`;
+    for (const [x, y, r] of [[60, 560, 70], [400, 640, 90], [230, 770, 55]]) {
+      const n = Math.round(r / 7), a0 = rnd() * TAU;
+      c.lineWidth = 8; c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+      c.lineWidth = 4; c.beginPath(); c.arc(x, y, r * 0.3, 0, TAU);
+      for (let i = 0; i < 4; i++) { const a = a0 + (i * TAU) / 4; c.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3); c.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+      c.stroke();
+      c.lineWidth = 9; c.beginPath();
+      for (let i = 0; i < n; i++) { const a = a0 + (i * TAU) / n; c.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); c.lineTo(x + Math.cos(a) * (r + 10), y + Math.sin(a) * (r + 10)); }
+      c.stroke();
+    }
+  }
+
+  // Gull Pier: one to GULL_N gulls stand on bricks and take the coins that lie on bricks, GULL_SACK at most. A ball
+  // that hits a gull makes it drop what it carries, at GULL_K times the value, and fly to another brick. Guns, drones
+  // and the goal of the level ignore the gulls. When the level ends they drop what they carry and leave.
+  function startGulls(S) {
+    S.gulls = [];
+    for (let i = 1 + ((Math.random() * GULL_N) | 0); i > 0; i--) {
+      const g = { x: Math.random() < 0.5 ? -20 : W + 20, y: rand(TOP, TOP + 120), sack: [], cd: 0, sitT: 0, out: false, on: null, coin: null };
+      S.gulls.push(g); gullPerch(S, g);
+    }
+  }
+  // The nearest coin on a brick that no other gull wants comes first; else a free ledge; else off the field.
+  function gullPerch(S, g) {
+    const taken = new Set(S.gulls.map((o) => o !== g && o.coin));
+    const coins = g.sack.length < GULL_SACK ? G.coins.filter((c) => !c.dead && c.on && !c.spilt && !c.fat && !taken.has(c)) : [];
+    const dist = (c) => Math.hypot(c.x - g.x, c.y - g.y);
+    g.coin = coins.length ? coins.reduce((a, c) => (dist(c) < dist(a) ? c : a)) : null;
+    const spots = g.coin ? [] : ledges(new Set([...G.birds.map((o) => o.on), ...S.gulls.map((o) => o.on)]));
+    g.on = g.coin ? g.coin.on : spots.length ? pick(spots) : null;
+    g.tx = g.coin ? g.coin.x : g.on ? g.on.x + g.on.w / 2 + rand(-8, 8) : exit(g.x);
+    g.ty = g.on ? g.on.y - GULL_FOOT : rand(TOP, TOP + 120);
+    g.fly = true;
+  }
+  // The sack falls open: k times the value of each coin. The paddle must catch the coins.
+  function gullDrop(g, k) {
+    const n = g.sack.length;
+    if (!n) return;
+    dropCoin(g.x, g.y, n, true); G.coins.slice(-n).forEach((c, i) => { c.val = g.sack[i] * k; c.spilt = true; });
+    g.sack = [];
+  }
+  function updateGulls(S, dt) {
+    for (const g of S.gulls) {
+      if (g.cd > 0) g.cd -= dt;
+      if (!g.out && G.clearT >= 0) { gullDrop(g, 1); g.out = true; g.on = g.coin = null; g.tx = exit(g.x); g.ty = TOP; g.fly = true; }
+      if (g.fly) {
+        if (g.coin && (g.coin.dead || !g.coin.on)) { gullPerch(S, g); continue; }
+        if (g.coin) g.tx = g.coin.x;
+        if (!walkTo(g, GULL_FLY, dt)) continue;
+        g.fly = false; g.sitT = GULL_SIT;
+      }
+      if (g.out) continue;
+      if (g.on && (!g.on.alive || g.on.row >= 90)) { gullPerch(S, g); continue; }
+      if (g.on) g.y = g.on.y - GULL_FOOT;
+      gullPeck(g);
+      if ((g.sitT -= dt) <= 0) gullPerch(S, g);
+    }
+  }
+  function gullPeck(g) {
+    let took = false;
+    for (const c of G.coins) {
+      if (g.sack.length >= GULL_SACK) break;
+      if (c.dead || !c.on || c.spilt || c.fat || Math.hypot(c.x - g.x, c.y - g.y) > GULL_REACH) continue;
+      c.dead = true; g.sack.push(c.val); took = true;
+    }
+    if (!took) return;
+    g.coin = null; g.sitT = Math.min(g.sitT, GULL_PECK); sfx.steal();
+    heckle('gullSteal', 'A gull took a coin. He did not ask for a receipt.');
+  }
+  // A ball hit, sitting or in flight.
+  function gullBall(S, b) {
+    for (const g of S.gulls) {
+      if (g.out || g.cd > 0 || !ballVsCircle(b, g.x, g.y - 4, GULL_R)) continue;
+      g.cd = GULL_HIT_CD; burst(g.x, g.y, '#f4f6ff', 8, 140); sfx.squawk(1);
+      say(clamp(g.x, 60, W - 60), g.y - 20, g.sack.length ? `SKRAA! ×${GULL_K}` : 'SKRAA!', '#ffffff', 0.8);
+      if (g.sack.length) heckle('gullHit', 'He dropped it. Gulls are bad with money.');
+      gullDrop(g, GULL_K); gullPerch(S, g);
+    }
+  }
+  function drawGulls(S, t) {
+    for (const g of S.gulls) {
+      const dir = g.fly ? Math.sign(g.tx - g.x) || 1 : g.x < W / 2 ? 1 : -1, x = g.x, y = g.y;
+      if (!g.fly) { ctx.strokeStyle = '#ffb36b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.lineTo(x - 2, y + GULL_FOOT); ctx.moveTo(x + 2, y); ctx.lineTo(x + 2, y + GULL_FOOT); ctx.stroke(); }
+      if (g.sack.length) { ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(x - dir * 7, y - 1, 2.5 + g.sack.length * 0.6, 0, TAU); ctx.fill(); }
+      ctx.fillStyle = '#f4f6ff'; ctx.beginPath(); ctx.ellipse(x, y - 4, 8, 5, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + dir * 6, y - 9, 3.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#9aa4c0'; ctx.beginPath();
+      if (g.fly) { const flap = Math.sin(t * 22) * 6; ctx.moveTo(x - 3, y - 5); ctx.lineTo(x - 13, y - 10 - flap); ctx.lineTo(x + 3, y - 5); ctx.lineTo(x + 13, y - 10 - flap); }
+      else ctx.ellipse(x - dir * 2, y - 5, 5.5, 2.6, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#ffc23a'; ctx.beginPath(); ctx.moveTo(x + dir * 9, y - 10); ctx.lineTo(x + dir * 14, y - 9); ctx.lineTo(x + dir * 9, y - 8); ctx.fill();
+      ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(x + dir * 7, y - 10, 1, 0, TAU); ctx.fill();
+    }
+  }
+  function paintGulls(c, rnd, h) {
+    c.fillStyle = `hsla(${h},35%,18%,0.9)`; c.fillRect(0, 540, W, 10);
+    for (let x = 30 + rnd() * 20; x < W; x += 85) c.fillRect(x, 550, 10, H - 550);
+    c.strokeStyle = `hsla(${h},60%,45%,0.35)`; c.lineWidth = 3;
+    for (let y = 600; y < H; y += 34) {
+      c.beginPath();
+      for (let x = 0; x <= W; x += 20) { const yy = y + Math.sin(x / 30 + y) * 4; if (x) c.lineTo(x, yy); else c.moveTo(x, yy); }
+      c.stroke();
+    }
+  }
+
+  // Bell Yard: a bell hangs on each side wall. A ball that rings both bells within BELL_PAIR_S seconds drops a
+  // capsule. Then the bells rest for BELL_REST seconds.
+  function startBells(S) { S.rung = [-99, -99]; S.rest = 0; S.swing = [0, 0]; }
+  function updateBells(S, dt) {
+    if (S.rest > 0) S.rest -= dt;
+    for (let i = 0; i < 2; i++) S.swing[i] = Math.max(0, S.swing[i] - dt * 1.5);
+  }
+  function bellBall(S, b) {
+    if (S.rest > 0 || G.clearT >= 0) return;
+    for (let i = 0; i < 2; i++) {
+      const x = i ? W - BELL_X : BELL_X;
+      if (Math.hypot(b.x - x, b.y - BELL_Y) > BELL_R + b.r || G.time - S.rung[i] < BELL_GAP) continue;
+      S.rung[i] = G.time; S.swing[i] = 1; sfx.ding(i ? 4 : 2); ring(x, BELL_Y, 40, '#ffe680', 0.35);
+      if (G.time - S.rung[1 - i] > BELL_PAIR_S) { heckle('bellOne', 'One bell. The other one feels left out.'); continue; }
+      S.rung = [-99, -99]; S.rest = BELL_REST;
+      G.pus.push({ x: W / 2, y: BELL_Y - 30, vy: 110, k: rollPU() });
+      say(W / 2, BELL_Y - 50, 'DING DONG! A capsule', '#ffe680', 1.4, true); sfx.jackpot();
+      heckle('bellPeal', 'Both bells. The yard sends a capsule.');
+      return;
+    }
+  }
+  function drawBells(S, t) {
+    for (let i = 0; i < 2; i++) {
+      const x = i ? W - BELL_X : BELL_X, left = BELL_PAIR_S - (G.time - S.rung[i]), lit = left > 0;
+      ctx.save(); ctx.translate(x, BELL_Y - BELL_R); ctx.rotate(Math.sin(t * 14) * S.swing[i] * 0.5);
+      ctx.globalAlpha = S.rest > 0 ? 0.45 : 1;
+      ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -24); ctx.lineTo(0, 2); ctx.stroke();
+      ctx.fillStyle = lit ? '#ffe680' : '#c9a24a'; ctx.beginPath();
+      ctx.moveTo(-12, 30); ctx.quadraticCurveTo(-11, 4, 0, 2); ctx.quadraticCurveTo(11, 4, 12, 30); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#5a4a2a'; ctx.beginPath(); ctx.arc(0, 31, 3, 0, TAU); ctx.fill();
+      ctx.restore(); ctx.globalAlpha = 1;
+      if (!lit) continue;
+      ctx.strokeStyle = '#ffe680'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, BELL_Y, BELL_R + 6, -Math.PI / 2, -Math.PI / 2 + TAU * (left / BELL_PAIR_S)); ctx.stroke();
+    }
+  }
+  function paintBells(c, rnd, h) {
+    c.fillStyle = `hsla(${h},35%,17%,0.9)`;
+    for (let i = 0; i < 6; i++) { const w = 50 + rnd() * 30, x = i < 3 ? i * 66 : 290 + (i - 3) * 64, top = 560 + rnd() * 60; c.fillRect(x, top, w, H - top); }
+    c.fillRect(200, 470, 80, H - 470);
+    c.beginPath(); c.moveTo(192, 470); c.lineTo(240, 405); c.lineTo(288, 470); c.fill();
+    c.fillStyle = `hsla(${(h + 40) % 360},70%,60%,0.3)`;
+    c.beginPath(); c.arc(240, 505, 14, Math.PI, 0); c.lineTo(254, 530); c.lineTo(226, 530); c.fill();
+  }
+
+  // Pennant Row: a pennant marks one column. A brick that a ball breaks in it pays PENNANT_PAY coins more. After
+  // PENNANT_N such bricks, or when the column has no brick left, the pennant moves to another column.
+  const pennantBricks = (col) => G.bricks.filter((k) => hurtable(k) && k.row < 90 && k.col === col);
+  function startPennant(S) { S.col = -1; S.n = 0; S.watch = []; }
+  function movePennant(S) {
+    const cols = [...new Set(G.bricks.filter((k) => hurtable(k) && k.row < 90).map((k) => k.col))].filter((c) => c !== S.col);
+    S.col = cols.length ? pick(cols) : -1; S.n = 0;
+  }
+  function updatePennant(S) {
+    for (const k of S.watch) {
+      if (k.alive || !k.byBall) continue;
+      dropCoin(k.x + k.w / 2, k.y + k.h / 2, PENNANT_PAY, true);
+      say(clamp(k.x + k.w / 2, 40, W - 40), k.y - 10, `🚩 +${PENNANT_PAY}`, '#ffd23f', 0.8);
+      if (++S.n < PENNANT_N) continue;
+      movePennant(S); heckle('pennantMove', 'The flag moved. Flags do that.');
+    }
+    if (S.col < 0 || !pennantBricks(S.col).length) movePennant(S);
+    S.watch = S.col < 0 ? [] : pennantBricks(S.col);
+  }
+  function drawPennant(S, t) {
+    const all = S.watch.filter((k) => k.alive);
+    if (!all.length) return;
+    const top = all.reduce((a, k) => (k.y < a.y ? k : a)), low = all.reduce((y, k) => Math.max(y, k.y + k.h), 0);
+    ctx.fillStyle = 'rgba(255,210,63,0.1)'; ctx.fillRect(top.x - 1, top.y - 2, BW + 2, low - top.y + 4);
+    const px = top.x + top.w / 2, py = top.y, flap = Math.sin(t * 6) * 2;
+    ctx.strokeStyle = '#e8ecff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py - 18); ctx.stroke();
+    ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.moveTo(px, py - 18); ctx.lineTo(px + 14, py - 14 + flap); ctx.lineTo(px, py - 10); ctx.fill();
+    for (let i = 0; i < PENNANT_N; i++) {
+      ctx.fillStyle = i < S.n ? '#ffd23f' : 'rgba(255,210,63,0.3)'; ctx.beginPath(); ctx.arc(px - 6 - i * 6, py - 14, 2, 0, TAU); ctx.fill();
+    }
+  }
+  function paintPennant(c, rnd, h) {
+    for (const [y0, sag] of [[470, 40], [560, 30]]) {
+      c.strokeStyle = `hsla(${h},30%,50%,0.4)`; c.lineWidth = 2; c.beginPath(); c.moveTo(0, y0); c.quadraticCurveTo(W / 2, y0 + 2 * sag, W, y0); c.stroke();
+      for (let x = 12 + rnd() * 8, i = 0; x < W; x += 28, i++) {
+        const k = x / W, y = y0 + 4 * sag * k * (1 - k);
+        c.fillStyle = `hsla(${(h + i * 60) % 360},70%,55%,0.35)`; c.beginPath(); c.moveTo(x - 9, y); c.lineTo(x + 9, y); c.lineTo(x, y + 16); c.fill();
+      }
+    }
+  }
+
   // ---------- the game talks back ----------
   // The shopkeeper comments on how you play. Each line comes at most once per level.
   // text = the line to use when snail.js has no line for the id
@@ -1644,6 +2063,8 @@
     const room = (n) => { const k = Math.max(0, Math.min(n, ROUND_COINS - paid)); paid += k; return k; };
     return {
       W, H, HUD_H, PADDLE_Y, PADDLE_H, paddle, level: run.level, state: {},
+      // the bottom of the window: what falls is out of sight below it
+      get bottom() { return bottom(); },
       rand, pick, clamp,
       get time() { return G.clock; }, get left() { return timeLeft(); },
       // n coins fall from (x, y); the paddle must catch them
@@ -1676,6 +2097,7 @@
     run.pendingSafari = false; startLevel(kind);
   }
   function startLevel(safari = false) {
+    if (!safari && districtDue()) { showDistricts(startLevel); return; }
     G = {
       safari, fever0: run.fever, clock: 0, timeUp: false, noLoot: false, blimpsLeft: 0, popped: 0, lastTick: 99,
       lost: 0, dingBest: 0, smashes: 0, ding3: 0, bulls: 0, bullN: 0, spilled: 0, marks: [], pinT: PIN_GAP, autoBall: null, inputT: -9, down: false, drove: false, pipT: -9, boy: null, boyLeft: BOY_SAVES, loose: null, trophies: {}, cuckooT: -9, cuckooFever: false, cone: null,
@@ -1689,7 +2111,7 @@
       lasers: [], clip: {}, reload: {}, special: null, coinCount: 0,
       levelCoins: 0, streakCoins: 0, time: 0, clearT: -1, gunCd: { blaster: 0.3, laser: 0.5, rocket: 0.8, scatter: 0.6, arc: 0.7, saw: 1, duck: 1.2, yoyo: 1.4 }, clipN: {}, arcN: 0,
       shake: 0, banner: 3.2, started: false,
-      foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, champs: 0, echoN: 0, lode: 0, luckN: 0, puN: 0, thumpT: 0, graves: [], boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
+      foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, champs: 0, echoN: 0, lumpySaid: false, lode: 0, luckN: 0, puN: 0, thumpT: 0, graves: [], boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
       def: safari ? { map: [], ...BONUS[safari] } : levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
     G.par = safari ? SAFARI_S : Math.max(30, parTime(run.level) + (G.def.boss ? BOSS_CLOCK_S : 0) + SAND_S * lv('sand') - EDGE_S * lv('edge'));
@@ -1705,6 +2127,13 @@
         fav.type = 'pinata'; fav.hp = fav.maxhp = PINATA_HITS;
       }
       if (run.level >= MIMIC_FROM && rest.length > 6 && Math.random() < 0.5) pick(rest).mimic = true;
+      const free = rest.filter((k) => !k.mimic);
+      const take = () => free.splice((Math.random() * free.length) | 0, 1)[0];
+      for (const [type, from] of ODD_BRICKS) {
+        if (run.level < from || free.length < 12 || Math.random() > ODD_CHANCE) continue;
+        for (let i = Math.random() < 0.5 ? 2 : 1; i > 0; i--) { const k = take(); k.type = type; k.ate = 0; }
+      }
+      if (run.level >= LUMPY_FROM && !run.daily && free.length) take().lumpy = true;
       const events = EVENTS.filter((e) => run.level >= e.from);
       if (events.length && Math.random() < EVENT_CHANCE) { G.eventAt = rand(6, 18); G.event = pick(events); }
       if (run.dare === 'holster') after(1.2, () => heckle('holster', 'No guns. No drones. Just you. Brave. Silly, but brave.'));
@@ -1775,7 +2204,7 @@
     A.tune(run.level); A.music(G.boss || safari ? 2 : 1);
     if (G.boss) sfx.warn();
   }
-  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0, pip: 0, jar: 0, film: 0, coffee: 0, quake: 0, stampede: 0 });
+  const noFx = () => ({ wide: 0, slow: 0, fire: 0, glue: 0, mega: 0, storm: 0, x2: 0, freeze: 0, gold: 0, over: 0, panic: 0, pip: 0, jar: 0, film: 0, coffee: 0, quake: 0, stampede: 0, suds: 0, barn: 0, moon: 0 });
 
   const MAX_BALLS = 8;
   const CHICKEN_FROM = 12, WANTED_S = 15;
@@ -1822,6 +2251,7 @@
     let s = 343 + Math.min(run.level, 10) * 7 + clamp(run.level - 10, 0, 20) * 3 + Math.min(run.level < 4 ? 15 : 40, G.time * 0.6);
     if (odd('bouncy')) s *= 1.25;
     if (G.fx.slow > 0) s *= 0.68;
+    if (G.fx.moon > 0) s *= MOON_BALL;
     return s;
   }
 
@@ -1833,8 +2263,9 @@
     mega: { c: '#ff7ad9', l: 'B', w: 1.6 }, storm: { c: '#fff27a', l: '⚡', w: 1.4 }, x2: { c: '#ffb02e', l: '×2', w: 1.4 },
     freeze: { c: '#a8e6ff', l: '❄', w: 1.3 }, gold: { c: '#ffd23f', l: '★', w: 1.1 }, nuke: { c: '#ff5c5c', l: '☢', w: 0.5 },
     blimp: { c: '#ffb0e6', l: '🎈', w: 1 }, potato: { c: '#d9a066', l: '🥔', w: 1 }, pip: { c: '#8fb4ff', l: 'P', w: 1.2 }, jar: { c: '#ff5c8a', l: '📌', w: 0.9 }, quake: { c: '#c8874a', l: '≋', w: 1 },
+    suds: { c: '#bfe9ff', l: '🧼', w: 1 }, barn: { c: '#9ad0c2', l: '🪙', w: 1 },
   };
-  const PU_TEXT = { wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
+  const PU_TEXT = { suds: 'SOAP SUDS! Pop the bubbles', barn: 'BARNACLE BALL! It takes coins', wide: 'WIDE!', multi: 'MULTI!', slow: 'SLOW', fire: 'FIREBALL!', glue: 'GLUE', ammo: 'OVERDRIVE!', life: '+1 LIFE', cash: 'CASH!', net: '+NET',
     mega: 'BIG BALL!', storm: 'STORM!', x2: 'DOUBLE COINS!', freeze: 'FREEZE!', gold: 'GOLDEN BALL!', nuke: 'KABOOM!', blimp: 'BLIMP AHOY!', potato: 'HOT POTATO!', pip: 'PIP DRIVES! Let go', jar: 'TACK JAR!', quake: 'QUAKE! Bounces shake the coins loose' };
   // Hot Potato: the lowest ball becomes a fuse ball. Each paddle bounce adds a charge; the next brick that it touches
   // explodes, bigger with each charge, and the charge is gone.
@@ -1850,7 +2281,7 @@
   function rollPU() {
     const foes = G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead);
     const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
-      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato' && k !== 'pip' && k !== 'jar' && k !== 'quake'));
+      .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato' && k !== 'pip' && k !== 'jar' && k !== 'quake' && k !== 'suds' && k !== 'barn'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
@@ -1860,7 +2291,7 @@
   const COIN_MULT = 1.5;
   function dropCoin(x, y, n = 1, exact = false) {
     if (!exact) { const raw = n * COIN_MULT; n = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
-    for (let i = 0; i < n; i++) G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val: coinWorth() });
+    for (let i = 0; i < n; i++) G.coins.push({ x: x + rand(-6, 6), y, vx: rand(-40, 40) * (n > 1 ? 2 : 1), vy: rand(-140, -40), spin: Math.random() * 6, val: coinWorth(), bub: G.fx.suds > 0 ? SUDS_LIFE : 0 });
   }
   // The value of one coin; the fraction rounds up at random.
   function coinWorth() { const raw = coinVal() * coinMult(); return Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
@@ -1911,6 +2342,8 @@
     else if (k === 'pip') setFx('pip', puDur(PIP_S));
     else if (k === 'jar') { setFx('jar', puDur(JAR_S)); G.pinT = 0; }
     else if (k === 'quake') { setFx('quake', puDur(QUAKE_S)); heckle('quake', 'Shake the shelves. I will count what falls.'); }
+    else if (k === 'suds') { setFx('suds', puDur(SUDS_S)); heckle('suds', 'Clean money. For once.'); }
+    else if (k === 'barn') { setFx('barn', puDur(BARN_S)); heckle('barn', 'The ball has sticky fingers now.'); }
     else if (k === 'potato') { const b = G.balls.reduce((a, o) => (!a || o.y > a.y ? o : a), null); if (b) b.potato = { n: 0, t: puDur(POTATO_S) }; }
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
@@ -1927,7 +2360,7 @@
   }
 
   // ---------- bricks ----------
-  const TYPE_COLOR = { steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff', pinata: '#ff7ad9', runner: '#9cff57', turtle: '#3a8f3c' };
+  const TYPE_COLOR = { jelly: '#ff9ad0', gobble: '#7ad06a', pillow: '#c9a0ff', steel: '#9fb0c8', gold: '#ffd23f', bomb: '#ff4d5e', stone: '#4a4f6a', hive: '#b36bff', volt: '#ffe94a', prism: '#ffffff', mystery: '#ff7ad9', tnt: '#ff8a3d', chest: '#c8874a', dice: '#f4f6ff', pinata: '#ff7ad9', runner: '#9cff57', turtle: '#3a8f3c' };
   function brickColor(b) {
     return TYPE_COLOR[b.type] || BRICK_COLORS[(b.maxhp - 1 + b.row) % BRICK_COLORS.length];
   }
@@ -1965,9 +2398,64 @@
       if (pile.length < FAT_N || !hurtable(k)) continue;
       const part = pile.slice(0, FAT_N), x = clamp(part.reduce((a, c) => a + c.x, 0) / FAT_N, k.x + COIN_R, k.x + k.w - COIN_R);
       for (const c of part) c.dead = true;
-      G.coins.push({ x, y: k.y - COIN_R, vx: 0, vy: 0, spin: 0, val: Math.round(part.reduce((a, c) => a + c.val, 0) * FAT_K), fat: true, on: k, sat: true, crackT: FAT_CRACK_S });
+      G.coins.push({ x, y: k.y - COIN_R, vx: 0, vy: 0, spin: 0, val: Math.round(part.reduce((a, c) => a + c.val, 0) * FAT_K), fat: true, on: k, sat: true, crackT: FAT_CRACK_S, spilt: part.some((c) => c.spilt) });
       sfx.jackpot(); ring(x, k.y, 30, '#ffd84a', 0.4); say(clamp(x, 60, W - 60), k.y - 22, 'FAT COIN!', '#ffd84a', 1.1, true);
       heckle('fatcoin', 'That coin ate four others. Respect.');
+    }
+  }
+  // A pillow brick makes a rude sound: the coins that lie on the bricks near it hop away from it.
+  function pfft(b) {
+    if (G.time - (b.pfftT || -9) < PILLOW_GAP) return;
+    b.pfftT = G.time; sfx.raspberry();
+    const x = b.x + b.w / 2, y = b.y + b.h / 2;
+    for (let i = 0; i < 6; i++) addPart({ k: 'spark', x, y, vx: rand(-90, 90), vy: rand(-70, 20), t: 0.6, T: 0.6, c: '#b9ff6b', s: rand(3, 6) });
+    say(x, b.y - 8, 'PFFT', '#b9ff6b', 0.5);
+    for (const c of G.coins) {
+      const k = c.on;
+      if (!k || c.fat || k.row >= 90 || b.row >= 90 || Math.abs(k.col - b.col) > PILLOW_CELLS || Math.abs(k.row - b.row) > PILLOW_CELLS) continue;
+      hop(c); c.vx += (c.x < x ? -1 : 1) * PILLOW_PUSH;
+    }
+  }
+  // A gobble brick gives back what it ate, and more.
+  function burp(b, x, y) {
+    const sum = Math.round(b.ate * GOBBLE_K), n = clamp(Math.ceil(sum / coinWorth()), 1, GOBBLE_COINS);
+    for (let i = 0; i < n; i++) G.coins.push({ x: x + rand(-8, 8), y, vx: rand(-110, 110), vy: rand(-260, -120), spin: Math.random() * 6, val: Math.max(1, Math.round(sum / n)) });
+    say(clamp(x, 60, W - 60), y - 22, 'BURP!', '#7ad06a', 1, true); sfx.raspberry(); heckle('gobble', 'It ate them. It gave them back with interest. Odd bank.');
+  }
+  function lumpyBroke(x, y) {
+    run.lumpy = (run.lumpy || 0) + 1;
+    if (run.level < LUMPY_PENSION || run.lumpyPaid) { say(clamp(x, 80, W - 80), y - 20, pick(['See you next level.', 'Same time tomorrow.', 'I felt that.']), '#ffffff', 1.4); return; }
+    run.lumpyPaid = true;
+    dropCoin(x, y, run.lumpy * LUMPY_PAY, true); sfx.jackpot(); flashScreen('#ffd23f', 0.2);
+    say(W / 2, clamp(y - 30, HUD_H + 60, 400), "LUMPY'S PENSION!", '#ffd23f', 1.8, true);
+    heckle('lumpyPension', 'Lumpy retires. He broke for you all run. Tip him.');
+  }
+  // The eaten coins of a gobble brick, and the face and the plasters of Old Lumpy.
+  function drawOdd() {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const b of G.bricks) {
+      if (!b.alive || (G.time - b.delay) / INTRO < 1) continue;
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      if (b.type === 'gobble' && b.ate) {
+        ctx.font = 'bold 9px system-ui, sans-serif'; ctx.fillStyle = '#ffe680'; ctx.fillText(short(b.ate), cx, b.y - 5);
+      }
+      if (!b.lumpy) continue;
+      const n = run.lumpy || 0;
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(cx - 7, cy - 2, 3.2, 0, TAU); ctx.arc(cx + 7, cy - 2, 3.2, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#1b1f33'; ctx.beginPath(); ctx.arc(cx - 7, cy - 1, 1.5, 0, TAU); ctx.arc(cx + 7, cy - 1, 1.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 1.4; ctx.beginPath();
+      ctx.moveTo(cx - 11, cy - 7); ctx.lineTo(cx - 4, cy - 5); ctx.moveTo(cx + 11, cy - 7); ctx.lineTo(cx + 4, cy - 5);
+      ctx.moveTo(cx - 4, cy + 6); ctx.quadraticCurveTo(cx, cy + 3, cx + 4, cy + 6); ctx.stroke();
+      for (let i = 0; i < Math.min(n, 5); i++) {
+        const px = b.x + 4 + ((i * 17) % (b.w - 12)), py = b.y + (i % 2 ? b.h - 7 : 2);
+        ctx.fillStyle = '#f2d2a8'; rr(px, py, 9, 4.5, 1.5); ctx.fill();
+        ctx.fillStyle = '#c99a6a'; ctx.fillRect(px + 3.5, py + 1, 2, 2.5);
+      }
+      if (n >= 6) { ctx.fillStyle = 'rgba(244,246,255,0.9)'; ctx.fillRect(b.x + b.w - 11, b.y, 6, b.h); }
+      if (run.level >= LUMPY_PENSION && !run.lumpyPaid) {
+        ctx.fillStyle = '#ff7ad9'; ctx.beginPath(); ctx.moveTo(cx - 7, b.y + 1); ctx.lineTo(cx, b.y - 13); ctx.lineTo(cx + 7, b.y + 1); ctx.fill();
+        ctx.fillStyle = '#ffe066'; ctx.beginPath(); ctx.arc(cx, b.y - 13, 2.5, 0, TAU); ctx.fill();
+      }
     }
   }
   // Chain Crit: the hit on brick b also goes to the nearest brick.
@@ -2012,6 +2500,8 @@
       if (capped('crit')) critJump(b, dmg);
     }
     b.hp -= dmg; b.flash = 0.12; b.punch = 1;
+    if (b.type === 'pillow') pfft(b);
+    if (b.lumpy && !G.lumpySaid) { G.lumpySaid = true; say(clamp(b.x + b.w / 2, 80, W - 80), b.y - 12, pick(LUMPY_OW), '#ffffff', 1.4); sfx.eek(); }
     if (b.type === 'chest' && b.loot > 0) { b.loot--; dropCoin(b.x + b.w / 2, b.y + b.h, 1); }
     if (fromBall && G.fx.gold > 0 && Math.random() < 0.35) dropCoin(b.x + b.w / 2, b.y + b.h, 1);
     if (fromBall && lv('splash') && Math.random() < 0.15 * lv('splash')) {
@@ -2046,6 +2536,8 @@
     if (b.bingo) bingoBrick(b, cx, cy);
     if (G.auction && G.auction.k === b) auctionSold(cx, cy);
     if (b.iou) payIou(cx, cy);
+    if (b.type === 'gobble' && b.ate) burp(b, cx, cy);
+    if (b.lumpy) lumpyBroke(cx, cy);
     if (b.conga) congaPaid(cx, cy);
     if (G.fx.panic > 0) dropCoin(cx, cy, 1, true);
     if (special('bill')) {
@@ -2125,6 +2617,7 @@
     { id: 'bingo', from: 13, start: startBingo },
     { id: 'auction', from: 11, start: startAuction },
     { id: 'stampede', from: 14, start: startStampede },
+    { id: 'moon', from: 16, start: startMoon },
     { id: 'conga', from: 15, start: startConga },
   ];
   // Going Once: one brick gets a price that rises each second. The player who breaks it in AUCTION_S seconds gets the price.
@@ -2156,6 +2649,11 @@
     sfx.teleport(); flashScreen('#ffffff', 0.3);
   }
   // Coffee Break: for COFFEE_S seconds a ball hit deals double damage.
+  function startMoon() {
+    setFx('moon', MOON_S);
+    say(W / 2, H * 0.42, 'LOW-GRAVITY LUNCH!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'Coins and capsules float down', '#bfe9ff', 2);
+    sfx.riser(); heckle('moon', 'Lunch on the moon. The coins are in no hurry.');
+  }
   function startCoffee() {
     setFx('coffee', COFFEE_S);
     say(W / 2, H * 0.42, 'COFFEE BREAK!', '#ffffff', 2, true); say(W / 2, H * 0.42 + 30, 'The bricks relax. Balls hit them twice as hard', '#ffd84a', 2);
@@ -2317,10 +2815,10 @@
   // Channel Flip: grey picture, sepia tint, scratches, and a title card.
   function drawFilm(t) {
     if (!G || G.fx.film <= 0 || mode !== 'play') return;
-    ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#e9cf9f'; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; fillView();
+    ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#e9cf9f'; fillView();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = `rgba(0,0,0,${0.05 + 0.05 * Math.sin(t * 37)})`; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = `rgba(0,0,0,${0.05 + 0.05 * Math.sin(t * 37)})`; fillView();
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     for (let i = 0; i < 3; i++) ctx.fillRect((Math.sin(t * (3 + i) + i * 9) * 0.5 + 0.5) * W, 0, 1, H);
     if (!G.card) return;
@@ -2375,10 +2873,7 @@
   function destructibleLeft() { let n = 0; for (const b of G.bricks) if (b.alive && b.type !== 'stone' && b.type !== 'runner') n++; return n; }
 
   // ---------- input ----------
-  function toGame(e) {
-    const r = canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
-  }
+  function toGame(e) { return { x: (e.clientX - offX) / scale, y: (e.clientY - offY) / scale }; }
   canvas.addEventListener('pointerdown', (e) => {
     audio();
     if (mode !== 'play' || e.button === 2) return;
@@ -2433,7 +2928,7 @@
 
     G.time += dt;
     if (G.started && G.clearT < 0 && !(relic('stopwatch') && feverOn())) G.clock += dt;
-    if (G.banner > 0) G.banner -= dt;
+    if (G.banner > 0 && (G.started || G.banner > 1.2)) G.banner -= dt;
     for (const k in G.fx) if (G.fx[k] > 0) G.fx[k] = Math.max(0, G.fx[k] - dt);
     if (G.coinChainT > 0) G.coinChainT -= dt;
     runTimers(dt);
@@ -2472,6 +2967,7 @@
     updateField(dt);
     updateBirds(dt);
     updateCritters(dt);
+    updateDistrict(dt);
     updateHeckle(dt);
     if (G.api && G.clearT < 0) ROUNDS[G.safari].tick(G.api, dt);
     if (G.eventAt > 0 && G.clock >= G.eventAt && G.clearT < 0) { G.eventAt = -1; G.event.start(); }
@@ -2488,6 +2984,22 @@
     if (G.clearT >= 0) { G.clearT -= dt; if (G.clearT <= 0) finishLevel(); }
   }
 
+  function takeStuds(b) {
+    if (G.clearT >= 0) return;
+    b.studs = b.studs || [];
+    for (const c of G.coins) {
+      if (b.studs.length >= BARN_MAX) return;
+      if (c.dead || c.fat || c.bub > 0 || Math.hypot(c.x - b.x, c.y - b.y) > b.r + COIN_R + BARN_REACH) continue;
+      c.dead = true; b.studs.push(c.val); sfx.coin(b.studs.length);
+    }
+  }
+  // The paddle takes the coins off ball b.
+  function bankStuds(b, sweet) {
+    const sum = b.studs.reduce((a, v) => a + v, 0) * (sweet ? 2 : 1);
+    b.studs = [];
+    collectCoin({ x: b.x, y: PADDLE_Y - 10, val: sum });
+    if (sweet) say(b.x, PADDLE_Y - 78, 'CLEAN CATCH! ×2', '#9ad0c2', 0.9, true);
+  }
   // Ball and Chain: each link follows the one before it, so the chain cuts the corners of the path of ball b.
   function updateTail(b) {
     const n = 2 * lv('tail'), dmg = Math.max(1, Math.round(ballDmg() * TAIL_K));
@@ -2517,6 +3029,7 @@
       if (b.frog) continue;
       if (b.fireT > 0) b.fireT -= dt;
       if (b.duckT > 0) b.duckT -= dt;
+      if (G.fx.barn > 0 && !b.stuck) takeStuds(b);
       if (b.potato && (b.potato.t -= dt) <= 0) b.potato = null;
       if (b.stuck) {
         b.x = clamp(paddle.x + b.off, b.r, W - b.r); b.y = PADDLE_Y - b.r - 1;
@@ -2583,7 +3096,7 @@
         if (G.net > 0 && b.vy > 0 && b.y + b.r >= NET_Y) {
           b.vy = -Math.abs(b.vy); b.y = NET_Y - b.r; G.net--; sfx.net(); burst(b.x, NET_Y, '#6ee7ff', 14);
         }
-        if (b.y - b.r > H) {
+        if (b.y - b.r > bottom()) {
           if (!relic('boomerang') || Math.random() > 0.35) { b.dead = true; grave(b); break; }
           b.y = HUD_H + b.r + 2; b.vy = Math.abs(b.vy); sfx.net(); say(b.x, HUD_H + 30, 'BOOMERANG!', '#6ee7ff', 0.9);
         }
@@ -2602,9 +3115,10 @@
         if (M && !M.out) { if (ballVsCircle(b, M.x, moleSackY(M), moleSackR(M))) moleSackHit(M); else if (ballVsCircle(b, M.x, M.y, MOLE_R)) moleHit(M); }
         const R = G.raccoon;
         if (R && !R.out && ballVsRect(b, R.x - RACCOON_W / 2, raccoonTop(R) - raccoonLift(R), RACCOON_W, R.y - raccoonTop(R))) raccoonHit(R);
+        districtBall(b);
         if (G.boss && !G.boss.dead) {
           const B = G.boss;
-          if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; damageBoss(dmgE); }
+          if (bossXs(B).some((x) => ballVsRect(b, x - B.w / 2, B.y, B.w, B.h)) && (G.time - (b.bossT || -1)) > 0.12) { b.bossT = G.time; ballHitBoss(b, dmgE); }
           if (B.hat && ballVsRect(b, B.hat.x - HAT_W / 2, B.hat.y - 24, HAT_W, 26)) hatHit(B);
           // a ball in the Auditor's tractor beam turns the beam around
           if (B.state === 'tractor' && Math.abs(b.x - B.x) < 40 && b.y > B.y + B.h && b.y < PADDLE_Y - 60) {
@@ -2706,6 +3220,7 @@
   // Smash: a tap just before the bounce doubles the damage and adds pierce until the next bounce.
   const sweetX = () => paddle.x + G.sweet * paddle.w / 2;
   function paddleSkill(b, sweet) {
+    if (b.studs && b.studs.length) bankStuds(b, sweet);
     if (capped('width') && Math.abs(b.x - paddle.x) > (paddle.w / 2) * TIP_OFF) {
       b.fireT = Math.max(b.fireT || 0, TIP_S); say(b.x, PADDLE_Y - 30, 'BOING!', '#ff9a3d', 0.7); sfx.pop(8);
     }
@@ -2715,6 +3230,7 @@
       G.dingBest = Math.max(G.dingBest, n);
       if (n === 3) G.ding3++;
       if (setById('juggler')) b.pierce++;
+      buzz(n >= 5 ? [15, 30, 40] : 6 + n * 4);
       sfx.ding(n); ring(b.x, PADDLE_Y, 30 + n * 8, '#fff27a', 0.35); dropCoin(b.x, PADDLE_Y - 24, n, true);
       say(b.x, PADDLE_Y - 30, n >= 5 ? 'PERFECT!' : 'DING ×' + n, '#fff27a', 0.9, n >= 5);
       if (n >= 5) { G.sweetN = 0; sticker('perfect'); setFx('fire', 3); flashScreen('#fff27a', 0.2); sfx.cheer(3); }
@@ -2722,6 +3238,7 @@
     G.sweet = rand(-0.7, 0.7);
     if (G.level >= FROM.smash && G.time - G.tapT < 0.2) {
       G.tapT = -9; b.smash = true; b.pierce += 3; G.smashes++; rattle(b.x);
+      buzz(35); G.hitstop = Math.max(G.hitstop, 0.05);
       say(b.x, PADDLE_Y - 46, 'SMASH!', '#ff9a3d', 0.8, true); ring(b.x, PADDLE_Y, 70, '#ff9a3d', 0.3, 4); sfx.whack(); shake(5);
     }
     if (relic('spin')) b.spin = clamp(paddle.vx / 300, -2, 2);
@@ -2733,7 +3250,7 @@
   function ballHit(b, dmg, k) {
     G.lastHit = k; b.hits++;
     if (b.duckT > 0) riderBlast(b);
-    const m = (b.smash ? 2 : 1) * (b.whip ? 2 : 1) * (G.fx.coffee > 0 ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0)) * pinTouch(b, k);
+    const m = (1 + BARN_K * (b.studs ? b.studs.length : 0)) * (b.smash ? 2 : 1) * (b.whip ? 2 : 1) * (G.fx.coffee > 0 ? 2 : 1) * (1 + (relic('bank') ? Math.min(b.banks, 3) : 0)) * pinTouch(b, k);
     if (k && b.banks > 0 && relic('rebound')) popNeighbour(k, dmg);
     b.banks = 0;
     if (b.chicken) { sfx.squawk((G.combo / 5) | 0); burst(b.x, b.y, '#ffffff', 2, 90); }
@@ -2820,9 +3337,9 @@
         G.crumbleT = G.timeUp ? 0.8 : 2;
         const share = G.timeUp ? 0.25 : 0.12;
         G.noLoot = G.timeUp;
-        for (const b of G.bricks) if (b.alive && b.type !== 'stone') { b.hp -= Math.max(1, Math.ceil(b.maxhp * share)); b.flash = 0.1; if (b.hp <= 0) destroyBrick(b); }
+        for (const b of G.bricks) if (b.alive && b.type !== 'stone') { b.hp -= Math.max(1, Math.ceil(b.maxhp * share)); b.flash = 0.1; if (b.hp <= 0) { b.byBall = false; destroyBrick(b); } }
         G.noLoot = false;
-        if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * (G.timeUp ? 0.1 : 0.05)));
+        if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * (G.timeUp ? 0.1 : 0.05)), true);
         G.shake = Math.max(G.shake, 3);
       }
     }
@@ -2837,6 +3354,10 @@
     let best = null, bd = Infinity;
     for (const k of plain.length ? plain : all) { const d = Math.hypot(k.x + k.w / 2 - b.x, k.y + k.h / 2 - b.y); if (d < bd) { bd = d; best = k; } }
     if (!best) return;
+    // The pull works on a ball that goes up, so that a ball on its way down is easy to read. A turtle, and a brick
+    // that has stone below it, take a hit from above only: a ball that is above such a brick keeps the pull.
+    const roofed = best.type === 'turtle' || G.bricks.some((o) => o.alive && o.type === 'stone' && o.row < 90 && o.col === best.col && o.row === best.row + 1);
+    if (b.vy > 0 && !(roofed && b.y < best.y)) return;
     let tx = best.x + best.w / 2, ty = best.y + best.h / 2;
     // to a turtle: past its side while below it, then down onto its shell
     if (best.type === 'turtle') { ty = best.y - BH; if (b.y > best.y + best.h) tx = b.x < tx ? best.x - BW / 2 : best.x + best.w + BW / 2; }
@@ -3332,7 +3853,16 @@
         c.vy -= 1300 * dt; c.x += (G.boss.x - c.x) * Math.min(1, dt * 3);
         if (c.y < G.boss.y + G.boss.h) { c.dead = true; say(c.x, c.y + 20, 'TAXED!', '#ff5c5c', 0.6); sfx.steal(); continue; }
       }
-      c.vy = Math.min(c.vy + 420 * dt, c.fat ? FAT_FALL : 330); c.vx *= 1 - dt * (c.on ? 6 : 1.5); c.vx += G.wind * dt;
+      if (c.bub > 0) {
+        c.bub -= dt;
+        c.x = clamp(c.x + Math.sin(G.time * 3 + c.spin) * 20 * dt, 10, W - 10); c.y = Math.max(HUD_H + 24, c.y - SUDS_V * dt);
+        const b = c.bub < SUDS_LIFE - SUDS_ARM && G.balls.find((o) => !o.stuck && Math.hypot(o.x - c.x, o.y - c.y) < o.r + SUDS_R);
+        if (!b && c.bub > 0) continue;
+        c.bub = 0; c.vx = c.vy = 0; burst(c.x, c.y, '#bfe9ff', 5, 90); sfx.pop(b ? 9 : 3);
+        if (b) { c.val *= 2; say(c.x, c.y - 16, 'POP! ×2', '#bfe9ff', 0.6); }
+      }
+      const grav = G.fx.moon > 0 ? MOON_G : 1;
+      c.vy = Math.min(c.vy + 420 * grav * dt, (c.fat ? FAT_FALL : 330) * grav); c.vx *= 1 - dt * (c.on ? 6 : 1.5); c.vx += G.wind * dt;
       if (c.on && G.fx.stampede > 0) { c.run = c.run || (c.x < paddle.x ? 1 : -1); c.vx = c.run * STAMPEDE_V; }
       if (c.fat && c.on && (c.crackT -= dt) <= 0) {
         c.crackT = FAT_CRACK_S; burst(c.x, c.y + COIN_R, '#ffd84a', 4, 80);
@@ -3349,6 +3879,7 @@
       if (!c.on) c.spin += dt * 8;
       if (c.x < 6) { c.x = 6; c.vx = Math.abs(c.vx); } if (c.x > W - 6) { c.x = W - 6; c.vx = -Math.abs(c.vx); }
       c.on = G.lode > 0 ? null : coinVsBricks(c);
+      if (c.on && c.on.type === 'gobble' && !c.fat) { c.dead = true; c.on.ate += c.val; c.on.punch = 1.4; sfx.steal(); continue; }
       if (c.on) c.sat = true;
       if (c.fat && c.vy > 0 && tossOk(c) && G.time - G.tapT < TOSS_TAP && onPaddle(c.x, c.y, 8)) toss(c);
       else if (onPaddle(c.x, c.y, 8)) {
@@ -3356,7 +3887,7 @@
         if (c.sat && lv('rake')) { const raw = c.val * (1 + RAKE_K * lv('rake')); c.val = Math.floor(raw) + (Math.random() < raw % 1 ? 1 : 0); }
         if (c.run && G.fx.stampede > 0) c.val *= 2;
         collectCoin(c);
-      } else if (c.y > H + 10) {
+      } else if (c.y > bottom() + 10) {
         // a coin that falls past the paddle is lost
         c.dead = true;
         if (handsOn()) continue;
@@ -3372,9 +3903,9 @@
         const dx = pcx - p.x, dy = pcy - p.y, d = Math.hypot(dx, dy);
         if (d < mRad * 0.8 && d > 1) { p.x += (dx / d) * 160 * dt; }
       }
-      p.x = clamp(p.x + G.wind * 0.4 * dt, 16, W - 16); p.y += p.vy * dt;
+      p.x = clamp(p.x + G.wind * 0.4 * dt, 16, W - 16); p.y += p.vy * (G.fx.moon > 0 ? 2 * MOON_G : 1) * dt;
       if (onPaddle(p.x, p.y, 10)) { p.dead = true; collectPU(p); }
-      else if (p.y > H + 14) p.dead = true;
+      else if (p.y > bottom() + 14) p.dead = true;
     }
     if (G.clearT < 0) mergeCoins();
     G.coins = G.coins.filter((c) => !c.dead);
@@ -3396,7 +3927,7 @@
         if (c.vy < 0) { c.y = k.y + k.h + COIN_R; c.vy = -c.vy * COIN_BOUNCE; }
       } else {
         c.y = k.y - COIN_R;
-        if (c.vy > COIN_REST_V) c.vy *= -COIN_BOUNCE; else { c.vy = 0; on = k; }
+        if (k.type === 'jelly') { c.vy = -JELLY_V; k.punch = 1; } else if (c.vy > COIN_REST_V) c.vy *= -COIN_BOUNCE; else { c.vy = 0; on = k; }
       }
     }
     return on;
@@ -3548,7 +4079,7 @@
     say(W / 2, lane - 46, 'BLIMP CONVOY! Pop all five!', '#ffd23f', 1.8); sfx.blimp();
   }
   function popBlimp(f) {
-    G.popped++; run.stats.blimps++; shake(6);
+    G.popped++; run.stats.blimps++; shake(6); buzz([20, 20, 40]); G.hitstop = Math.max(G.hitstop, 0.04);
     if (run.stats.blimps >= 25) sticker('bubble');
     if (f.kind === 'windbag') sticker('windbag');
     say(f.x, f.y - 20, f.kind === 'gold' ? 'GOLDEN JACKPOT!' : 'JACKPOT!', '#ffd23f', 1.2, f.kind === 'gold');
@@ -3818,7 +4349,7 @@
       if (s.k === 'paper') s.x += Math.cos(s.t * 6) * 110 * dt;
       s.x += s.vx * dt; s.y += s.vy * dt;
       if (s.k && (s.x < 8 || s.x > W - 8)) { s.vx = -s.vx; s.x = clamp(s.x, 8, W - 8); }
-      if (s.x < -10 || s.x > W + 10 || s.y > H + 10) { s.dead = true; continue; }
+      if (s.x < -10 || s.x > W + 10 || s.y > bottom() + 10) { s.dead = true; continue; }
       if (s.vy > 0 && s.y + s.r >= PADDLE_Y && s.y - s.r <= PADDLE_Y + PADDLE_H && Math.abs(s.x - paddle.x) <= paddle.w / 2 + s.r) {
         s.dead = true;
         const hurt = hurtPaddle(s.x, s.k === 'curse' ? '#ff5c5c' : '#9cff57');
@@ -3864,18 +4395,21 @@
     { name: 'Bazaar Baron', w: 140, h: 48, says: ['No refunds!', 'Everything must go!', 'Prices just went up!', 'That will cost you!'], dies: 'I am ruined!' },
     { name: 'Slime Queen', w: 130, h: 66, says: ['Wobble wobble!', 'Bow to the goo!', 'Sticky situation!', 'Bloop.'], dies: 'I am melting...' },
     { name: 'The Auditor', w: 170, h: 50, says: ['Receipts, please.', 'That is not deductible.', 'You owe 3 coins. And interest.', 'Audit time!'], dies: 'Filing... for... bankruptcy...' },
+    { name: 'Gullet, the Coin Purse', w: 150, h: 58, says: ['Exact change only!', 'Feed me!', 'Keep the change? I WILL.', 'Snap!', 'No coin left behind!'], dies: 'I am... all... spent...' },
   ];
   const BOSS_Y = 94, STOMP_Y = 420;
   // The health of a boss follows the brick toughness of its level, and the heat at a lower rate: area damage
-  // does not help against one target. Boss levels get a longer clock.
-  const BOSS_K = [0, 75, 55, 50, 35, 35];
+  // does not help against one target. Boss levels get a longer clock. Gullet has less: his hide takes most damage.
+  const BOSS_K = [0, 75, 55, 50, 35, 35, 22];
   const bossHp = (n, kind) => Math.round(BOSS_K[kind] * hpMult(n));
   const BOSS_CLOCK_S = 20;
   const bossAlt = () => Math.min(2, (run.level > LEVELS.length ? 1 : 0) + (run.stars ? 1 : 0));
   function makeBoss(kind) {
     const d = BOSSES[kind], hp = Math.round(bossHp(run.level, kind) * Math.pow(heatMult(), 0.6));
-    return { kind, x: W / 2, y: BOSS_Y, w: d.w, h: d.h, hp, maxhp: hp, t: 0, phase: 1, atkT: 3, moveT: 4, talkT: 5, flash: 0, dead: false,
+    const B = { kind, x: W / 2, y: BOSS_Y, w: d.w, h: d.h, hp, maxhp: hp, t: 0, phase: 1, atkT: 3, moveT: 4, talkT: 5, flash: 0, dead: false,
       coinAcc: 0, talk: null, state: 'idle', stateT: 0, vx: 95, vy: 40, alt: bossAlt() };
+    if (kind !== 6) return B;
+    return Object.assign(B, { y: GULLET_Y, w: GULLET_W0, purse: [], gulps: [], full: 0, open: 0, claspT: 0, gulpT: 0, hicT: 0, sprayT: -9, tinkT: -9, ate: 0 });
   }
   function bossSay(s) {
     G.boss.talk = { s, t: 2.2 }; sfx.taunt();
@@ -3910,10 +4444,12 @@
     poof(B.hat.x, B.hat.y - 12, '#ffd23f'); dropCoin(B.hat.x, B.hat.y, HAT_PAY, true); sfx.jackpot();
     B.hat = null; bossSay('My hat!');
   }
-  function damageBoss(dmg) {
+  // raw = the damage ignores Gullet's hide.
+  function damageBoss(dmg, raw = false) {
     const B = G.boss; if (!B || B.dead) return;
     // the Crate King lands on his head after a stomp
     if (B.kind === 1 && B.state === 'rest') dmg *= 2;
+    if (B.kind === 6 && !raw) { dmg *= GULLET_HIDE; gulletTink(B); }
     B.hp -= dmg; B.flash = 0.1; sfx.bossHit();
     // a boss leaks coins as it takes damage: 25 drops over the fight
     B.coinAcc += Math.min(dmg / B.maxhp, 0.2);
@@ -3926,8 +4462,10 @@
       bossSay(pick(BOSSES[B.kind].says));
       BOSS_PHASE[B.kind](B);
     }
+    if (B.hp > 0 && B.kind === 6 && B.phase === 3) gulletSpray(B);
     if (B.hp > 0) return;
     B.dead = true; shake(16); sfx.bossDie(); buzz([40, 40, 40, 40, 120]);
+    if (B.kind === 6) gulletBurst(B);
     G.slowmo = 1.2; flashScreen('#ffffff', 0.6); G.lasers = []; G.eshots = [];
     G.cam = { x: B.x, y: B.y + B.h / 2, t: 1.2, T: 1.2 }; sfx.roar();
     for (let i = 0; i < 7; i++) after(i * 0.07, () => { const x = B.x + rand(-60, 60), y = B.y + rand(-5, B.h); burst(x, y, pick(RAINBOW), 20, 260); ring(x, y, 50, '#ffd23f'); });
@@ -3952,6 +4490,97 @@
   function poof(x, y, color) { burst(x, y, color, 16, 200); ring(x, y, 60, color, 0.35); }
   const sweepX = (B, speed) => W / 2 + Math.sin(B.t * speed) * (W / 2 - B.w / 2 - 8);
 
+  // Gullet, the Coin Purse. His hide takes GULLET_HIDE of the damage. His weak spot is the open clasp on top: a ball
+  // that comes down on it does GULLET_CLASP times the damage, and then the clasp is shut for GULLET_GULP_S. The clasp
+  // is open for GULLET_OPEN_S of every GULLET_CYCLE seconds, while he inhales and while he lies after a belly flop;
+  // from phase 3 it is broken and always open. He inhales the coins that lie on bricks or fly near him (not fat
+  // coins). He holds at most GULLET_HOLD coins and keeps their values; each coin makes him GULLET_GROW wider. He gives
+  // them back when he hiccups (phase 2), when a hit sprays them out (phase 3) and when he bursts.
+  const GULLET_Y = 110, GULLET_W0 = 130, GULLET_GROW = 2.5, GULLET_HOLD = 30, GULLET_HIDE = 0.25, GULLET_CLASP = 3;
+  const GULLET_LIP = 0.45; // half width of the clasp, as a part of his width
+  const GULLET_CYCLE = 7, GULLET_OPEN_S = 2.5, GULLET_GULP_S = 0.6, GULLET_HIC_S = 0.3, GULLET_SWEEP = 0.5;
+  const GULLET_SUCK_R = 170, GULLET_PULL = 5, GULLET_INHALE_S = 2.2, GULLET_HIC_N = 3, GULLET_SPRAY_S = 0.3, GULLET_SPRAY_N = 2;
+  const claspOpen = (B) => B.open > 0.6 && B.gulpT <= 0;
+  const gulletFood = (B, c) => !c.dead && !c.fat && !(c.bub > 0) && (c.on || Math.hypot(c.x - B.x, c.y - B.y - B.h / 2) < GULLET_SUCK_R);
+  const gulletRoom = (B) => GULLET_HOLD - B.purse.length - B.gulps.length;
+  const gulletResume = (B) => { B.t = Math.asin(clamp((B.x - W / 2) / (W / 2 - B.w / 2 - 8), -1, 1)) / GULLET_SWEEP; };
+  function gulletFit(B) {
+    B.w = GULLET_W0 + GULLET_GROW * B.purse.length; B.full = B.purse.length / GULLET_HOLD;
+    B.x = clamp(B.x, B.w / 2, W - B.w / 2);
+  }
+  // A coin of value val flies out of his clasp with speed (vx, vy).
+  function gulletSpit(B, val, vx, vy) {
+    dropCoin(B.x, B.y + 8, 1, true);
+    const c = G.coins[G.coins.length - 1];
+    c.val = val; c.vx = vx; c.vy = vy; c.bub = 0;
+  }
+  function gulletTink(B) {
+    if (G.time - B.tinkT < 0.3) return;
+    B.tinkT = G.time;
+    const x = B.x + rand(-B.w / 3, B.w / 3);
+    say(x, B.y + B.h + 6, 'tink', '#c9d0ff', 0.4); burst(x, B.y + B.h - 4, '#b08a5a', 4, 80);
+  }
+  // Ball b has bounced off the boss. Gullet: a ball that was pushed out over his top came down on him.
+  function ballHitBoss(b, dmg) {
+    const B = G.boss;
+    if (B.kind !== 6 || !claspOpen(B) || b.y + b.r > B.y + 0.5 || Math.abs(b.x - B.x) > B.w * GULLET_LIP) { damageBoss(dmg); return; }
+    // up and out to the side, so that the ball does not stay between him and the ceiling
+    const sp = Math.hypot(b.vx, b.vy), side = Math.sign(b.x - B.x) || 1;
+    b.vx = side * sp * 0.5; b.vy = -sp * 0.866;
+    B.gulpT = GULLET_GULP_S; sfx.spit();
+    say(b.x, B.y - 14, 'GULP! ×3', '#ffd23f', 0.8, true); ring(b.x, B.y, 40, '#ffd23f', 0.3);
+    damageBoss(dmg * GULLET_CLASP, true);
+  }
+  function gulletInhale(B) {
+    let room = gulletRoom(B);
+    for (const c of G.coins) {
+      if (room <= 0) return;
+      if (!gulletFood(B, c)) continue;
+      c.dead = true; room--;
+      B.gulps.push({ x: c.x, y: c.y, spin: c.spin, val: c.val, t: 0 });
+    }
+  }
+  // Timers, the clasp, and the coins on their way into his clasp.
+  function gulletTick(B, dt) {
+    B.gulpT = Math.max(0, B.gulpT - dt); B.hicT = Math.max(0, B.hicT - dt); B.claspT += dt;
+    const st = B.state;
+    const want = B.phase === 3 || st === 'inhale' || st === 'rest' ? 1 : st === 'aim' || st === 'drop' || B.gulpT > 0 ? 0 : B.claspT % GULLET_CYCLE < GULLET_OPEN_S ? 1 : 0;
+    B.open += (want - B.open) * Math.min(1, dt * 8);
+    if (!B.gulps.length) return;
+    const mx = B.x, my = B.y + 8, k = Math.min(1, dt * GULLET_PULL);
+    for (const g of B.gulps) {
+      g.x += (mx - g.x) * k; g.y += (my - g.y) * k; g.spin += dt * 14;
+      if ((g.t += dt) < 1.2 && Math.hypot(mx - g.x, my - g.y) > 12) continue;
+      g.in = true; B.purse.push(g.val); B.ate++;
+    }
+    if (!B.gulps.some((g) => g.in)) return;
+    B.gulps = B.gulps.filter((g) => !g.in); gulletFit(B); sfx.steal();
+  }
+  // Phase 2 attack: three hiccups. Each one throws up to GULLET_HIC_N coins in arcs, and at times a cursed coin.
+  function gulletHiccups(B) {
+    if (!B.purse.length) bossSay('Hic... I am empty!');
+    for (let i = 0; i < 3; i++) after(0.3 + i * 0.4, () => {
+      if (G.boss !== B || B.dead) return;
+      B.hicT = GULLET_HIC_S; sfx.spit(); say(B.x, B.y - 10, 'HIC!', '#ffd23f', 0.6);
+      for (let j = 0; j < GULLET_HIC_N && B.purse.length; j++) gulletSpit(B, B.purse.pop(), (Math.random() < 0.5 ? -1 : 1) * rand(110, 220), rand(-200, -120));
+      if (Math.random() < 0.5) enemyShot(B.x + rand(-30, 30), B.y + B.h, rand(-0.6, 0.6), 110, 'curse');
+      gulletFit(B);
+    });
+  }
+  function gulletSpray(B) {
+    if (G.time - B.sprayT < GULLET_SPRAY_S || !B.purse.length) return;
+    B.sprayT = G.time;
+    for (let i = 0; i < GULLET_SPRAY_N && B.purse.length; i++) gulletSpit(B, B.purse.pop(), rand(-200, 200), rand(-200, -90));
+    gulletFit(B);
+  }
+  function gulletBurst(B) {
+    const vals = B.purse.concat(B.gulps.map((g) => g.val));
+    B.purse = []; B.gulps = [];
+    for (const v of vals) gulletSpit(B, v, rand(-240, 240), rand(-260, -60));
+    if (vals.length) say(B.x, B.y + B.h + 30, 'RIIIP!', '#ffd23f', 1.4, true);
+  }
+  const gulletLater = (B, s, line) => after(s, () => { if (G.boss === B && !B.dead) bossSay(line); });
+
   // One-time events when a boss enters phase 2 or 3.
   const BOSS_PHASE = [null,
     () => dropBricks(4, 'normal', 2),
@@ -3964,6 +4593,10 @@
       poof(W - B.x, B.y + B.h / 2, '#7ee05a');
     },
     (B) => { dropBricks(4, 'steel', 3); for (let i = 0; i < B.phase - 1; i++) spawnFoe('bomber'); },
+    (B) => {
+      if (B.phase === 2) { dropBricks(3, 'normal', 2); if (!B.ate) gulletLater(B, 1.2, 'Not one coin? I am all skin!'); return; }
+      poof(B.x, B.y + 8, '#ffd23f'); sfx.stone(); gulletLater(B, 1.2, 'My clasp! It is BROKEN!');
+    },
   ];
   // Movement and attacks. live = the ball is in play, so attacks are allowed.
   const BOSS_AI = [null,
@@ -4056,6 +4689,44 @@
       else if (roll < 0.6) { B.atkT = 2.8; laserAt(paddle.x); for (let i = 0; i < B.phase; i++) laserAt(rand(40, W - 40), 1 + i * 0.35); }
       else if (roll < 0.8 && G.coins.length > 2) { B.state = 'tractor'; B.stateT = 2.4; bossSay('Mine now.'); sfx.teleport(); }
       else { B.atkT = 3; if (G.foes.length < 4) spawnFoe(Math.random() < 0.5 ? 'bomber' : 'shooter'); }
+    },
+    // Gullet: waddles along the top and inhales coins, belly flops at the paddle; from phase 2 he hiccups coins.
+    (B, dt, live) => {
+      gulletTick(B, dt);
+      if (B.state === 'idle') {
+        B.x = sweepX(B, GULLET_SWEEP); B.y += (GULLET_Y - Math.abs(Math.sin(B.t * 4)) * 4 - B.y) * Math.min(1, dt * 6);
+        if (!live || (B.atkT -= dt) > 0) return;
+        const roll = Math.random(), p = B.phase === 3 ? 0.5 : 0.4, food = gulletRoom(B) > 0 && G.coins.some((c) => gulletFood(B, c));
+        if (roll < p && food) { B.state = 'inhale'; B.stateT = GULLET_INHALE_S; bossSay('Ssssnnnfff!'); sfx.teleport(); }
+        else if (roll < p && B.phase >= 2 && B.purse.length) { B.atkT = 3; gulletHiccups(B); }
+        else if (roll < p && !B.purse.length) { B.atkT = 2; bossSay('Feed me... I am so flat!'); }
+        else if (roll < 0.68) { B.state = 'aim'; B.stateT = 1; bossSay('Belly flop!'); }
+        else if (B.phase >= 2) { B.atkT = 3; gulletHiccups(B); }
+        else { B.atkT = 2.6; const by = B.y + B.h, aim = aimAtPaddle(B.x, by); for (const a of [-0.3, 0, 0.3]) enemyShot(B.x, by, aim + a, 160); sfx.bossFire(); }
+      } else if (B.state === 'inhale') {
+        if (live) gulletInhale(B);
+        const full = gulletRoom(B) <= 0;
+        if ((B.stateT -= dt) > 0 && !full) return;
+        if (full) bossSay('Stuffed! No more!');
+        B.state = 'idle'; B.atkT = 1.5; gulletResume(B);
+      } else if (B.state === 'aim') {
+        B.x = clamp(B.x + clamp(paddle.x - B.x, -220 * dt, 220 * dt), B.w / 2, W - B.w / 2);
+        if ((B.stateT -= dt) <= 0) B.state = 'drop';
+      } else if (B.state === 'drop') {
+        B.y += 900 * dt;
+        if (B.y < STOMP_Y) return;
+        B.y = STOMP_Y; B.state = 'rest'; B.stateT = 1.8;
+        bossSay('SPLAT!'); say(B.x, B.y - 16, 'Clasp open! Hit it from above', '#ffd23f', 1.6);
+        shake(12); sfx.boom(); ring(B.x, B.y + B.h, B.w * 0.9, '#c8874a', 0.5, 4);
+        const n = 2 + Math.floor(B.w / 50);
+        for (let i = 0; i < n; i++) enemyShot(B.x - B.w / 2 + (B.w * (i + 0.5)) / n, B.y + B.h, 0, 200);
+      } else if (B.state === 'rest') {
+        if ((B.stateT -= dt) <= 0) B.state = 'rise';
+      } else {
+        B.y -= 260 * dt;
+        if (B.y > GULLET_Y) return;
+        B.y = GULLET_Y; B.state = 'idle'; B.atkT = 2; gulletResume(B);
+      }
     },
   ];
   function updateBoss(dt) {
@@ -4163,12 +4834,12 @@
   function drawLasers(t) {
     for (const l of G.lasers) {
       if (l.warn > 0) {
-        ctx.fillStyle = `rgba(255,42,77,${0.1 + 0.12 * (Math.sin(t * 30) > 0 ? 1 : 0)})`; ctx.fillRect(l.x - l.w / 2, HUD_H, l.w, H - HUD_H);
+        ctx.fillStyle = `rgba(255,42,77,${0.1 + 0.12 * (Math.sin(t * 30) > 0 ? 1 : 0)})`; ctx.fillRect(l.x - l.w / 2, HUD_H, l.w, bottom() - HUD_H);
         ctx.fillStyle = '#ff2a4d'; ctx.font = 'bold 20px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', l.x, PADDLE_Y - 40);
       } else {
         const k = clamp(l.fire / 0.45, 0, 1);
-        ctx.fillStyle = `rgba(255,42,77,${0.75 * k})`; ctx.fillRect(l.x - l.w / 2, HUD_H, l.w, H - HUD_H);
-        ctx.fillStyle = `rgba(255,255,255,${k})`; ctx.fillRect(l.x - l.w / 6, HUD_H, l.w / 3, H - HUD_H);
+        ctx.fillStyle = `rgba(255,42,77,${0.75 * k})`; ctx.fillRect(l.x - l.w / 2, HUD_H, l.w, bottom() - HUD_H);
+        ctx.fillStyle = `rgba(255,255,255,${k})`; ctx.fillRect(l.x - l.w / 6, HUD_H, l.w / 3, bottom() - HUD_H);
       }
     }
   }
@@ -4181,6 +4852,7 @@
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     bossEnv.time = t; bossEnv.look = look; bossEnv.frozen = frozen; bossEnv.xs = bossXs(B);
     if (B.hat) BOSS_ART.hat(ctx, B.hat.x, B.hat.y, Math.sin(t * 12) * 0.08, bossEnv, B.alt);
+    if (B.gulps) for (const g of B.gulps) drawCoin(g);
     BOSS_ART.draw(ctx, B, bossEnv);
     if (!B.talk) return;
     ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -4195,6 +4867,7 @@
   function finishLevel() {
     for (const c of G.coins) collectCoin(c);
     for (const y of G.shots) if (y.coins) { for (const c of y.coins) collectCoin(c); y.coins = []; }
+    for (const b of G.balls) if (b.studs && b.studs.length) bankStuds(b, false);
     G.coins = [];
     if (G.safari) {
       const record = G.levelCoins > (run.safariBest || 0);
@@ -4296,8 +4969,15 @@
 
   // ---------- overlays ----------
   // cls 'see' makes the overlay translucent so the canvas shows through.
-  function showOverlay(html, cls = '') { ov.innerHTML = html; ov.className = 'show ' + cls; }
-  function hideOverlay() { ov.className = ''; ov.innerHTML = ''; }
+  // ovAt = the time when the menu of the current mode came up. A real tap in the first OV_GUARD ms does nothing, so
+  // that a fast double tap does not go through two screens.
+  const OV_GUARD = 350;
+  let ovMode = '', ovAt = 0;
+  function showOverlay(html, cls = '') {
+    if (mode !== ovMode) { ovMode = mode; ovAt = performance.now(); }
+    ov.innerHTML = html; ov.className = 'show ' + cls;
+  }
+  function hideOverlay() { ov.className = ''; ov.innerHTML = ''; ovMode = ''; }
   const soundBtns = () => `<div class="pair"><button class="big alt" data-act="mute">Sound: ${muted ? 'off' : 'on'}</button><button class="big alt" data-act="music">Music: ${musicOff ? 'off' : 'on'}</button></div>`;
   const relicIcons = () => RELICS.filter((r) => run.relics[r.id]).map((r) => `<span title="${r.name}: ${r.desc}">${r.icon}</span>`).join('');
   function playMusic() { A.music(feverOn() || (G.boss && !G.boss.dead) ? 2 : 1); }
@@ -4412,7 +5092,7 @@
     const relics = relicIcons(), sets = SETS.filter(setOn).map((s) => `<span title="${s.name}: ${s.text}">${s.icon}</span>`).join('');
     const msg = shopMsg || (lockArmed() ? '🔒 Pick an upgrade to lock its price.' : '');
     showOverlay(`<div class="shop">
-      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}${priceTag()}</div></div>
+      <div class="shop-head"><div><div class="t">The Bazaar</div><div class="sub">${'❤️'.repeat(run.lives)} · next up: level ${run.level}${run.heat ? ` · ${heatTag()}` : ''}${priceTag()}${districtTag()}</div></div>
         <div class="purse"><div class="coins ${flashId ? 'bump' : ''}">${run.coins} 🪙</div>${run.sealsEver ? `<div class="coins seals">${run.seals} 🦭</div>` : ''}</div></div>
       ${relics || sets ? `<div class="relicbar">${relics ? `Relics ${relics}` : ''}${sets ? ` · Sets ${sets}` : ''}</div>` : ''}
       <div class="keeper"><span class="snail">🐌</span><span class="bubble">${keeper}</span></div>
@@ -4452,6 +5132,7 @@
 
   ov.addEventListener('click', (e) => {
     audio();
+    if (e.isTrusted && performance.now() - ovAt < OV_GUARD) return;
     const t = e.target.closest('button'); if (!t) return;
     if (t.dataset.cat) { shopCat = t.dataset.cat; sfx.tab(); renderShop(false); return; }
     if (t.dataset.buy) {
@@ -4466,6 +5147,7 @@
     if (t.dataset.keep) { beginStarRun(t.dataset.keep); return; }
     if (t.dataset.kit) { beginRun(t.dataset.kit); return; }
     if (t.dataset.fork) { takeFork(t.dataset.fork); return; }
+    if (t.dataset.district) { takeDistrict(t.dataset.district); return; }
     const act = t.dataset.act;
     if (act === 'newrun') { if (KITS.some((k) => k.need > 0 && stickerCount() >= k.need)) showKits(); else beginRun('none'); }
     else if (act === 'album') showAlbum();
@@ -4604,7 +5286,7 @@
     const dmg = Math.round(3 * power());
     for (const k of G.bricks) if (k.alive && k.type !== 'stone') hitBrick(k, dmg, false);
     for (const f of G.foes) damageFoe(f, dmg * 2);
-    if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * 0.06));
+    if (G.boss && !G.boss.dead) damageBoss(Math.ceil(G.boss.maxhp * 0.06), true);
   }
   function rollDice(x, y) {
     const n = 1 + ((Math.random() * 6) | 0);
@@ -5001,7 +5683,7 @@
     }
     requestAnimationFrame(tick);
   }
-  const tallyLabel = (s) => (run.daily && run.daily.i >= DAILY_LEVELS.length ? 'Closing time ▶' : s.boss && !s.safariDone ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶` : forkNext(s) ? 'Which way? ▶' : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶');
+  const tallyLabel = (s) => (run.daily && run.daily.i >= DAILY_LEVELS.length ? 'Closing time ▶' : s.boss && !s.safariDone ? `Bonus round: ${BONUS[bossBonus(s.level)].name} ▶` : forkNext(s) ? 'Which way? ▶' : districtDue() ? 'Moving day ▶' : run.pendingRelic ? 'Claim a relic 🎁' : 'To the Bazaar ▶');
   function afterTally() {
     const s = lastSummary;
     if (run.daily && run.daily.i >= DAILY_LEVELS.length) { showDailyEnd(); return; }
@@ -5010,6 +5692,7 @@
     if (s && s.boss && !s.safariDone) { s.safariDone = true; startSafari(bossBonus(s.level)); return; }
     if (run.pendingSafari) { startSafari(); return; }
     if (forkNext(s)) { s.forked = true; showFork(); return; }
+    if (districtDue()) { showDistricts(afterTally); return; }
     if (run.pendingRelic) { showRelics(); return; }
     openShop();
   }
@@ -5156,7 +5839,7 @@
     if (bgKey === key) return bgCanvas;
     bgKey = key;
     if (!bgCanvas) { bgCanvas = document.createElement('canvas'); bgCanvas.width = W / 2; bgCanvas.height = H / 2; }
-    const x = bgCanvas.getContext('2d'), cw = bgCanvas.width, chh = bgCanvas.height, h = SKY_HUES[key % SKY_HUES.length];
+    const x = bgCanvas.getContext('2d'), cw = bgCanvas.width, chh = bgCanvas.height, h = districtHue(key) || SKY_HUES[key % SKY_HUES.length];
     x.globalCompositeOperation = 'source-over';
     const g = x.createLinearGradient(0, 0, 0, chh);
     g.addColorStop(0, `hsl(${h},55%,15%)`); g.addColorStop(0.6, `hsl(${(h + 25) % 360},60%,8%)`); g.addColorStop(1, `hsl(${(h + 50) % 360},60%,4%)`);
@@ -5169,20 +5852,28 @@
       rg.addColorStop(0, `hsla(${hh},80%,45%,0.22)`); rg.addColorStop(1, `hsla(${hh},80%,45%,0)`);
       x.fillStyle = rg; x.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
+    paintDistrict(x, key);
     return bgCanvas;
   }
   function drawBg(t) {
-    ctx.drawImage(bgSprite(), 0, 0, W, H);
+    const bg = bgSprite();
+    if (padX > W || padY > H) { ctx.fillStyle = '#05060d'; fillView(); }
+    ctx.drawImage(bg, 0, 0, W, H);
+    // in the margins the background goes on as a mirror image, so that there is no seam
+    if (padY > 0) for (const y of [0, 2 * H]) { ctx.save(); ctx.translate(0, y); ctx.scale(1, -1); ctx.drawImage(bg, 0, 0, W, H); ctx.restore(); }
+    if (padX > 0) for (const x of [0, 2 * W]) { ctx.save(); ctx.translate(x, 0); ctx.scale(-1, 1); ctx.drawImage(bg, 0, 0, W, H); ctx.restore(); }
     ctx.fillStyle = '#ffffff';
     const beat = G && mode === 'play' ? A.beat() : 0; // the stars swell with the music
     for (const s of stars) {
-      const y = (s.y + t * s.v) % H;
-      ctx.globalAlpha = (0.2 + s.s * 0.2) * (0.65 + 0.35 * Math.sin(t * 2.5 + s.p)); ctx.fillRect(s.x, y, s.s * (1 + beat), s.s * (1 + beat));
+      const y = (s.y + t * s.v) % H, d = s.s * (1 + beat);
+      ctx.globalAlpha = (0.2 + s.s * 0.2) * (0.65 + 0.35 * Math.sin(t * 2.5 + s.p)); ctx.fillRect(s.x, y, d, d);
+      if (padY > 0) { ctx.fillRect(s.x, y - H, d, d); ctx.fillRect(s.x, y + H, d, d); }
+      if (padX > 0) { ctx.fillRect(s.x - W, y, d, d); ctx.fillRect(s.x + W, y, d, d); }
     }
     ctx.globalAlpha = 1;
     if (G) return;
     for (const f of floaters) {
-      const y = H + 40 - ((f.y + t * f.v) % (H + 80));
+      const y = bottom() + 40 - ((f.y + t * f.v) % (H + 2 * padY + 80));
       ctx.save(); ctx.translate(f.x + Math.sin(t * 0.5 + f.r) * 14, y); ctx.rotate(f.r + t * f.vr); ctx.scale(f.s, f.s);
       ctx.globalAlpha = 0.5; ctx.drawImage(brickSprite('normal', f.c), -BW / 2, -BH / 2, BW, BH);
       ctx.restore();
@@ -5239,6 +5930,19 @@
       } else if (type === 'dice') {
         c.fillStyle = '#1b1f33';
         for (const [dx, dy] of [[-9, -4], [9, -4], [0, 0], [-9, 4], [9, 4]]) { c.beginPath(); c.arc(mx + dx, my + dy + 0.5, 2, 0, TAU); c.fill(); }
+      } else if (type === 'jelly') {
+        c.fillStyle = 'rgba(255,255,255,0.5)'; for (const [dx, dy, r] of [[-12, -2, 3], [-2, 3, 2], [9, -3, 2.5], [14, 4, 1.5]]) { c.beginPath(); c.arc(mx + dx, my + dy, r, 0, TAU); c.fill(); }
+        c.strokeStyle = 'rgba(120,20,80,0.5)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(5, BH - 4); c.quadraticCurveTo(mx, BH - 9, BW - 5, BH - 4); c.stroke();
+      } else if (type === 'gobble') {
+        c.fillStyle = '#16400f'; rr(8, my - 1, BW - 16, 8, 4, c); c.fill();
+        c.fillStyle = '#ffffff'; for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(11 + i * 5, my - 1); c.lineTo(13.5 + i * 5, my + 3); c.lineTo(16 + i * 5, my - 1); c.fill(); }
+        c.fillStyle = '#ffffff'; c.beginPath(); c.arc(mx - 8, 5, 3, 0, TAU); c.arc(mx + 8, 5, 3, 0, TAU); c.fill();
+        c.fillStyle = '#16400f'; c.beginPath(); c.arc(mx - 8, 5.5, 1.4, 0, TAU); c.arc(mx + 8, 5.5, 1.4, 0, TAU); c.fill();
+      } else if (type === 'pillow') {
+        c.strokeStyle = 'rgba(60,20,110,0.55)'; c.lineWidth = 1.4; c.beginPath();
+        c.moveTo(6, 5); c.quadraticCurveTo(mx, 9, BW - 6, 5); c.moveTo(6, BH - 5); c.quadraticCurveTo(mx, BH - 9, BW - 6, BH - 5); c.stroke();
+        c.fillStyle = 'rgba(60,20,110,0.7)'; c.beginPath(); c.arc(mx, my, 2.2, 0, TAU); c.fill();
+        c.fillStyle = '#ffe066'; for (const dx of [4, BW - 4]) { c.beginPath(); c.arc(dx, my, 2, 0, TAU); c.fill(); }
       } else if (type === 'turtle') {
         // shell plates, and the pale belly along the bottom edge: the side where the ball does nothing
         c.strokeStyle = 'rgba(20,70,25,0.6)'; c.lineWidth = 1.2; c.beginPath();
@@ -5400,6 +6104,11 @@
     }
     ctx.fillStyle = b.potato ? '#e0b070' : fire ? '#ffe2c0' : CORE_LOOK[Math.min(lv('dmg'), 6)]; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
     if (capped('dmg') && !fire && !b.potato) { ctx.strokeStyle = '#4a5a80'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 1, 0, TAU); ctx.stroke(); }
+    if (b.studs) b.studs.forEach((v, i) => {
+      const a = (i / BARN_MAX) * TAU + tAcc * 2;
+      ctx.fillStyle = '#a8730a'; ctx.beginPath(); ctx.arc(b.x + Math.cos(a) * (b.r + 2), b.y + Math.sin(a) * (b.r + 2), 3.4, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(b.x + Math.cos(a) * (b.r + 2), b.y + Math.sin(a) * (b.r + 2), 2.4, 0, TAU); ctx.fill();
+    });
     if (b.duckT > 0) drawDuck({ x: b.x, y: b.y - b.r - 4, spin: tAcc * 9, small: true });
     ctx.fillStyle = 'rgba(120,200,255,0.35)'; ctx.beginPath(); ctx.arc(b.x + b.r * 0.25, b.y + b.r * 0.3, b.r * 0.6, 0, TAU); ctx.fill();
     if (b.pierce > 0 && !fire) { ctx.strokeStyle = '#ff8a3d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, b.r + 1, 0, TAU); ctx.stroke(); }
@@ -5452,6 +6161,12 @@
     if (c.sat && !c.on && lv('rake')) { ctx.strokeStyle = '#7cf2a8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(c.x, y, (8.5 * sx + 1) * R, 8.5 * sy * R, 0, 0, TAU); ctx.stroke(); }
     if (c.fat && !c.on && c.vy > 0 && c.y > PADDLE_Y - TOSS_HINT && c.y < PADDLE_Y && tossOk(c)) {
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('TAP!', c.x, y - 20);
+    }
+    if (c.bub > 0) {
+      const r = SUDS_R + Math.sin(G.time * 5 + c.spin) * 1.2;
+      ctx.strokeStyle = 'rgba(191,233,255,0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(c.x, y, r, 0, TAU); ctx.stroke();
+      ctx.fillStyle = 'rgba(191,233,255,0.14)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.arc(c.x, y, r - 3, 3.6, 4.6); ctx.stroke();
     }
     if (c.val > 1 && sx > 0.5 && !flat) { ctx.fillStyle = '#8a5a00'; ctx.font = `bold ${c.fat ? 11 : 8}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(c.val, c.x, y + 0.5); }
   }
@@ -5665,7 +6380,7 @@
     ctx.globalAlpha = 1;
   }
 
-  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A'], ['pip', 'P'], ['jar', '📌'], ['film', '🎞'], ['coffee', '☕'], ['quake', '≋'], ['stampede', '🪙']];
+  const FX_HUD = [['wide', 'W'], ['slow', 'S'], ['fire', 'F'], ['glue', 'G'], ['mega', 'B'], ['storm', '⚡'], ['x2', '×2'], ['freeze', '❄'], ['gold', '★'], ['over', 'A'], ['pip', 'P'], ['jar', '📌'], ['film', '🎞'], ['coffee', '☕'], ['quake', '≋'], ['stampede', '🪙'], ['suds', '🧼'], ['barn', '🪙'], ['moon', '🌙']];
   const fxColor = (k) => (PU[k] || PU.ammo).c;
   function drawHUD(t) {
     const g = ctx.createLinearGradient(0, 0, 0, HUD_H);
@@ -5780,9 +6495,10 @@
     if (G.heckle) {
       const a = Math.min(1, G.heckle.t * 2, (4 - G.heckle.t) * 4);
       ctx.globalAlpha = a; ctx.textAlign = 'left'; ctx.font = 'bold 13px system-ui, sans-serif';
-      const tw = ctx.measureText(G.heckle.s).width + 20;
-      ctx.fillStyle = '#f4f6ff'; rr(46, H - 62, tw, 28, 12); ctx.fill();
-      ctx.fillStyle = '#1b1f33'; ctx.fillText(G.heckle.s, 56, H - 47);
+      const full = ctx.measureText(G.heckle.s).width, two = full > W - 76, tw = (two ? W - 76 : full) + 20;
+      ctx.fillStyle = '#f4f6ff'; rr(46, H - 62 - (two ? 16 : 0), tw, 28 + (two ? 16 : 0), 12); ctx.fill();
+      ctx.fillStyle = '#1b1f33';
+      if (two) wrapText(G.heckle.s, 56, H - 63, W - 76, 16); else ctx.fillText(G.heckle.s, 56, H - 47);
       ctx.font = '26px system-ui, sans-serif'; ctx.fillText('🐌', 8, H - 46);
       ctx.globalAlpha = 1; ctx.textAlign = 'center';
     }
@@ -5804,6 +6520,7 @@
         ctx.fillStyle = '#ff7ad9'; ctx.font = 'bold 17px system-ui, sans-serif'; ctx.fillText("TODAY'S SPECIAL: " + G.special.name, 0, -66);
         ctx.fillStyle = '#ffd0f0'; ctx.font = '14px system-ui, sans-serif'; ctx.fillText(G.special.text, 0, -44);
       }
+      drawDistrictBanner();
       ctx.restore(); ctx.globalAlpha = 1;
     }
     if (clockOn() && G.started && G.clearT < 0 && !G.timeUp && timeLeft() <= 5) {
@@ -5875,12 +6592,14 @@
 
   let tAcc = 0;
   function draw(t) {
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, offX * dpr, offY * dpr);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     drawBg(t);
-    if (!G) { ctx.drawImage(vignette(), 0, 0, W, H); return; }
+    if (!G) { ctx.drawImage(vignette(), -padX, -padY, W + 2 * padX, H + 2 * padY); return; }
     const playing = mode === 'play';
     ctx.save();
+    // what is to the left and to the right of the field does not show; what falls below it does
+    if (padX > 0) { ctx.beginPath(); ctx.rect(0, -padY, W, H + 2 * padY); ctx.clip(); }
     if (G.shake > 0 && playing) ctx.translate(rand(-G.shake, G.shake) * 0.45, rand(-G.shake, G.shake) * 0.45);
     if (G.cam && G.cam.t > 0 && playing) {
       const z = 1 + 0.3 * Math.sin((G.cam.t / G.cam.T) * Math.PI);
@@ -5891,6 +6610,8 @@
     drawPeeks();
     drawBricks(t);
     drawEvents(t);
+    drawDistrict(t);
+    drawOdd();
     if (G.portals.length) drawPortals(t);
     drawBirds(t);
     drawQuill(t);
@@ -5927,8 +6648,13 @@
       glow(0, H / 2, 46, rainbow(t), a, H / 2); glow(W, H / 2, 46, rainbow(t, 4), a, H / 2);
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     }
-    if (G.flash > 0) { ctx.globalAlpha = Math.min(1, G.flash); ctx.fillStyle = G.flashC; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-    ctx.drawImage(vignette(), 0, 0, W, H);
+    // a wide window: the margins at the sides are darker, so that the walls of the field show
+    if (padX > 0) {
+      ctx.fillStyle = 'rgba(5,6,13,0.6)'; ctx.fillRect(-padX, -padY, padX, H + 2 * padY); ctx.fillRect(W, -padY, padX, H + 2 * padY);
+      ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(-1, 0, 1, H); ctx.fillRect(W, 0, 1, H);
+    }
+    if (G.flash > 0) { ctx.globalAlpha = Math.min(1, G.flash); ctx.fillStyle = G.flashC; fillView(); ctx.globalAlpha = 1; }
+    ctx.drawImage(vignette(), -padX, -padY, W + 2 * padX, H + 2 * padY);
   }
 
   let last = performance.now();
@@ -5958,6 +6684,7 @@
     quill() { if (G) startQuill(); },
     mole() { if (G) startMole(); },
     raccoon() { if (G) startRaccoon(); },
+    district(id) { return debugDistrict(id); },
     foe(type, x, y) { return spawnFoe(type, x, y); }, superShot(g, l = SUPER_LV) { superShot(g, l); }, boss(kind, alt = 0) { G.boss = makeBoss(kind); G.boss.alt = alt; return G.boss; },
     FROM, toughness(n) { return hpMult(n) * heatMult(); },
     shop() { return ITEMS.filter(unlocked).map((it) => ({ id: it.id, state: itemState(it), cost: itemCost(it), level: lv(it.id) })); },
@@ -5969,7 +6696,7 @@
     pin() { addPin(); }, pipDrive(sec = PIP_S) { setFx('pip', sec); }, event(id) { EVENTS.find((e) => e.id === id).start(); }, owe(n) { run.quill.debt = n; },
     loose() { if (G) knockHud(); }, slide(b) { landslide(b); },
     starRun(keep) { beginStarRun(keep); }, daily() { beginDaily(); }, victory() { showVictory(); },
-    open() { openShop(); }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: canvas.getBoundingClientRect().left + x * scale, clientY: canvas.getBoundingClientRect().top + y * scale })); },
+    open() { openShop(); }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: offX + x * scale, clientY: offY + y * scale })); },
   };
 
   showMenu();

@@ -329,6 +329,63 @@
 
   const wireGust = (leg, ms) => leg.gusts.reduce((a, g) => a + (ms >= g.at && ms < g.at + g.ms ? g.f : 0), 0);
 
+  // Tiptoe Till: the raccoon creeps from 0 to the jar at 1 while the player holds. Mortimer naps, stirs, then looks
+  // round, or sometimes dozes off again. A hold while he looks is caught and pays 0. The stir is shorter near the jar.
+  // TIPTOE_LOOT: [position, pay] of the coins on the floor; the jar pays the rest of TIPTOE_JAR. Run pays the coins.
+  const TIPTOE_LOOT = [[0.1, 0.1], [0.2, 0.15], [0.3, 0.15], [0.4, 0.2], [0.5, 0.25], [0.6, 0.35]];
+  const TIPTOE_JAR = 2.5;
+  const TIPTOE_MS = 20000;
+  const TIPTOE_DT = 20;
+  const TIPTOE_WARN = [700, 40];
+  const TIPTOE_FAKE = 0.3;
+  const TIPTOE_SLEEP = [400, 2000];
+  const TIPTOE_SPEED = 1 / 6500;
+
+  // Speed in track lengths per ms.
+  function tiptoePlan(level, rand) {
+    const k = Math.max(0.8, 1 - Math.max(0, level - 49) * 0.004);
+    const naps = [];
+    for (let i = 0; i < TIPTOE_MS / 500; i++) {
+      naps.push({ sleep: (TIPTOE_SLEEP[0] + rand() * TIPTOE_SLEEP[1]) * k, fake: rand() < TIPTOE_FAKE, look: 900 + rand() * 700 });
+    }
+    // The first nap is long enough to see how to play.
+    naps[0].sleep += 1200;
+    return { speed: TIPTOE_SPEED, naps };
+  }
+
+  const tiptoeWarn = d => TIPTOE_WARN[0] + (TIPTOE_WARN[1] - TIPTOE_WARN[0]) * Math.min(1, d * d * d);
+  const tiptoePay = got => Math.round(TIPTOE_LOOT.slice(0, got).reduce((a, [, m]) => a + m, 0) * 100) / 100;
+
+  // st: { d, got, ms, nap, mode, left } with mode 'sleep', 'stir' or 'look' and left the ms of the mode.
+  const tiptoeStart = plan => ({ d: 0, got: 0, ms: 0, nap: 0, mode: 'sleep', left: plan.naps[0].sleep });
+
+  // Returns 'caught', 'jar', 'time' or 'ok'.
+  function tiptoeStep(st, plan, hold) {
+    st.ms += TIPTOE_DT;
+    st.left -= TIPTOE_DT;
+    if (st.left <= 0) {
+      const nap = plan.naps[st.nap];
+      if (st.mode === 'sleep') {
+        st.mode = 'stir';
+        st.left = tiptoeWarn(st.d);
+      } else if (st.mode === 'stir' && !nap.fake) {
+        st.mode = 'look';
+        st.left = nap.look;
+      } else {
+        st.nap = Math.min(st.nap + 1, plan.naps.length - 1);
+        st.mode = 'sleep';
+        st.left = plan.naps[st.nap].sleep;
+      }
+    }
+    if (hold) {
+      if (st.mode === 'look') return 'caught';
+      st.d = Math.min(1, st.d + plan.speed * TIPTOE_DT);
+      while (st.got < TIPTOE_LOOT.length && st.d >= TIPTOE_LOOT[st.got][0]) st.got++;
+    }
+    if (st.d >= 1) return 'jar';
+    return st.ms >= TIPTOE_MS ? 'time' : 'ok';
+  }
+
   // st: { lean, vel, ms } on the leg. push is -1 (left), 0 or 1. Returns 'fall', 'flag' or 'ok'.
   function wireStep(st, plan, leg, push) {
     const k = WIRE_DT / 1000;
@@ -1832,6 +1889,192 @@
   }
 
   ////////////////////////////////////////////////////////////////////////////
+  // Tiptoe Till
+
+  const TIPTOE_STIR = ['Mm? Hrrm…', 'Who… is that…', 'Snrk… my coins…?'];
+  const TIPTOE_LOOK = ['Hm? Nobody there.', 'Odd. That plant was not there before.', 'Must be the wind. Indoors.'];
+  const TIPTOE_DOZE = ['Zzz… lettuce… Zzz…', 'Zzz… five more minutes…', 'Zzz… mine… all mine…'];
+  const TIPTOE_CAUGHT = ['A-HA! Paws in my till!', 'Caught you, masked one! Broom time!', 'THIEF! Out! And wipe your feet!'];
+
+  // Floor position (0 to 1) as left in % of the shop.
+  const tiptoeLeft = d => (6 + 78 * d).toFixed(2) + '%';
+
+  function prepTiptoe(api) {
+    el('div', 'mg-tally', null, api.area);
+    const timebox = el('div', 'mg-timebox mg-clock', null, api.area);
+    el('span', 'mg-time', null, timebox);
+    const shop = el('div', 'mg-shop', null, api.area);
+    TIPTOE_LOOT.forEach(([at]) => { el('span', 'mg-loot', '🪙', shop).style.left = tiptoeLeft(at); });
+    el('span', 'mg-jar', '🫙', shop).style.left = tiptoeLeft(1);
+    const nap = el('div', 'mg-nap mg-sleep', null, shop);
+    el('span', 'mg-mort', '🐌', nap);
+    el('span', 'mg-zzz', '💤', nap);
+    el('span', 'mg-alarm', null, nap);
+    el('span', 'mg-broom', '🧹', shop);
+    const coon = el('div', 'mg-coon', null, shop);
+    coon.style.left = tiptoeLeft(0);
+    el('span', 'mg-plant', '🪴', coon);
+    el('span', 'mg-face', '🦝', coon);
+    el('span', 'mg-sack', '💰', coon);
+    const btns = el('div', 'mg-btns', null, api.area);
+    el('button', 'mg-big mg-sneak', '🐾 Hold to sneak', btns);
+    el('button', 'mg-big mg-gold mg-cash', null, btns).hidden = true;
+  }
+
+  function runTiptoe(api) {
+    const { s, rand, rules, area } = api;
+    const talk = keeper(api);
+    const plan = tiptoePlan(api.level, rand);
+    const st = tiptoeStart(plan);
+    const tally = area.querySelector('.mg-tally');
+    const time = area.querySelector('.mg-time');
+    const shop = area.querySelector('.mg-shop');
+    const loot = area.querySelectorAll('.mg-loot');
+    const nap = area.querySelector('.mg-nap');
+    const alarm = area.querySelector('.mg-alarm');
+    const coon = area.querySelector('.mg-coon');
+    const sneak = area.querySelector('.mg-sneak');
+    const cash = area.querySelector('.mg-cash');
+    // Pointers that are down. A finger that is down before the walk starts counts.
+    const holds = new Set();
+    let playing = false;
+    let mode = st.mode;
+    let got = 0;
+    let last = 0;
+    let acc = 0;
+
+    const showTally = () => {
+      tally.textContent = '🪙 ' + st.got + '/' + TIPTOE_LOOT.length + ' · now ×' + tiptoePay(st.got) + ' · 🫙 ×' + TIPTOE_JAR;
+      cash.textContent = '🏃 Run with ' + api.coins(tiptoePay(st.got));
+      cash.hidden = !st.got || !playing;
+    };
+    const showHold = () => {
+      const on = playing && holds.size > 0;
+      sneak.classList.toggle('mg-on', on);
+      coon.classList.toggle('mg-walk', on);
+      coon.classList.toggle('mg-still', playing && !on && mode !== 'sleep');
+    };
+
+    function setMode(next) {
+      const was = mode;
+      mode = next;
+      nap.className = 'mg-nap mg-' + next;
+      alarm.textContent = next === 'stir' ? '❓' : next === 'look' ? '❗' : '';
+      showHold();
+      if (next === 'stir') {
+        talk(pick(TIPTOE_STIR, rand));
+        s.sfx('tick');
+      } else if (next === 'look') {
+        rules.textContent = 'Do not move!';
+        s.sfx('eek');
+      } else {
+        rules.textContent = 'Hold to sneak. Freeze when he stirs!';
+        talk(was === 'look' ? pick(TIPTOE_LOOK, rand) : pick(TIPTOE_DOZE, rand));
+      }
+    }
+
+    function stop() {
+      playing = false;
+      area.classList.remove('mg-pick');
+      cash.hidden = true;
+      sneak.disabled = true;
+      showHold();
+    }
+
+    function caught(text, result) {
+      stop();
+      nap.className = 'mg-nap mg-look mg-mad';
+      alarm.textContent = '💢';
+      coon.classList.add('mg-caught');
+      shop.classList.add('mg-swat');
+      talk(text);
+      s.sfx('whack');
+      s.later(() => {
+        coon.classList.add('mg-fly');
+        s.sfx('nope');
+      }, 500);
+      s.later(() => api.finish(0, result), 1900);
+    }
+
+    s.every(() => {
+      const now = Date.now();
+      if (!playing) {
+        last = now;
+        return;
+      }
+      acc += Math.min(100, now - last);
+      last = now;
+      let r = 'ok';
+      while (r === 'ok' && acc >= TIPTOE_DT) {
+        acc -= TIPTOE_DT;
+        r = tiptoeStep(st, plan, holds.size > 0);
+      }
+      coon.style.left = tiptoeLeft(st.d);
+      time.style.width = (Math.max(0, 1 - st.ms / TIPTOE_MS) * 100).toFixed(1) + '%';
+      for (; got < st.got; got++) {
+        loot[got].classList.add('mg-got');
+        s.sfx('coin');
+      }
+      showTally();
+      if (r === 'caught') {
+        caught(pick(TIPTOE_CAUGHT, rand), 'Caught with paws in the till.');
+        return;
+      }
+      if (r === 'time') {
+        caught('Yawn! Shop is open. Oh. Hello, masked one.', 'Mortimer woke up. Too slow.');
+        return;
+      }
+      if (r === 'jar') {
+        stop();
+        coon.classList.add('mg-hug');
+        talk('My WHOLE jar?! I was only resting my eyes!');
+        s.sfx('jackpot');
+        s.later(() => api.finish(TIPTOE_JAR, 'The whole jar!'), 1300);
+        return;
+      }
+      if (st.mode !== mode) setMode(st.mode);
+    }, 30);
+
+    const press = e => {
+      e.preventDefault();
+      holds.add(e.pointerId);
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+      showHold();
+    };
+    const lift = e => {
+      holds.delete(e.pointerId);
+      showHold();
+    };
+    for (const node of [sneak, shop]) {
+      s.on(node, 'pointerdown', press);
+      s.on(node, 'pointerup', lift);
+      s.on(node, 'pointercancel', lift);
+      s.on(node, 'contextmenu', e => e.preventDefault());
+    }
+
+    s.on(cash, 'click', () => {
+      if (!playing || !st.got) return;
+      const mult = tiptoePay(st.got);
+      stop();
+      coon.classList.add('mg-flee');
+      talk('Hm? Was that my coins? …Zzz.');
+      s.sfx('coin');
+      s.later(() => api.finish(mult, 'Ran off with ' + st.got + ' coins.'), 1200);
+    });
+
+    showTally();
+    rules.textContent = 'Hold to sneak. Freeze when he stirs!';
+    talk('Zzz… nobody touch my jar… Zzz…');
+    s.later(() => {
+      playing = true;
+      last = Date.now();
+      area.classList.add('mg-pick');
+      showHold();
+      s.sfx('riser');
+    }, 900);
+  }
+
+  ////////////////////////////////////////////////////////////////////////////
   // Registry
 
   const GAMES = {
@@ -1875,6 +2118,10 @@
       icon: '🪢', name: 'Wobbly Wire', rules: 'Hold ◀ ▶ to keep Pip up. At a flag, float off or walk on.',
       win: coins => 'win up to ' + coins(WIRE_PAY[WIRE_PAY.length - 1]), prep: prepWire, run: runWire,
     },
+    tiptoe: {
+      icon: '🐾', name: 'Tiptoe Till', rules: 'Hold to sneak to the jar. Freeze when Mortimer stirs.',
+      win: coins => 'win up to ' + coins(TIPTOE_JAR), prep: prepTiptoe, run: runTiptoe,
+    },
   };
 
   window.BBMini = {
@@ -1889,6 +2136,7 @@
       { id: 'sling', icon: '🥬', name: 'Salad Sling', blurb: 'Feed the snails from afar. Up to 1.95×.', at: 38 },
       { id: 'stack', icon: '🪙', name: 'Coin Stack', blurb: 'Stack coins. Bank every third. Up to 2.3×.', at: 42 },
       { id: 'wire', icon: '🪢', name: 'Wobbly Wire', blurb: 'Walk Pip over the soup. Up to 2.5×.', at: 46 },
+      { id: 'tiptoe', icon: '🐾', name: 'Tiptoe Till', blurb: 'Rob the napping snail. Freeze! Up to 2.5×.', at: 49 },
     ],
 
     play(id, host, ctx) {
@@ -1912,6 +2160,7 @@
       slingPlan, slingX, slingPull, slingLand, slingFlight, slingHit,
       STACK_PAY, STACK_MAX, STACK_BANK, STACK_DROP_MS, stackPlan, stackBanked, stackSwing, stackAngle, stackTop, stackLand,
       WIRE_PAY, WIRE_LEG_MS, WIRE_DT, WIRE_WINDS, WIRE_LEG_WINDS, wirePlan, wireGust, wireStep,
+      TIPTOE_LOOT, TIPTOE_JAR, TIPTOE_MS, TIPTOE_DT, tiptoePlan, tiptoeWarn, tiptoePay, tiptoeStart, tiptoeStep,
     },
   };
 })();
