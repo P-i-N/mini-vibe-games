@@ -252,3 +252,6 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .entry.letter .sm { color: #8a6a3a; text-align: right; font-style: italic; }
 .alm .tbody { justify-content: flex-start; overflow: hidden; }
 .alm .almpage { flex: 1 1 0; min-height: 0; overflow-y: auto; width: 100%; -webkit-overflow-scrolling: touch; }
+
+.chip.gossip { background: #2a2140; border-color: #c9a8ff66; color: #e6dcff; }
+.alm .tabb { padding: 0.5em 0.55em; }

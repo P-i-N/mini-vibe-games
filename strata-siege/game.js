@@ -40,7 +40,7 @@
   // Art, creatures, audio, the keeper's lines and the maps live in their own files.
   const ART = window.SSArt, FOE_ART = window.SSFoeArt, LV = window.SS_LEVELS, KEEPER = window.SS_KEEPER || { name: 'Gnorman', lines: {} };
   const DIG_Z = ART.DIG_Z;
-  const LORE = window.SS_LORE || {}, VO = window.SS_VOICES || {};
+  const LORE = window.SS_LORE || {}, VO = window.SS_VOICES || {}, LORE2 = window.SS_LORE2 || {};
   // A missing effect must never stop the game.
   const A = window.SSAudio || {};
   const quiet = () => 0;
@@ -156,7 +156,7 @@
   const TWISTS = {
     conga: { name: 'CONGA!', sub: 'they come in one long line', gap: 0.3 },
     sports: { name: 'SPORTS DAY', sub: 'faster, and worth double', spd: 1.4, coin: 2 },
-    fancy: { name: 'FANCY DRESS', sub: 'party hats are armour. The Boot flips beetles', armor: 2 },
+    fancy: { name: 'FANCY DRESS', sub: 'armoured party hats. Stomp beetles', armor: 2 },
   };
   // Towers on neighbouring tiles that like each other. The key is the two kinds in alphabetical order.
   const PALS = {
@@ -338,7 +338,7 @@
   let best = store.get(BEST_KEY, { level: 0 });
   function recordBest() { if (run.level > best.level) { best = { level: run.level }; store.set(BEST_KEY, best); } }
   // meta outlives a run: the recipes that the player has found, and totals
-  const meta = Object.assign({ recipes: {}, runs: 0, kills: 0, seen: {}, foes: {}, built: {}, letters: [], chapter: 0, eggs: {} }, store.get(META_KEY, {}));
+  const meta = Object.assign({ recipes: {}, runs: 0, kills: 0, seen: {}, foes: {}, built: {}, letters: [], chapter: 0, eggs: {}, postcards: [], notes: [], rumours: [], t: {} }, store.get(META_KEY, {}));
   const saveMeta = () => store.set(META_KEY, meta);
 
   const unlocked = (it) => (run ? run.level : 1) >= it.at;
@@ -476,6 +476,17 @@
     for (const [k, v] of opts) { r -= v.w; if (r <= 0) return k; }
     return opts[0][0];
   }
+  const ROOMS = [['pantry', 'THE PANTRY', 'crumbs, 150 years old'], ['scullery', 'THE SCULLERY', 'one sock, still damp'], ['hall', 'THE GREAT HALL', 'it is a medium hall'], ['bootroom', 'THE BOOT ROOM', 'one boot. A normal size'],
+    ['vault', 'THE BISCUIT VAULT', 'empty. Suspicious'], ['nursery', 'THE NURSERY', 'a very small rolling pin'], ['library', 'THE LIBRARY', 'both books are overdue'], ['cellar', 'THE CELLAR', 'jam, vintage'],
+    ['belfry', 'THE BELL TOWER', 'it rang twice, then sank'], ['throne', 'THE THRONE CUPBOARD', 'the throne is a stool']];
+  function openRoom(t) {
+    const R = ROOMS.find((r) => r[0] === t.room), tiles = G.ug.filter((q) => q.room === t.room);
+    for (const q of tiles) q.room = null;
+    for (const q of tiles) if (!q.dug) finishDig(q, null);
+    meta.rooms = meta.rooms || [];
+    const first = !meta.rooms.includes(R[0]); if (first) { meta.rooms.push(R[0]); saveMeta(); G.loot++; }
+    G.banner2 = { text: R[1], sub: R[2] + (first ? ' · +1 gem' : ''), t: 3.2 }; sfx.relic(); shake(5); cacheDirty.dig = true;
+  }
   function genMine() {
     const hi = G.hut.i, hj = G.hut.j, ug = [];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -494,6 +505,11 @@
       let bestT = null;
       for (const t of ug) if (!bestT || t.far + t.seed > bestT.far + bestT.seed) bestT = t;
       bestT.content = 'lode'; bestT.hard = 4; G.lode = bestT;
+    }
+    // a buried room of the first castle: three tiles in a row that open together
+    if (G.n > FROM.dig) {
+      const rows3 = shuffle(ug.filter((t) => t.far >= 2 && [0, 1, 2].every((k) => { const q = ug[t.j * N + t.i + k]; return q && q.j === t.j && t.i + k < N && !HAZARDS[q.content] && q.content !== 'lode' && !q.dug; })));
+      if (rows3.length) { const t = rows3[0], id = ROOMS[(G.n * 7 + (meta.rooms || []).length) % ROOMS.length][0]; for (let k = 0; k < 3; k++) ug[t.j * N + t.i + k].room = id; }
     }
     // resonance crystals: under grass tiles, a few steps from the shaft
     if (G.n >= FROM.crystal) {
@@ -546,6 +562,7 @@
       layer: 'ground', trans: null, visited: { sky: 0, ground: 0, dig: 0 }, used: { sky: false, dig: false },
       time: 0, banner: LORE.chapters && LORE.chapters[n - 1] ? 10 : 5, clearT: -1, shake: 0, flash: 0, sel: null, heckled: {}, heckle: null, idleT: 0, thinkT: 0, digSfx: 0, toast: null,
       balls: [], reg: false, potN: 0, treeN: 0, pondN: 0,
+      matN: 0, biscuits: 3, bait: null, homer: false, sid: null, sidPay: 0, gnome: null, roomDone: false, boxes: [], card: null, cardDone: false, noteDone: false, regN: 0, ballN: 0, curlN: 0,
       bubbles: [], barkT: 3, voiceT: {}, letter: null, letterFound: false, idleSay: 20,
       geysers: [], kettle: 0, stompN: 0, swatN: 0, builtN: 0, hazN: 0, boltKills: 0, lucky: 0, links: 0, lastL: '', comboMul: 2, chalk: false, banner2: null, barNote: null, bossDown: null, sapperSeen: false, fxLayer: null, drag: null, spyT: 0,
     });
@@ -559,7 +576,11 @@
     for (let k = 0; k < 1 + lv('hire'); k++) G.hamsters.push({ i: hi, j: hj, x: G.hut.x + (k - lv('hire') / 2) * 0.16, y: G.hut.y + 0.1, state: 'idle', route: [], order: null, pack: [], daze: 0, cheer: 0, fx: 1, fy: 0, seed: k, name: (crewNames()[(k + n) % Math.max(1, crewNames().length)] || {}).name });
     cam.x = 0; cam.vx = 0; view.dy = 0;
     for (const k of LAYERS) cacheDirty[k] = true;
-    G.banner0 = G.banner; if (n > meta.chapter) { meta.chapter = n; saveMeta(); }
+    // Sidney the snail set off on level 1. He gets a little further every level and arrives at level 30.
+    { const d = G.len * clamp((n - 1) / (CAMPAIGN - 1), 0, 1) * 0.94, p = routeAt(d), q = routeAt(Math.min(G.len, d + 0.2)); G.sid = { x: p.x + (q.y - p.y) * 2.1, y: p.y - (q.x - p.x) * 2.1, hide: 0, t: 0 }; }
+    // Gnorman stands on the lawn right above the Mother Lode. He has not moved.
+    if (G.lode && canBuildOn(groundAt(G.lode.i, G.lode.j))) G.gnome = { i: G.lode.i, j: G.lode.j, x: G.lode.i + 0.5, y: G.lode.j + 0.5 };
+    G.forecast = LORE2.forecast ? pick(LORE2.forecast) : ''; G.banner0 = G.banner; if (n > meta.chapter) { meta.chapter = n; saveMeta(); }
     mode = 'play'; hideOverlay(); closePop(); pauseBtn.style.display = 'block';
     A.fever(false); A.rush(99); A.streak(0); A.tune(n); A.layer('ground'); A.music(BOSS_AT[n] ? 2 : 1);
   }
@@ -587,7 +608,7 @@
   function bubble(x, y, z, s, o) {
     if (!s || !G) return;
     if (G.bubbles.length > 3) G.bubbles.shift();
-    G.bubbles.push(Object.assign({ x, y, z, s: String(s), t: 2.4, T: 2.4, layer: G.fxLayer || 'ground' }, o));
+    G.bubbles.push(Object.assign({ x, y, z, s: String(s), t: 3.4, T: 3.4, layer: G.fxLayer || 'ground' }, o));
   }
   function bark(e, ev, chance = 1) {
     const list = VO.barks && VO.barks[e.k] && VO.barks[e.k][ev];
@@ -606,14 +627,14 @@
   function bossSay(e, ev) {
     const b = VO.boss && VO.boss[e.k], list = b && b[ev];
     if (!list || !list.length) return;
-    bubble(e.x, e.y, e.z + 1.5, pick(list), { e, t: 4, T: 4, boss: true });
+    bubble(e.x, e.y, e.z + 1.5, pick(list), { e, t: 7, T: 7, boss: true });
   }
   function shake(v) { G.shake = Math.min(14, Math.max(G.shake, v)); }
   // runs fn with effects sent to another layer than the ground
   function onLayer(layer, fn) { const prev = G.fxLayer; G.fxLayer = layer; try { fn(); } finally { G.fxLayer = prev; } }
   // the gnome's bubble during play: once per id and level
   function heckle(id, n) {
-    if (G.heckled[id] || (G.heckle && G.heckle.t > 0)) return;
+    if (G.heckled[id]) return;
     const s = keeperLine(id, n); if (!s) return;
     G.heckled[id] = true; G.heckle = { text: s, t: 4.5 };
   }
@@ -683,7 +704,7 @@
     if (e.dead) return;
     if (e.reg) { // only the Boot and the rolling pin may touch Sir Reginald, and each touch shakes out a gem
       if (!(o && o.boot) || G.time < (e.regT || 0)) return;
-      e.regT = G.time + 0.6; e.reg--; e.stun = 0.7; e.flash = 0.15; G.loot++; sfx.gem();
+      G.regN++; e.regT = G.time + 0.6; e.reg--; e.stun = 0.7; e.flash = 0.15; G.loot++; sfx.gem();
       say(e.x, e.y, 0.9, '+1 gem', '#8fe6ff', true); burst(e.x, e.y, 0.3, '#ffe680', 12, 2.6);
       bubble(e.x, e.y, 0.8, pick(['I say!', 'Steady on.', 'That was my good shell.', 'Quite. Carry on.']), { e });
       if (e.reg <= 0) { e.dead = true; say(e.x, e.y, 1.3, 'Sir Reginald retires, lighter', '#ffe680', true); burst(e.x, e.y, 0.3, '#ffffff', 16, 3); }
@@ -717,7 +738,10 @@
     if (e.F.boss) { shake(12); G.flash = 0.5; sfx.bossDie(); say(e.x, e.y, e.z + 1, `+${c}`, '#ffd84a', true); G.bossDown = e.k; }
     if ((e.F.boss || e.k === 'sapper') && capped('bounty')) { G.loot++; say(e.x, e.y, e.z + 0.5, '+1 gem', '#8fe6ff'); }
     if (e.wanted) {
-      if (o && o.boot) { G.loot++; say(e.x, e.y, e.z + 0.9, 'WANTED! +1 gem', '#8fe6ff', true); sfx.gem(); }
+      if (o && o.boot) {
+        G.loot++; say(e.x, e.y, e.z + 0.9, e.wname ? `${e.wname}: caught! +1 gem` : 'WANTED! +1 gem', '#8fe6ff', true); sfx.gem();
+        if (!G.noteDone && postLeft('notes') > 0 && Math.random() < 0.6) { G.noteDone = true; deliver('notes', 1); }
+      }
       else say(e.x, e.y, e.z + 0.9, 'Wanted... by a tower. No gem', '#9aa3d6');
     }
     if (e.k === 'king' && e.gen < 2) { // the king falls apart into two smaller kings
@@ -763,7 +787,7 @@
       if (e.drop > 0) e.drop = Math.max(0, e.drop - dt * 5);
       if (e.state === 'under') { updateBurrower(e, dt); continue; }
       if (e.state === 'fall') { e.fallT -= dt; if (e.fallT <= 0) { e.state = 'walk'; e.stun = 0.5; burst(e.x, e.y, 0, '#8a5a36', 6); } continue; }
-      if (e.state === 'ring') { e.ring -= dt; if (e.ring <= 0) leak(e); continue; }
+      if (e.state === 'ring') { e.ring -= dt; if (e.ring < 0.7 && !e.gold) { e.gold = true; buzz(15); } if (e.ring <= 0) leak(e); continue; }
       const wx = e.state === 'tunnel' ? null : weatherAt(e.x, e.y, WX);
       let slow = e.slowA;
       if (wx) {
@@ -822,7 +846,7 @@
           }
         }
         if (e.dead) continue;
-        if (e.d >= G.len && e.reg) { e.dead = true; sfx.bell(); say(G.castle.x, G.castle.y, 1.7, 'Tea for Sir Reginald. No hearts lost', '#ffe680', true); grandma('idle', 1); continue; }
+        if (e.d >= G.len && e.reg) { e.dead = true; sfx.bell(); say(G.castle.x, G.castle.y, 1.7, 'Tea for Sir Reginald. No harm done', '#ffe680', true); grandma('idle', 1); continue; }
         if (e.d >= G.len) { e.state = 'ring'; e.ring = ringS(); G.bellT = 0.5; sfx.bell(); buzz(30); }
       }
     }
@@ -1067,7 +1091,7 @@
           if (e.state === 'under') { bonk(e, true); n++; continue; }
           if (e.k === 'frog' && e.air) { say(e.x, e.y, 0.8, 'Missed!', '#9dffb0'); continue; } // a frog in the air is not under the Boot
           if (e.k === 'hedgehog' && e.curl > 0 && !e.bowl) { e.bowl = 1.1; e.strikes = 0; e.curl = 2; n++; say(e.x, e.y, 0.8, 'Bowled!', '#ffe680'); continue; }
-          if (e.k === 'beetle' && e.flip > 0 && !e.bowl) { e.bowl = 1.2; e.strikes = 0; e.flip = 4; n++; say(e.x, e.y, 0.8, 'Curling!', '#ffe680'); continue; } // a beetle on its back slides
+          if (e.k === 'beetle' && e.flip > 0 && !e.bowl) { G.curlN++; e.bowl = 1.2; e.strikes = 0; e.flip = 4; n++; say(e.x, e.y, 0.8, 'Curling!', '#ffe680'); continue; } // a beetle on its back slides
           if (e.k === 'beetle') e.flip = 4;
           if (capped('boots') && !e.F.boss) e.stun = Math.max(e.stun, 1.5);
           hurt(e, dmg, { splash: true, boot: true }); n++;
@@ -1090,13 +1114,28 @@
     G.swatN++; G.swatT = swatS(); G.doorT = 0.7; sfx.swat(); buzz(25); mark('ground'); heckle('hSwat');
     ringers.sort((a, b) => a.ring - b.ring);
     for (const e of capped('pin') ? ringers : ringers.slice(0, 1)) {
-      hurt(e, e.maxhp * (e.F.boss ? 0.15 : 0.8), { boot: true });
-      if (!e.dead) { e.state = 'walk'; e.d = Math.max(0, G.len - 2.5); e.stun = 0.7; e.spin = 0.7; }
+      // a swat in the last blink of the bell is a home run: the guest goes back down the path as a ball
+      const homer = e.gold && !e.F.boss && !e.reg;
+      hurt(e, e.maxhp * (e.F.boss ? 0.15 : homer ? 0.5 : 0.8), { boot: true });
+      if (!e.dead && homer) { e.state = 'walk'; e.d = G.len - 0.2; e.bowl = 1.7; e.strikes = 0; e.spin = 1.7; e.gold = false; say(G.castle.x, G.castle.y, 2.2, 'HOME RUN!', '#ffe680', true); sfx.combo(2); if (!G.homer) { G.homer = true; G.loot++; say(G.castle.x, G.castle.y, 2.7, '+1 gem', '#8fe6ff'); } }
+      else if (!e.dead) { e.state = 'walk'; e.d = Math.max(0, G.len - 2.5); e.stun = 0.7; e.spin = 0.7; e.gold = false; }
     }
     say(G.castle.x, G.castle.y, 1.7, 'BONK!', '#ffe680', true); shake(4); grandma('swat', 0.6);
     return true;
   }
 
+  // Biscuit Break: Grandma throws a biscuit ahead of the first guest. Whoever reaches it stops to eat.
+  function throwBiscuit() {
+    if (G.biscuits <= 0 || G.bait) return false;
+    let lead = null;
+    for (const e of G.enemies) if (!e.dead && !e.fly && !e.F.boss && !e.reg && e.state === 'walk' && !e.route && e.d < G.len - 1.2 && (!lead || e.d > lead.d)) lead = e;
+    if (!lead) return false;
+    const d = Math.min(G.len - 0.8, lead.d + 1), p = routeAt(d);
+    G.biscuits--; G.bait = { d, x: p.x, y: p.y, t: 4, fly: 0.5 }; G.doorT = 0.6; sfx.swat(); mark('ground');
+    meta.t.biscuits = (meta.t.biscuits || 0) + 1;
+    say(G.castle.x, G.castle.y, 1.9, `Biscuit! ${G.biscuits} left`, '#ffd9a0', true);
+    return true;
+  }
   // The kettle: once per level, when the castle is nearly lost, Grandma has one more thing to throw.
   function kettleCheck() {
     if (G.kettle || G.hearts > 3 || G.hearts <= 0) return;
@@ -1146,8 +1185,8 @@
       G.spawnT += dt;
       while (G.spawnQ.length && G.spawnQ[0].at <= G.spawnT) {
         const q = G.spawnQ.shift(), tw = q.tw ? TWISTS[q.tw] : null, e = spawnFoe(q.k);
-        if (q.wanted) e.wanted = true;
-        if (q.reg) { e.reg = 3; e.hearts = 0; e.spd *= 1.7; e.armor = 0; G.banner2 = { text: 'SIR REGINALD!', sub: 'the Snail of Fortune: stomp him thrice', t: 3 }; sfx.relic(); bubble(e.x, e.y, 0.8, 'Good day. Do mind the shell.', { e, t: 3.5, T: 3.5 }); }
+        if (q.wanted) { e.wanted = true; const w = LORE2.wantedNames && pick(LORE2.wantedNames); if (w) { e.wname = w.name; bubble(e.x, e.y, 0.8, `WANTED: ${w.name}, ${w.crime}`, { e, t: 5, T: 5 }); } }
+        if (q.reg) { e.reg = 3; e.hearts = 0; e.spd *= 1.7; e.armor = 0; G.banner2 = { text: 'SIR REGINALD!', sub: 'Snail of Fortune: stomp him thrice', t: 3 }; sfx.relic(); bubble(e.x, e.y, 0.8, 'Good day. Do mind the shell.', { e, t: 3.5, T: 3.5 }); }
         if (tw && !e.F.boss) { e.tw = q.tw; if (tw.spd) e.spd *= tw.spd; if (tw.armor) e.armor += tw.armor; if (tw.coin) e.coinK = tw.coin; }
       }
     } else if (G.waveIdx < G.waves.length) { G.countdown -= dt; if (G.countdown <= 0) launchWave(); }
@@ -1189,7 +1228,7 @@
     const c = G.ug.filter((t) => !t.dug && !t.pot && !HAZARDS[t.content] && t.content !== 'lode' && dug.some((d) => Math.abs(d.i - t.i) + Math.abs(d.j - t.j) <= 2));
     if (!c.length) return;
     const t = pick(c); t.pot = G.time + 45;
-    toast('The rainbow ends in the mine. Dig the marked dirt within 45 s for the pot');
+    toast('The rainbow ends in the mine. Dig the marked dirt in 45 s for the pot');
   }
   function mergeClouds(a, b) {
     const r = mergeResult(a, b);
@@ -1381,13 +1420,26 @@
     onLayer(L, () => h.pack.forEach((k, n) => collect(k, G.hut.x, G.hut.y, (L === 'dig' ? DIG_Z + 0.5 : 0.9) + n * 0.32)));
     h.pack = []; sfx.loot();
   }
+  // The post comes three ways: letters in the mine, postcards from above the clouds, notes dropped by WANTED foes.
+  const POST = {
+    letters: { src: () => LORE.letters || [], got: () => meta.letters, head: 'LETTER', paper: '#f6e7c1' },
+    postcards: { src: () => LORE2.postcards || [], got: () => meta.postcards, head: 'POSTCARD', paper: '#d9ecff' },
+    notes: { src: () => LORE2.ratLetters || [], got: () => meta.notes, head: 'NOTE', paper: '#e9dcc8' },
+  };
+  const postLeft = (kind) => POST[kind].src().length - POST[kind].got().length;
+  function deliver(kind, gems) {
+    const P = POST[kind], idx = P.got().length;
+    if (idx >= P.src().length) return false;
+    P.got().push(idx); saveMeta(); G.loot += gems; sfx.relic();
+    G.letter = { kind, idx, t: 1 }; G.banner = 0;
+    return true;
+  }
   // Letters: old post that turns up in the dirt, one a level at most, in the order of the story.
   const lettersLeft = () => (LORE.letters || []).length - meta.letters.length;
   function maybeLetter(x, y) {
     if (G.letterFound || lettersLeft() <= 0 || Math.random() > (G.digs >= 6 ? 0.4 : 0.15)) return;
     const idx = meta.letters.length, L = LORE.letters[idx];
-    G.letterFound = true; meta.letters.push(idx); saveMeta(); G.loot += 2; sfx.relic();
-    G.letter = { idx, t: 14, T: 14 };
+    G.letterFound = true; deliver('letters', 2);
     onLayer('dig', () => { say(x, y, DIG_Z + 1, 'A LETTER! +2 gems', '#fff1c9', true); burst(x, y, DIG_Z + 0.4, '#fff1c9', 14, 2.4); });
     if (lettersLeft() === 0) { G.loot += 12; G.banner2 = { text: 'THE WHOLE STORY!', sub: `all ${LORE.letters.length} letters: +12 gems`, t: 3 }; }
     return L;
@@ -1401,6 +1453,7 @@
     t.content = null;
     if (h) voice('hamsters', HAZARDS[c] ? 'hazard' : c ? 'loot' : 'dig', x, y, DIG_Z + 1, HAZARDS[c] ? 0.8 : c ? 0.5 : 0.1, 'dig');
     if (h && !HAZARDS[c] && c !== 'lode') maybeLetter(x, y);
+    if (t.room) openRoom(t);
     if (t.pot && G.time < t.pot) {
       const g = G.potN ? 1 : 3, cn = Math.round(15 * coinMul()); G.potN = (G.potN || 0) + 1; G.loot += g; G.coins += cn; sfx.relic();
       onLayer('dig', () => { say(x, y, DIG_Z + 1.3, `SEAMUS'S POT! +${g} gem${g > 1 ? 's' : ''}`, '#ffe680', true); burst(x, y, DIG_Z + 0.4, '#ffe680', 22, 3); bubble(x, y, DIG_Z + 0.9, pick(['Ah. You found it. Again.', 'I only put it down a minute.', 'Take it. I have other pots.']), { home: true }); });
@@ -1498,7 +1551,10 @@
   // dynamite: a stick on a dug tile opens the eight tiles around it and shakes the ground above
   function placeStick(t) {
     if (!t.dug || G.dyn <= 0 || G.sticks.some((s) => s.i === t.i && s.j === t.j)) { sfx.nope(); return false; }
-    G.dyn--; G.armed = false; G.sticks.push({ i: t.i, j: t.j, x: t.i + 0.5, y: t.j + 0.5, t: FUSE_S }); sfx.fuse(); mark('dig');
+    G.dyn--; G.armed = false; const st = { i: t.i, j: t.j, x: t.i + 0.5, y: t.j + 0.5, t: FUSE_S }; G.sticks.push(st); sfx.fuse(); mark('dig');
+    // a storm overhead lights the fuse at once, and the bang is bigger
+    const c = G.clouds.find((q) => CLOUDS[q.t].bolts && q.bolts >= 3 && dist(q.x, q.y, st.x, st.y) <= cloudR(q));
+    if (c) { c.bolts -= 3; c.zap = 0.25; st.t = 0.35; st.big = true; sfx.thunder(); onLayer('dig', () => say(st.x, st.y, DIG_Z + 1.2, 'THUNDER STICK!', '#fff6a8', true)); }
     return true;
   }
   function blast(s) {
@@ -1506,7 +1562,8 @@
     let lost = 0; const up = [];
     onLayer('dig', () => {
       burst(s.x, s.y, DIG_Z + 0.4, '#ffb14a', 30, 4); ring(s.x, s.y, DIG_Z + 0.1, 1.5, '#ffb14a');
-      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const R = s.big ? 2 : 1;
+      for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
         const t = tileAt(s.i + di, s.j + dj);
         if (!t || t.dug || t.content === 'lode') continue;
         const c = t.content; t.content = null;
@@ -1521,7 +1578,7 @@
         }
       }
       if (lost) say(s.x, s.y, DIG_Z + 0.9, `${lost} treasure${lost > 1 ? 's' : ''} blown to bits`, '#ff9a9a');
-      for (const h of G.hamsters) if (dist(h.x, h.y, s.x, s.y) < 1.6) { h.daze = 5; say(h.x, h.y, DIG_Z + 0.7, 'Eek!', '#ffffff'); G.balls.push({ x: h.x, y: h.y, t: 1.1, T: 1.1, name: h.name }); }
+      for (const h of G.hamsters) if (dist(h.x, h.y, s.x, s.y) < 1.6) { h.daze = 5; say(h.x, h.y, DIG_Z + 0.7, 'Eek!', '#ffffff'); G.ballN++; G.balls.push({ x: h.x, y: h.y, t: 1.1, T: 1.1, name: h.name }); }
     });
     for (const [c, t] of up) {
       const x = t.i + 0.5, y = t.j + 0.5, g = groundAt(t.i, t.j);
@@ -1531,11 +1588,11 @@
     }
     const dmg = 60 + 14 * G.n; let n = 0;
     for (const e of G.enemies) {
-      if (e.dead || e.fly || dist(e.x, e.y, s.x, s.y) > 1.7) continue;
+      if (e.dead || e.fly || dist(e.x, e.y, s.x, s.y) > (s.big ? 2.7 : 1.7)) continue;
       if (hidden(e)) { onLayer('dig', () => (e.k === 'tyrant' ? surface(e, true) : kill(e))); n++; continue; }
       e.stun = Math.max(e.stun, e.F.boss ? 0.5 : 1.2); hurt(e, dmg, { splash: true }); n++;
     }
-    G.geysers.push({ x: s.x, y: s.y, t: 0.6 }); ring(s.x, s.y, 0.05, 1.7, '#ffb14a'); burst(s.x, s.y, 0.1, '#8a5a36', 16, 3);
+    G.geysers.push({ x: s.x, y: s.y, t: 0.6 }); ring(s.x, s.y, 0.05, s.big ? 2.7 : 1.7, '#ffb14a'); burst(s.x, s.y, 0.1, '#8a5a36', 16, 3);
     if (n >= 3) say(s.x, s.y, 1, `KABOOM ×${n}`, '#ffe680', true);
   }
   // a tunnel under the path can be collapsed into a pit; later it fills with mud
@@ -1560,12 +1617,21 @@
       if (p.t <= 0) { const g = groundAt(p.i, p.j); g.t = 'mud'; cacheDirty.ground = true; if (p.count) say(p.i + 0.5, p.j + 0.5, 0.5, `${p.count} fell in`, '#ffd9b0'); }
     }
     // Hamster cannonball: a hamster too near a blast goes up through the lawn and comes down like a small Boot
+    if (G.sid) {
+      const q = G.sid; if (q.hide > 0) q.hide -= dt;
+      if (rainOver(q.x, q.y) > 1) { q.t += dt; if (q.t > 6 && G.sidPay < 5) { q.t = 0; G.sidPay++; const v = 3 + Math.floor(G.n / 3); G.coins += v; say(q.x, q.y, 0.6, `Sidney tips +${v}`, '#bfe4ff'); } }
+    }
+    if (G.bait) {
+      const b = G.bait; if (b.fly > 0) b.fly -= dt; else b.t -= dt;
+      if (b.fly <= 0) for (const e of G.enemies) if (!e.dead && !e.fly && !e.F.boss && !e.reg && e.state === 'walk' && !e.route && Math.abs(e.d - b.d) < 0.5) { if (!(e.stun > 0.1)) bubble(e.x, e.y, 0.8, pick(['Ooh, biscuit.', 'Is that a custard cream?', 'Mine.', 'Crumbs!']), { e }); e.stun = Math.max(e.stun, 0.25); }
+      if (b.t <= 0) G.bait = null;
+    }
     for (const b of G.balls) {
       b.t -= dt; if (b.t > 0) continue;
       let n = 0;
       for (const e of G.enemies) if (!e.dead && !e.fly && !hidden(e) && dist(e.x, e.y, b.x, b.y) < 1 + e.F.r) { e.stun = Math.max(e.stun, 0.8); hurt(e, bootDmg() * 1.5, { boot: true, splash: true }); n++; }
       ring(b.x, b.y, 0.05, 1, '#ffd9a0'); burst(b.x, b.y, 0.1, '#ffd9a0', 10, 2.4); shake(4); sfx.stompHit();
-      say(b.x, b.y, 1, n ? `${b.name || 'HAMSTER'} LANDS ON ${n}!` : `${b.name || 'A hamster'} lands. Hazard pay: 5`, '#ffe680', n > 0); G.coins = Math.max(0, G.coins - 5);
+      say(b.x, b.y, 1, n ? `${(b.name || 'HAMSTER').split(' ').pop()} LANDS ON ${n}!` : `${(b.name || 'Hamster').split(' ').pop()} lands. Pay: 5`, '#ffe680', n > 0); G.coins = Math.max(0, G.coins - 5);
     }
     G.balls = G.balls.filter((b) => b.t > 0);
     for (const g of G.geysers) g.t -= dt;
@@ -1584,12 +1650,14 @@
     G.texts = G.texts.filter((t) => t.t > 0);
     for (const b of G.bubbles) { b.t -= dt; if (b.e && !b.e.dead) { b.x = b.e.x; b.y = b.e.y; } }
     G.bubbles = G.bubbles.filter((b) => b.t > 0);
-    if (G.letter && G.letter.t > 0) G.letter.t -= dt;
     // small talk while the garden waits
     G.idleSay -= dt;
+    if (G.n >= FROM.sky && !G.card && !G.cardDone && postLeft('postcards') > 0 && G.time > 20 && Math.random() < dt / 25) {
+      G.card = { x: rand(2, 7), y: rand(2, 7), wob: rand(0, 6) }; if (G.layer !== 'sky') toast('A postcard is drifting down in the sky. Tap it');
+    }
     if (G.idleSay <= 0) {
       G.idleSay = rand(16, 28);
-      if (G.layer === 'dig' && G.hamsters.length) { const h = pick(G.hamsters); voice('hamsters', h.state === 'dig' ? 'dig' : 'idle', h.x, h.y, DIG_Z + 0.9, 1, 'dig'); }
+      if (G.layer === 'dig' && G.hamsters.length) { const h = pick(G.hamsters), own = LORE2.hamsterSayings && LORE2.hamsterSayings[h.name]; if (own && Math.random() < 0.6) onLayer('dig', () => bubble(h.x, h.y, DIG_Z + 0.9, `${h.name.split(' ').pop()}: ${pick(own)}`, { home: true })); else voice('hamsters', h.state === 'dig' ? 'dig' : 'idle', h.x, h.y, DIG_Z + 0.9, 1, 'dig'); }
       else if (G.layer === 'ground' && !G.enemies.length) grandma('idle', 1);
     }
     for (const b of G.bolts) b.t -= dt;
@@ -1605,11 +1673,8 @@
     if (G.swatT > 0) G.swatT -= dt;
     if (G.doorT > 0) G.doorT -= dt;
     if (G.bellT > 0) G.bellT -= dt;
-    if (G.banner > 0) G.banner -= dt;
     if (G.banner2 && G.banner2.t > 0) G.banner2.t -= dt;
     if (G.barNote && G.barNote.t > 0) G.barNote.t -= dt;
-    if (G.heckle && G.heckle.t > 0) G.heckle.t -= dt;
-    if (G.toast && G.toast.t > 0) G.toast.t -= dt;
     if (G.streak.t > 0) { G.streak.t -= dt; if (G.streak.t <= 0) { G.streak.n = 0; A.streak(0); } }
     if (G.combo > 0) { G.combo -= dt; if (G.combo <= 0) { G.combo = 0; G.links = 0; G.comboMul = 2; G.comboCd = G.time + 10; for (const l of LAYERS) G.act[l] = -99; A.fever(false); } }
     // the gnome notices a layer that nobody uses
@@ -1638,6 +1703,9 @@
     if (G.combos) rows.push([`Strata combo ×${G.combos}`, G.combos]);
     const marks = G.ug.filter((t) => t.chalk && !t.dug), right = marks.filter((t) => HAZARDS[t.content]).length, wrong = marks.length - right;
     if (marks.length) rows.push([`Chalk audit: ${right} right, ${wrong} wrong`, Math.min(5, Math.max(0, right - wrong))]);
+    if (n === CAMPAIGN) rows.push(['Sidney rang once', 5]);
+    meta.t.bosses = (meta.t.bosses || 0) + (boss ? 1 : 0); meta.t.flawless = (meta.t.flawless || 0) + (G.leaks === 0 ? 1 : 0);
+    const talk = gossip(); if (talk.length) rows.push([`Village gossip${talk.length > 1 ? ' ×' + talk.length : ''}`, Math.min(3, talk.length)]);
     let dareNote = null;
     if (run.dare && DARE_BY_ID[run.dare]) {
       const d = DARE_BY_ID[run.dare], won = d.ok();
@@ -1651,6 +1719,7 @@
     if (n >= FROM.heat) { if (G.leaks === 0) run.heat = Math.min(5, run.heat + 1); else if (G.leaks >= 4) run.heat = Math.max(0, run.heat - 1); }
     summary = { n, name: G.name, stars, rows, total, leaks: G.leaks, hearts: G.hearts, kills: G.kills, digs: G.digs, loot: G.loot, time: G.time, usedSky: G.used.sky, usedDig: G.used.dig,
       heat0, heat1: run.heat, boss, lode: G.lodeFound, victory: n === CAMPAIGN, dare: dareNote };
+    summary.talk = talk.slice(0, 2);
     run.news = summary.news = gazette({ level: n, leaks: G.leaks, hearts: G.hearts, kills: G.kills, stomps: G.stompN, swats: G.swatN, built: G.builtN, digs: G.digs, loot: G.loot, hazards: G.hazN, boltKills: G.boltKills, combos: G.combos, early: G.early, boss: boss ? BOSS_NAMES[boss] : null, flawless: G.leaks === 0, coins: Math.floor(G.coins) });
     pendingRelics = (boss ? 1 : 0) + (G.lodeFound ? 1 : 0);
     run.level++; run.gems += total; run.stars += stars; run.score += total;
@@ -1659,10 +1728,25 @@
     A.fever(false); A.streak(0); A.music(0); sfx.clear();
     showTally();
   }
+  function totals() {
+    const m = meta.t;
+    for (const [k, v] of [['stomps', G.stompN], ['swats', G.swatN], ['built', G.builtN], ['digs', G.digs], ['leaksTotal', G.leaks], ['bolts', G.boltKills], ['reginald', G.regN], ['pots', G.potN], ['cannonballs', G.ballN], ['curls', G.curlN]]) m[k] = (m[k] || 0) + (v || 0);
+    return Object.assign({ stomps: 0, swats: 0, built: 0, digs: 0, leaksTotal: 0, bolts: 0, reginald: 0, pots: 0, cannonballs: 0, curls: 0, bosses: 0, flawless: 0 }, m,
+      { kills: meta.kills, letters: meta.letters.length, bestLevel: Math.max(best.level, run ? run.level : 0), runs: meta.runs, gnome: meta.eggs.gnome ? 1 : 0, tree: meta.eggs.tree ? 1 : 0, pond: meta.eggs.pond ? 1 : 0 });
+  }
+  // returns the rumours that started just now
+  function gossip() {
+    const m = totals(), fresh = [];
+    for (const r of LORE2.rumours || []) {
+      if (meta.rumours.includes(r.id)) continue;
+      try { if (new Function('m', `return (${r.when});`)(m)) { meta.rumours.push(r.id); fresh.push(r); } } catch (e) { /* a bad rule starts no rumour */ }
+    }
+    return fresh;
+  }
   function gameOver() {
     mode = 'over'; closePop(); pauseBtn.style.display = 'none';
     A.fever(false); A.streak(0); A.music(0); sfx.over(); buzz([80, 60, 160]);
-    meta.runs++; saveMeta(); recordBest(); store.del(SAVE_KEY);
+    meta.runs++; gossip(); saveMeta(); recordBest(); store.del(SAVE_KEY);
     showOver();
   }
 
@@ -1689,6 +1773,10 @@
     [FROM.combo, 'During a Strata Combo, hop between layers: the coins go up to ×4.'],
     [FROM.dynamite, 'Dynamite on a danger sends it upwards, at the enemy.'],
     [1, 'Tap a guest in the Next strip to hear who it is.'],
+    [1, 'Swat when the bell turns gold: a home run.'], [1, 'Tap the castle with nobody at the door: Grandma throws a biscuit. Three a level.'],
+    [2, 'Sidney the snail is on his way. Tap him. He likes rain.'], [FROM.lode, 'The gnome on the lawn stands on something. Tap him.'],
+    [FROM.dig + 1, 'A dashed row of dirt is a room of the first castle. Dig one tile, get three.'],
+    [FROM.dynamite, 'Dynamite under a storm goes off at once, and bigger.'], [FROM.sky, 'Postcards drift down in the sky. Tap them.'],
     [3, 'A snail in a crown is Sir Reginald. Three stomps, three gems. Towers will not shoot him.'],
     [4, 'Stomp a beetle that lies on its back and it slides down the path. Four hits earn a gem.'],
     [FROM.dig, 'Old letters turn up in the mine, one a level. Read them in the Almanac.'],
@@ -1705,7 +1793,7 @@
   }
   const esc = (t) => String(t == null ? '' : t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const listOf = (x) => (Array.isArray(x) ? x.map((v, k) => [v.id || v.key || k, v]) : Object.entries(x || {}));
-  const ALM_TABS = [['story', '📖 Story'], ['foes', '🐀 Foes'], ['home', '🏰 Home'], ['letters', '✉️ Letters']];
+  const ALM_TABS = [['story', '📖 Story'], ['foes', '🐀 Foes'], ['home', '🏰 Home'], ['letters', '✉️ Post'], ['gossip', '🗣 Gossip']];
   function almCounts() {
     const foes = Object.keys(FOES).filter((k) => LORE.foes && LORE.foes[k]);
     return { foes: foes.filter((k) => meta.foes[k]).length, foeN: foes.length, letters: meta.letters.length, letterN: (LORE.letters || []).length, ch: Math.min(meta.chapter, (LORE.chapters || []).length), chN: (LORE.chapters || []).length };
@@ -1723,8 +1811,9 @@
       return Object.keys(FOES).filter((k) => LORE.foes && LORE.foes[k]).map((k) => {
         const L = LORE.foes[k], n = meta.foes[k] || 0;
         if (!n) return '<div class="entry lock foe"><i>?</i><span>Not beaten yet. It knows.</span></div>';
+        const ep = LORE2.bossEpitaphs && LORE2.bossEpitaphs[k];
         return `<div class="entry foe">${foeImg(k)}<div><b>${esc(L.name || k)}</b><span>${esc(L.bio)}</span>
-          ${L.likes ? `<span class="sm">Likes: ${esc(L.likes)}</span>` : ''}${L.fears ? `<span class="sm">Fears: ${esc(L.fears)}</span>` : ''}<span class="sm">Seen off: ${n}</span></div></div>`;
+          ${L.likes ? `<span class="sm">Likes: ${esc(L.likes)}</span>` : ''}${L.fears ? `<span class="sm">Fears: ${esc(L.fears)}</span>` : ''}<span class="sm">Seen off: ${n}</span>${ep ? `<span class="sm">Now: ${esc(ep[n % ep.length])}</span>` : ''}</div></div>`;
       }).join('');
     }
     if (almTab === 'home') {
@@ -1734,17 +1823,24 @@
       const tw = TOWER_ORDER.filter((k) => LORE.towers && LORE.towers[k]).map((k) => (meta.built[k] ? `<div class="entry"><b>${TOWERS[k].name}</b><span>${esc(LORE.towers[k].bio || LORE.towers[k])}</span><span class="sm">Built: ${meta.built[k]}</span></div>` : '<div class="entry lock"><span>A tower you have not built yet.</span></div>')).join('');
       const wx = Object.keys(CLOUDS).filter((k) => LORE.clouds && LORE.clouds[k]).map((k) => `<div class="entry"><b>${CLOUDS[k].name}</b><span>${esc(LORE.clouds[k])}</span></div>`).join('');
       const rl = run && LORE.relics ? run.relics.filter((id) => LORE.relics[id] && RELIC_BY_ID[id]).map((id) => `<div class="entry"><b>${RELIC_BY_ID[id].icon} ${RELIC_BY_ID[id].name}</b><span>${esc(LORE.relics[id])}</span></div>`).join('') : '';
-      return `<h3>The household</h3>${cast}<h3>The towers</h3>${tw}<h3>The weather</h3>${wx}${rl ? `<h3>Your relics</h3>${rl}` : ''}`;
+      return `<h3>The household</h3>${cast}<h3>The towers</h3>${tw}<h3>The weather</h3>${wx}${rl ? `<h3>Your relics</h3>${rl}` : ''}${LORE2.unionRules ? `<h3>The union rulebook</h3><div class="entry">${LORE2.unionRules.map((r) => `<span class="sm">${esc(r)}</span>`).join('')}</div>` : ''}`;
     }
-    const L = LORE.letters || [];
-    return `<p class="lead">Old post turns up in the mine. One letter a level, if the hamsters dig enough. Two gems each, and twelve more for the set.</p>` + L.map((q, k) => (meta.letters.includes(k)
-      ? `<div class="entry letter"><span>${esc(q.text)}</span><span class="sm">${esc(q.from || '')}</span></div>` : `<div class="entry lock"><span>Letter ${k + 1} is still in the dirt.</span></div>`)).join('');
+    if (almTab === 'gossip') {
+      const R = LORE2.rumours || [];
+      return `<p class="lead">Biscuits still owed to the rats: ${(54750 - (meta.t.biscuits || 0)).toLocaleString('en-GB')}.</p><p class="lead">What the village says about you: ${meta.rumours.length} of ${R.length}. A gem for each new rumour.</p>` + R.map((r) => (meta.rumours.includes(r.id)
+        ? `<div class="entry"><b>${esc(r.name)}</b><span>${esc(r.text)}</span></div>` : `<div class="entry lock"><span>${esc(r.name)}: nobody is saying. Yet.</span></div>`)).join('');
+    }
+    const set = (kind, title, lead, lock) => { const P = POST[kind], all = P.src(); return all.length ? `<h3>${title} ${P.got().length}/${all.length}</h3><p class="lead">${lead}</p>` + all.map((q, k) => (P.got().includes(k)
+      ? `<div class="entry letter" style="background:${P.paper}"><span>${esc(q.text)}</span><span class="sm">${esc(q.from || '')}</span></div>` : (k === P.got().length ? `<div class="entry lock"><span>${lock}</span></div>` : ''))).join('') : ''; };
+    return set('letters', 'Letters', 'Dug up in the mine, one a level. Two gems each.', 'The next letter is still in the dirt.')
+      + set('postcards', 'Postcards', 'They drift down in the sky. Tap one.', 'The next postcard is still in the air.')
+      + set('notes', 'Notes', 'Dropped by WANTED foes who meet the Boot.', 'The next note is still in a pocket.');
   }
   function showAlmanac() {
     screen = 'almanac';
     const c = almCounts();
     showOverlay(`<div class="tallyv alm"><div class="tbody">
-      <div class="tally-sub">CHAPTERS ${c.ch}/${c.chN} · FOES ${c.foes}/${c.foeN} · LETTERS ${c.letters}/${c.letterN}</div>
+      <div class="tally-sub">CHAPTERS ${c.ch}/${c.chN} · FOES ${c.foes}/${c.foeN} · POST ${meta.letters.length + meta.postcards.length + meta.notes.length}/${c.letterN + (LORE2.postcards || []).length + (LORE2.ratLetters || []).length}</div>
       <div class="tally-title small">The Garden Almanac</div>
       <div class="tabs">${ALM_TABS.map(([id, nm]) => `<button class="tabb${almTab === id ? ' on' : ''}" data-act="alm" data-id="${id}">${nm}</button>`).join('')}</div>
       <div class="almpage">${almPage()}</div>
@@ -1769,7 +1865,7 @@
       ${soundBtns()}
       ${LORE.premise ? '<button class="big alt" data-act="almanac">📖 The Garden Almanac</button>' : ''}
       ${best.level > 1 ? `<div class="stat">Best: level <b>${best.level}</b></div>` : ''}
-      ${LORE.loading && LORE.loading.length ? `<div class="fact"><b>Garden fact</b> ${esc(pick(LORE.loading))}</div>` : ''}
+      ${(LORE.loading || []).length ? `<div class="fact"><b>Garden fact</b> ${esc(pick((LORE.loading || []).concat(LORE2.almanacFacts || [])))}</div>` : ''}
       <div class="hint">Tap to build, stomp and dig. Drag to look around and to herd clouds.<br>Escape or a right click pauses.</div>
     </div>`, true);
   }
@@ -1821,6 +1917,7 @@
     const chips = [];
     if (s.heat1 > s.heat0) chips.push(`<div class="chip hot">🔥 Heat ${s.heat1}: enemies are tougher, gems are worth more</div>`);
     if (s.heat1 < s.heat0) chips.push(`<div class="chip">Heat cools to ${s.heat1}</div>`);
+    for (const r of s.talk || []) chips.push(`<div class="chip gossip">🗣 <b>${esc(r.name)}</b><br>${esc(r.text)}</div>`);
     if (s.dare) chips.push(`<div class="chip ${s.dare.won ? 'hot' : 'bad'}">Dare, ${s.dare.name}: ${s.dare.won ? 'done!' : 'not this time'}</div>`);
     if (tip.startsWith('NEW:')) chips.push(`<div class="chip new">Next level: <b>${tip.slice(4).split('.')[0].trim()}</b></div>`);
     else if (newTowers.length) chips.push(`<div class="chip new">Next level: <b>${newTowers.join(', ')}</b></div>`);
@@ -2106,10 +2203,20 @@
     const cp = toScreen(G.castle.x, G.castle.y, 0);
     if (Math.abs(sx - cp.x) < 36 && sy > cp.y - 86 && sy < cp.y + 14) {
       if (G.kettle === 1) { throwKettle(); return; }
-      if (!swat()) toast(`Grandma is in. ${G.hearts} heart${G.hearts === 1 ? '' : 's'} left. Tap here when the bell rings`);
+      if (!swat() && !throwBiscuit()) { if (LORE2.doormats && G.matN++ > 0) bubble(G.castle.x, G.castle.y, 0.5, `Doormat: ${pick(LORE2.doormats)}`, { home: true }); else toast('Grandma is in. Tap here when the bell rings'); }
       return;
     }
     for (const g of G.eggs) if (!g.gone && near(sx, sy + 8, g.x, g.y, 0, 20)) { crackEgg(g); return; }
+    if (G.sid && near(sx, sy + 6, G.sid.x, G.sid.y, 0, 16)) {
+      const left = CAMPAIGN - G.n; sfx.squeak(); G.sid.hide = 1.2;
+      bubble(G.sid.x, G.sid.y, 0.5, left > 0 ? pick([`Sidney: ${left} level${left > 1 ? 's' : ''} to go.`, 'Sidney: nearly there.', 'Sidney: do not wait up.', 'Sidney: I shall ring once.']) : 'Sidney: I have arrived.', { home: true });
+      return;
+    }
+    if (G.gnome && !groundAt(G.gnome.i, G.gnome.j).obj && near(sx, sy + 14, G.gnome.x, G.gnome.y, 0, 20)) {
+      if (!G.gnome.said) { G.gnome.said = true; G.lode.spied = true; sfx.relic(); bubble(G.gnome.x, G.gnome.y, 0.9, 'I have not moved. Dig below.', { home: true, t: 5, T: 5 }); onLayer('dig', () => ring(G.lode.i + 0.5, G.lode.j + 0.5, 0, 0.6, '#ffe680')); }
+      else { burst(G.gnome.x, G.gnome.y, 0.3, '#ffffff', 10, 2); say(G.gnome.x, G.gnome.y, 0.9, 'You saw nothing', '#c9d0ff'); G.gnome = null; }
+      return;
+    }
     for (const e of G.enemies) if (e.state === 'under' && near(sx, sy, e.x, e.y, 0, 26)) { stompAt(e.x, e.y); return; }
     // the path belongs to the Boot: a tower standing in front of it must not swallow a stomp
     const hit = pickTile(sx, sy, [0.32, 0.16, 0, -0.18], gz);
@@ -2149,7 +2256,7 @@
     if (!t) return;
     if (!t.dug && G.chalk) { if (t.queued) cancelDig(t); t.chalk = !t.chalk; sfx.tap(); mark('dig'); return; }
     if (!t.dug) {
-      if (t.chalk) { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Chalked. Use the chalk to rub it out', '#c9d0ff')); }
+      if (t.chalk) { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Chalked. Rub it out with the chalk', '#c9d0ff')); }
       else if (t.queued) cancelDig(t);
       else if (canQueue(t)) orderDig(t);
       else { sfx.nope(); onLayer('dig', () => say(t.i + 0.5, t.j + 0.5, 0.4, 'Dig next to a tunnel', '#c9d0ff')); }
@@ -2164,8 +2271,9 @@
   const BELL = [W / 2 - 44, HUD_H + 10, 88, 56];
   function tap(sx, sy) {
     if (G.trans) return;
-    if (G.banner > 0.4) G.banner = 0.4;
-    if (G.letter && G.letter.t > 0.3 && G.letter.t < G.letter.T - 1) { G.letter.t = 0.3; if (sy < HUD_H + 190 && sy > HUD_H) return; }
+    if (G.layer !== 'ground' && ringing() && inRect(BELL, sx, sy)) { swat(); return; } // the bell comes before any box
+    // info boxes stay until they are closed: a tap on a box (or its X) puts it away
+    for (let k = G.boxes.length - 1; k >= 0; k--) { const q = G.boxes[k]; if (sx >= q.x - 6 && sx <= q.x + q.w + 10 && sy >= q.y - 10 && sy <= q.y + q.h + 6) { q.close(); sfx.tab(); return; } }
     if (sy >= H - BAR_H) {
       const R = barRects();
       for (const l of LAYERS) if (inRect(R[l], sx, sy)) { setLayer(l); return; }
@@ -2174,8 +2282,8 @@
       if (inRect(R.tool, sx, sy)) {
         if (G.layer === 'dig') { // the tool of the mine: pick, chalk, dynamite
           sfx.tab();
-          if (!G.chalk && !G.armed) { G.chalk = true; toast('Chalk: tap dirt that you think is dangerous. Hamsters leave it alone, and a right mark pays a gem at the end'); }
-          else if (G.chalk && G.n >= FROM.dynamite && G.dyn > 0) { G.chalk = false; G.armed = true; toast('Dynamite: tap a tunnel to place the stick. It opens the tiles around it and shakes the garden above'); }
+          if (!G.chalk && !G.armed) { G.chalk = true; toast('Chalk: mark risky dirt. Hamsters avoid it. A right mark pays a gem'); }
+          else if (G.chalk && G.n >= FROM.dynamite && G.dyn > 0) { G.chalk = false; G.armed = true; toast('Dynamite: tap a tunnel. It opens nearby tiles and shakes the lawn'); }
           else { G.chalk = false; G.armed = false; }
         }
         else if (G.layer === 'ground') toast(`The Boot: tap the path to stomp. ${G.boot.n} of ${bootMax()} ready`);
@@ -2198,6 +2306,10 @@
     else {
       // a tap on a foe standing in a storm's shadow calls the bolt, even where the cloud itself overlaps it
       const w = toWorld(vx, vy, 0);
+      if (G.card && near(vx, vy + 10, G.card.x, G.card.y, CLOUD_Z + 0.9, 34)) {
+        onLayer('sky', () => { burst(G.card.x, G.card.y, CLOUD_Z + 0.9, '#ffffff', 12, 2.2); say(G.card.x, G.card.y, CLOUD_Z + 1.4, 'POSTCARD! +1 gem', '#d9ecff', true); });
+        G.card = null; G.cardDone = true; deliver('postcards', 1); mark('sky'); return;
+      }
       const onFoe = G.enemies.some((e) => !e.dead && !hidden(e) && dist(e.x, e.y, w.wx, w.wy) < 0.7 + e.F.r);
       if (onFoe && callBolt(w.wx, w.wy)) return;
       const c = cloudAt(vx, vy); if (c) toggleAnchor(c); else callBolt(w.wx, w.wy);
@@ -2389,6 +2501,7 @@
       const f = clamp(e.ring / ringS(), 0, 1);
       ctx.strokeStyle = '#ff5a7a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, top - 14, 8, -Math.PI / 2, -Math.PI / 2 + f * 6.283); ctx.stroke();
       icon('bell', p.x + Math.sin(T * 30) * 1.5, top - 14, 14);
+      if (e.gold) { ctx.strokeStyle = '#ffe680'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, top - 14, 11 + Math.sin(T * 30), 0, 7); ctx.stroke(); text('NOW!', p.x, top - 32, '#ffe680', 12, 'center', true); }
     }
     if (e.stun > 0 && e.state === 'walk' && !(e.dance > 0)) for (let k = 0; k < 2; k++) text('✦', p.x + Math.cos(T * 6 + k * 3.14) * 9, top - 3 + Math.sin(T * 6 + k * 3.14) * 3, '#ffe680', 9);
     if (e.dance > 0) text('♪', p.x + 10, top - 4 - (T * 20 % 8), '#ff9ad8', 12);
@@ -2473,6 +2586,9 @@
       if (pl.land > 0) { const f = 1 - pl.land / 0.5, p = toScreen(pl.fromX + (pl.x - pl.fromX) * f, pl.fromY + (pl.y - pl.fromY) * f, 0.9 * (1 - f) + Math.sin(f * Math.PI) * 0.9); blit(art('peel'), p.x, p.y); }
       else { const p = toScreen(pl.x, pl.y, 0); blit(art('peel'), p.x, p.y); }
     });
+    if (G.sid) add(G.sid.x + G.sid.y, () => { const q = G.sid, p = toScreen(q.x, q.y, 0), hid = q.hide > 0; shadow(q.x, q.y, 0, 5, 0.2); blit(foeSpr('snail'), p.x, p.y, hid ? 0.5 : 0.56, hid ? 0.4 : 0.56); if (rainOver(q.x, q.y) > 1 && !hid) text('♪', p.x + 8, p.y - 20 - (T * 10 % 8), '#bfe4ff', 11); });
+    if (G.gnome && !groundAt(G.gnome.i, G.gnome.j).obj) add(G.gnome.x + G.gnome.y, () => { const p = toScreen(G.gnome.x, G.gnome.y, 0), gs = art('gnome', { mood: 0 }); shadow(G.gnome.x, G.gnome.y, 0, 8, 0.25); ctx.drawImage(gs.cv, p.x - gs.w * 0.21, p.y - gs.h * 0.42 + 4, gs.w * 0.42, gs.h * 0.42); });
+    if (G.bait) add(G.bait.x + G.bait.y - 0.1, () => { const b = G.bait, f = clamp(b.fly / 0.5, 0, 1), x = b.x + (G.castle.x - b.x) * f, y = b.y + (G.castle.y - b.y) * f, p = toScreen(x, y, 0.1 + Math.sin(f * Math.PI) * 1.4); ctx.fillStyle = '#e0a458'; ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(p.x, p.y - 3, 8, 5, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#8a5a2a'; for (const [dx, dy] of [[-3, -4], [2, -2], [0, -5], [4, -4]]) ctx.fillRect(p.x + dx, p.y + dy, 1.5, 1.5); });
     for (const b of G.balls) add(b.x + b.y + 0.5, () => { const f = 1 - b.t / b.T, p = toScreen(b.x, b.y, 3.2 * Math.sin(f * Math.PI) + 0.2); shadow(b.x, b.y, 0, 7, 0.25); ctx.save(); ctx.translate(p.x, p.y - 12); ctx.rotate(f * 12); blit(foeSpr('hamster'), 0, 12, 0.8, 0.8); ctx.restore(); });
     for (const g of G.geysers) add(g.x + g.y + 0.2, () => { const p = toScreen(g.x, g.y, 0); blit(art('geyser', { f: Math.min(2, Math.floor((0.6 - g.t) / 0.2)) }), p.x, p.y); });
     for (const s of G.shots) add(s.x + s.y, () => {
@@ -2512,6 +2628,15 @@
   }
 
   // ---------- drawing: the sky ----------
+  function drawCard() {
+    const c = G.card; if (!c) return;
+    const p = toScreen(c.x, c.y, CLOUD_Z + 0.9 + 0.15 * Math.sin(T * 2 + c.wob));
+    ctx.save(); ctx.translate(p.x, p.y - 12); ctx.rotate(0.25 * Math.sin(T * 1.6 + c.wob));
+    ctx.fillStyle = '#fffdf2'; ctx.strokeStyle = INK; ctx.lineWidth = 2; rr(-17, -11, 34, 22, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ff5a7a'; ctx.fillRect(7, -8, 7, 8); ctx.strokeStyle = '#9aa3d6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-13, -3); ctx.lineTo(2, -3); ctx.moveTo(-13, 2); ctx.lineTo(2, 2); ctx.moveTo(-13, 7); ctx.lineTo(-3, 7); ctx.stroke();
+    ctx.restore();
+    text('TAP', p.x, p.y + 12 + Math.sin(T * 5) * 2, '#ffffff', 11, 'center', true);
+  }
   function drawSky() {
     // what is below, as marks on the glass
     for (const t of G.towers) { tilePath(t.i, t.j, 0, 0.3); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill(); }
@@ -2548,6 +2673,7 @@
       }
     }
     if (drag && tgt) { const r = mergeResult(drag, tgt), p = toScreen(tgt.x, tgt.y, CLOUD_Z + 1.5); text(r ? `= ${r.big && r.t === tgt.t ? 'Big ' : ''}${CLOUDS[r.t].name}` : 'no mix', p.x, p.y, r ? '#ffe680' : '#ff9a9a', 15, 'center', true); }
+    drawCard();
     // the wind
     if (!has('vane')) { const p = toScreen(N / 2 - G.wind[0] * 5.3, N / 2 - G.wind[1] * 5.3, 0), q = toScreen(N / 2 - G.wind[0] * 4.7, N / 2 - G.wind[1] * 4.7, 0); icon('wind', p.x, p.y, 20); ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x + (q.x - p.x) * 0.6, p.y + (q.y - p.y) * 0.6); ctx.lineTo(p.x + (q.x - p.x) * 1.6, p.y + (q.y - p.y) * 1.6); ctx.stroke(); }
   }
@@ -2600,6 +2726,7 @@
       const i = Math.floor(o.x), j = Math.floor(o.y);
       for (const [di, dj] of [[1, 0], [0, 1], [1, 1]]) { const u = tileAt(i + di, j + dj); if (u && !u.dug) paintUg(ctx, P_SCREEN, u); }
     }
+    for (const t of G.ug) if (t.room && !t.dug) { tilePath(t.i, t.j, 0, 0.12); ctx.strokeStyle = 'rgba(217,185,127,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([3, 5]); ctx.stroke(); ctx.setLineDash([]); const p = toScreen(t.i + 0.5, t.j + 0.5, 0); text('▚', p.x, p.y - 2, 'rgba(217,185,127,0.7)', 12); }
     for (const t of G.ug) if (t.pot && !t.dug) {
       const left = t.pot - G.time; if (left <= 0) { t.pot = 0; continue; }
       const p = toScreen(t.i + 0.5, t.j + 0.5, 0), cols = ['#ff5a7a', '#ffb14a', '#ffe680', '#7cf28a', '#7cc8ff', '#b9a8ff'];
@@ -2769,17 +2896,27 @@
       ctx.globalAlpha = 1;
     }
   }
+  // An info box stays open until its X is tapped. Each frame the open boxes register their rectangles for tap().
+  function closeBox(x, y, w, h, close, dark) {
+    G.boxes.push({ x, y, w, h, close });
+    const cx = x + w - 4, cy = y + 4;
+    ctx.beginPath(); ctx.arc(cx, cy, 12, 0, 7); ctx.fillStyle = dark ? '#3a2a12' : '#ff5a7a'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 4.5, cy - 4.5); ctx.lineTo(cx + 4.5, cy + 4.5); ctx.moveTo(cx + 4.5, cy - 4.5); ctx.lineTo(cx - 4.5, cy + 4.5); ctx.lineCap = 'round'; ctx.lineWidth = 2.5; ctx.stroke();
+  }
   function drawLetter() {
-    const L = G.letter; if (!L || L.t <= 0 || !LORE.letters) return;
-    const D = LORE.letters[L.idx], lines = wrapLines(D.text, 13, W - 110), h = 58 + lines.length * 17, a = Math.min(1, L.t * 3, (L.T - L.t) * 4), y0 = HUD_H + 16;
-    ctx.globalAlpha = a; ctx.save(); ctx.translate(W / 2, y0 + h / 2); ctx.rotate(-0.012); ctx.translate(-W / 2, -(y0 + h / 2));
-    panel(34, y0, W - 68, h, 6, '#f6e7c1', '#8a6a3a');
-    text(`LETTER ${L.idx + 1} OF ${LORE.letters.length}`, W / 2, y0 + 16, '#8a6a3a', 10);
+    const L = G.letter; if (!L || L.t <= 0) return;
+    const P = POST[L.kind || 'letters'], all = P.src(), D = all[L.idx]; if (!D) return;
+    const lines = wrapLines(D.text, 13, W - 110), h = 58 + lines.length * 17, y0 = HUD_H + 16;
+    ctx.save(); ctx.translate(W / 2, y0 + h / 2); ctx.rotate(-0.012); ctx.translate(-W / 2, -(y0 + h / 2));
+    panel(34, y0, W - 68, h, 6, P.paper, '#8a6a3a');
+    text(`${P.head} ${L.idx + 1} OF ${all.length}`, W / 2, y0 + 16, '#8a6a3a', 10);
     lines.forEach((l, k) => text(l, W / 2, y0 + 38 + k * 17, '#3a2a12', 13, 'center', false, false));
-    text(D.from ? `from ${D.from}`.replace(/^from from /i, 'from ') : '', W - 52, y0 + h - 12, '#8a6a3a', 11, 'right', false, false);
-    ctx.restore(); ctx.globalAlpha = 1;
+    text(D.from || '', W - 52, y0 + h - 12, '#8a6a3a', 11, 'right', false, false);
+    ctx.restore();
+    closeBox(34, y0, W - 68, h, () => { G.letter = null; }, true);
   }
   function drawNotices() {
+    G.boxes.length = 0;
     drawBubbles(); drawLetter();
     // who comes next, while the garden waits
     if (G.layer === 'ground' && !G.trans && canCallWave() && !(G.banner > 0) && !(G.banner2 && G.banner2.t > 0)) {
@@ -2797,34 +2934,35 @@
       panel(BELL[0], BELL[1], BELL[2], BELL[3], 14, 'rgba(255,42,77,0.92)', '#ffffff');
       blit(art('bell'), W / 2 - 22 + Math.sin(T * 34) * 2, BELL[1] + 44, 1.3 * k, 1.3 * k); text(G.swatT > 0 ? 'wait...' : 'SWAT!', W / 2 + 16, BELL[1] + 28, '#ffffff', 14);
     }
+    let boxY = VIEW_Y1 - 8;
     if (G.toast && G.toast.t > 0) {
-      const lines = wrapLines(G.toast.text, 12, W - 70), h = lines.length * 16 + 12, y = VIEW_Y1 - h - 8;
-      ctx.globalAlpha = Math.min(1, G.toast.t * 3);
-      panel(20, y, W - 40, h, 10, 'rgba(12,14,30,0.9)', '#ffffff33');
-      lines.forEach((l, k) => text(l, W / 2, y + 14 + k * 16, '#e8ecff', 12, 'center', false, false));
-      ctx.globalAlpha = 1;
+      const lines = wrapLines(G.toast.text, 12, W - 96), h = lines.length * 16 + 12, y = boxY - h;
+      panel(20, y, W - 40, h, 10, 'rgba(12,14,30,0.92)', '#ffffff33');
+      lines.forEach((l, k) => text(l, W / 2 - 8, y + 14 + k * 16, '#e8ecff', 12, 'center', false, false));
+      closeBox(20, y, W - 40, h, () => { G.toast = null; });
+      boxY = y - 16;
     }
     const hk = G.heckle;
-    if (hk && hk.t > 0 && !(G.toast && G.toast.t > 0)) {
-      const lines = wrapLines(hk.text, 12, W - 130), h = Math.max(44, lines.length * 16 + 14), y = VIEW_Y1 - h - 8;
-      ctx.globalAlpha = Math.min(1, hk.t * 3, (4.5 - hk.t) * 6);
+    if (hk && hk.t > 0) {
+      const lines = wrapLines(hk.text, 12, W - 150), h = Math.max(44, lines.length * 16 + 14), y = boxY - h;
       const gs = art('gnome', { mood: 0 }); ctx.drawImage(gs.cv, 8, y + h - 52, gs.w * 0.72, gs.h * 0.72);
       panel(70, y, W - 84, h, 12, '#f4f6ff'); ctx.fillStyle = '#f4f6ff'; ctx.beginPath(); ctx.moveTo(70, y + h - 24); ctx.lineTo(60, y + h - 18); ctx.lineTo(70, y + h - 12); ctx.fill();
       lines.forEach((l, k) => text(l, 80, y + (h - lines.length * 16) / 2 + 8 + k * 16, '#1b1f33', 12, 'left', false, false));
-      ctx.globalAlpha = 1;
+      closeBox(70, y, W - 84, h, () => { G.heckle = null; });
     }
     if (G.banner > 0) {
-      const a = Math.min(1, G.banner * 2, ((G.banner0 || 5) - G.banner) * 4), tip = tipFor(G.n), isNew = tip.startsWith('NEW:');
+      const a = 1, tip = tipFor(G.n), isNew = tip.startsWith('NEW:');
       const ch = LORE.chapters && LORE.chapters[G.n - 1], story = ch ? wrapLines(ch.text, 13, W - 84) : [];
       const lines = tip ? wrapLines(isNew ? tip.slice(4).trim() : tip, 13, W - 80) : [], sh = story.length ? story.length * 17 + 30 : 0, h = 62 + sh + lines.length * 17 + (isNew ? 18 : 0);
       ctx.globalAlpha = a;
       panel(24, HUD_H + 14, W - 48, h, 14, 'rgba(12,14,30,0.92)', isNew ? '#ffe680' : '#ffffff33');
-      text(`Level ${G.n}`, W / 2, HUD_H + 34, '#9aa3d6', 12); text(G.name, W / 2, HUD_H + 56, '#ffffff', 22);
+      text(G.forecast ? `Level ${G.n} · ${G.forecast}` : `Level ${G.n}`, W / 2, HUD_H + 34, '#9aa3d6', 12); text(G.name, W / 2, HUD_H + 56, '#ffffff', 22);
       let y = HUD_H + 80;
       if (ch) { text(ch.title, W / 2, y, '#ffd9a0', 13); y += 19; story.forEach((l, k) => text(l, W / 2, y + k * 17, '#fff1c9', 13, 'center', false, false)); y += story.length * 17 + 11; }
       if (isNew) { text('NEW', W / 2, y, '#ffe680', 13); y += 18; }
       lines.forEach((l, k) => text(l, W / 2, y + k * 17, isNew ? '#fff6c9' : '#c9d0ff', 13, 'center', false, false));
       ctx.globalAlpha = 1;
+      closeBox(24, HUD_H + 14, W - 48, h, () => { G.banner = 0; });
     }
     const b = G.banner2;
     if (b && b.t > 0 && (mode === 'play' || mode === 'pause')) {
@@ -2874,7 +3012,7 @@
     get G() { return G; }, get run() { return run; }, get mode() { return mode; }, get meta() { return meta; },
     state: () => ({ mode, screen, level: run ? run.level : 0, gems: run ? run.gems : 0, layer: G ? G.layer : '', coins: G ? G.coins : 0, hearts: G ? G.hearts : 0, wave: G ? G.waveIdx : 0, waves: G ? G.waves.length : 0, enemies: G ? G.enemies.length : 0, time: G ? G.time : 0 }),
     start(n, up) { run = newRun(); run.level = n || 1; Object.assign(run.up, up || {}); startLevel(); },
-    layer: (l) => setLayer(l, true), reg: () => { G.spawnQ.push({ k: 'snail', at: 0, reg: true }); G.spawnT = 1; updateWaves(0); return G.enemies[G.enemies.length - 1]; }, rainbowsEnd, blastAt: (i, j) => blast({ i, j, x: i + 0.5, y: j + 0.5 }),
+    layer: (l) => setLayer(l, true), finishDig: (i, j) => finishDig(tileAt(i, j), null), throwBiscuit, placeStick: (i, j) => placeStick(tileAt(i, j)), tapGround: (wx, wy) => { const p = toScreen(wx, wy, 0); tapGround(p.x, p.y); }, reg: () => { G.spawnQ.push({ k: 'snail', at: 0, reg: true }); G.spawnT = 1; updateWaves(0); return G.enemies[G.enemies.length - 1]; }, rainbowsEnd, blastAt: (i, j) => blast({ i, j, x: i + 0.5, y: j + 0.5 }),
     step(seconds, dt = 1 / 30) { for (let t = 0; t < seconds && mode === 'play'; t += dt) update(dt); },
     screenOf: (wx, wy, z) => toScreen(wx, wy, z || 0),
     build: tryBuild, upgrade: tryUpgrade, stomp: stompAt, swat, wave: callWave, dig: (i, j) => orderDig(tileAt(i, j)), stick: (i, j) => placeStick(tileAt(i, j)),
