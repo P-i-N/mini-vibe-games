@@ -8,6 +8,7 @@ Play: https://p-i-n.github.io/mini-vibe-games/
 | --- | --- |
 | Brick Bazaar: brick breaker with 50 levels, five bosses, a coin shop, self-reloading guns, drones, fever mode, relics and synth music | [`brick-bazaar/`](brick-bazaar/) |
 | Strata Siege: isometric tower defense on three layers (sky, garden, mine) with cloud mixing, a stomping Boot, digging hamsters, bosses, relics and a gnome's gem shop | [`strata-siege/`](strata-siege/) |
+| Trestle Trouble: bridge builder with a physics test run, four materials (road, wood, steel, cable), 12 gaps, budgets and stars. Made for a tablet or a large screen. | [`trestle-trouble/`](trestle-trouble/) |
 
 Every game is plain HTML/CSS/JS with no build step. Pushing to `main` deploys to GitHub Pages.
 
@@ -128,3 +129,17 @@ The game runs without `lore.js` and `voices.js`; every use is guarded. A chapter
 Text that carries information never fades on a timer. The level banner, post (`drawLetter`), toasts and the gnome's remarks are info boxes: each registers its rectangle with `closeBox` and stays until the player taps it or its X. Keep a box under about 90 characters. Only short exclamations (`say`, `banner2`, speech bubbles) fade by themselves.
 
 A saved run of the first version of the game gets the gems for its upgrades back (`OLD_PRICES`).
+
+## Trestle Trouble notes
+
+| File | Contents |
+| --- | --- |
+| `levels.js` | The 12 gaps (`TT_LEVELS`): cliff heights, anchors (red bolts), rock pillars, stone towers, vehicle and budget. Coordinates are metres on a 1 m grid, y points up, the left cliff edge is x = 0. |
+| `game.js` | Editor, physics, drawing, menus and save. |
+| `style.css` | Toolbar, info boxes, menus. |
+
+Physics is XPBD with 40 substeps per frame and one solve per substep. Each part is a distance constraint between two joints; a joint's mass is half the mass of each part that meets there. The force of a part is the mean constraint force over a frame, smoothed (`c.f`); a part snaps when that force passes its strength (`MATS.str`, less in compression for parts longer than 2.4 m, see `compLimit`). Cables only pull. Wheels collide with Road parts and the terrain, with a little tyre give (`TIRE`) so joints do not cause spikes, and drive at the vehicle's speed within friction.
+
+Materials, prices and strengths are in `MATS`, vehicles in `VEHICLES`. When you change either, check that every level can still be crossed within its budget: a design that passes should exist at about 90% of each budget. Stars: 2 at 86% of the budget, 3 at 72%.
+
+`window.__tt` is a debug hook: `load(i)`, `set(members)`, `go()`, `run(seconds)` (steps the physics without drawing and returns the result), `cost()`, `stop()`, `toScreen(x, y)`.
