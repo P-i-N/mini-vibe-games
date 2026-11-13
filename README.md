@@ -105,6 +105,7 @@ The shop has a keeper, Mortimer. His lines are in `QUIPS` and change nothing in 
 | `audio.js` | Sound effects and music (`SSAudio`). The Brick Bazaar engine with a different band, and `layer(name)`, which changes the mix for the sky, the garden and the mine. |
 | `keeper.js` | The lines of Gnorman, the gnome who keeps the shop (`SS_KEEPER.lines[key]`). Data only. |
 | `lore.js` | The story (`SS_LORE`): the premise, a chapter per level, bios of foes, towers and the household, the twelve letters found in the mine, the ending and the garden facts. Data only. |
+| `lore2.js` | More story in small pieces (`SS_LORE2`): postcards, notes from the rats, village gossip rules, names for WANTED foes, hamster sayings, doormats, the union rulebook, forecasts. Data only. |
 | `voices.js` | Speech bubbles (`SS_VOICES`): what foes, bosses, Grandma, the Boot, hamsters and towers say, and the rules of the Garden Gazette headlines. Data only. |
 | `style.css` | Menus, shop, results screens, the build popup |
 
@@ -117,5 +118,7 @@ The balance was tested with simple bots only. The main numbers are `hpMul`, `coi
 The first wave waits `FIRST_WAVE_S` seconds and the later ones `NEXT_WAVE_S`. The small rules live in tables: `TWISTS` (themed waves), `PALS` (pairs of towers that help each other when they stand side by side), `DARES` (the gnome's wagers), and `TRICKS` (the list of hidden moves on the pause screen; add a line there for every new one).
 
 The game runs without `lore.js` and `voices.js`; every use is guarded. A chapter shows on the level banner, `bark(enemy, event)` and `voice(who, event, ...)` show bubbles with cooldowns, `maybeLetter` hands out letters in story order, and the Almanac (`showAlmanac`) fills in from `meta` (foes beaten, towers built, letters, highest chapter). A Gazette rule is `{ when, text }`, where `when` is a JavaScript expression over the level's numbers `s`.
+
+Text that carries information never fades on a timer. The level banner, post (`drawLetter`), toasts and the gnome's remarks are info boxes: each registers its rectangle with `closeBox` and stays until the player taps it or its X. Keep a box under about 90 characters. Only short exclamations (`say`, `banner2`, speech bubbles) fade by themselves.
 
 A saved run of the first version of the game gets the gems for its upgrades back (`OLD_PRICES`).
