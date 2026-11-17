@@ -211,3 +211,13 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .setline { font-size: 0.72em; line-height: 1.25; color: #9aa3d6; border-top: 1px dashed #ffffff22; padding-top: 0.3em; }
 .setline.on { color: #7cf2a8; }
 .sale.lock { background: #2f8cff; }
+
+/* the back room: story card, letter and ending */
+.lore { margin-top: 0.4em; padding: 0.4em 0.7em; border-radius: 0.7em; background: #1c2233; border: 1px solid #7cf2ff44; color: #dfe6ff; font-size: 0.8em; line-height: 1.3; flex-shrink: 0; }
+.lore b { color: #7cf2ff; }
+.lore .letter { margin-top: 0.3em; padding-top: 0.3em; border-top: 1px dashed #7cf2ff44; font-style: italic; color: #ffe9c8; }
+.lore .letter b { color: #ffd84a; font-style: normal; }
+.keeper .snail.small { font-size: 1em; padding: 0 0.35em; }
+.ending { max-width: 22em; margin: 0.6em auto; text-align: left; }
+.ending p { margin: 0.45em 0; padding: 0.5em 0.8em; border-radius: 0.7em; background: #1c2233; border: 1px solid #ffd84a55; color: #ffe9c8; font-size: 0.9em; line-height: 1.3; }
+.lore.sundry { background: #2a2410; border-color: #ffd84a55; color: #ffe680; }
