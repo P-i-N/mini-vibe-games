@@ -478,7 +478,9 @@
     const area = el('div', 'mg-area mg-game-' + info.id, null, root);
     const foot = el('div', 'mg-foot', null, root);
 
-    const coins = mult => Math.round(stake * mult);
+    // bonus: the game's multiplier for the player's coin upgrades
+    const bonus = Math.max(1, Number(ctx.bonus) || 1);
+    const coins = mult => Math.round(stake * mult * bonus);
     const api = {
       s, area, rules, rand, stake, coins,
       level: Math.max(1, Number(ctx.level) || 1),
@@ -487,6 +489,7 @@
         el('span', null, 'Stake ', stakeLine);
         el('b', null, String(stake), stakeLine);
         el('span', null, ' · ' + text, stakeLine);
+        if (bonus > 1) el('span', null, ' · upgrades ×' + bonus.toFixed(1), stakeLine);
       },
       finish(mult, text) {
         s.clearTimers();
