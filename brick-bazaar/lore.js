@@ -1,7 +1,74 @@
 'use strict';
-/* Brick Bazaar: the story of the back room, "The First Coin". The shop shows one chapter card before each of the
-   levels 51 to 100, and a letter arrives by Snail Mail every few levels. Keep every line under 90 characters. */
+/* Brick Bazaar: the two stories. Act one, "The Notice": one card before each of the levels 1 to 50 (card 1 is on
+   the screen of the Shed of Junk). Act two, "The First Coin": one chapter card before each of the levels 51 to 100,
+   and a letter arrives by Snail Mail every few levels. Keep every line under 90 characters. */
 window.BB_LORE = {
+  // act1[0] belongs to level 1
+  act1: [
+    'A notice on the shop door: THE AUDITOR WILL INSPECT THE BAZAAR IN FIFTY LEVELS.',
+    'Mortimer has kept no books in 300 years. Just bricks. He hires you to count them.',
+    'Bazaar law: a brick only counts once it is broken. The fuse box is also a brick.',
+    'A gem in a brick! Mortimer writes it down: "Gem." His first book entry since 1724.',
+    'Mortimer orders stock by Snail Mail. "It will be here by level forty," he says. "Ish."',
+    'The Open Field: bricks spread out like a picnic that nobody was invited to.',
+    'A woodlouse in a cap moves onto your paddle. Pip. He brings no luggage and no doubts.',
+    'Blimps drift over the Bazaar. They are full of coins and very poor decisions.',
+    'The Bazaar gets a clock. Mortimer is against it. He is against anything that hurries.',
+    'The Crate King is packing the Bazaar into crates for export. Unpack him.',
+
+    'The crates were all addressed to the Bazaar Baron. Mortimer sighs. Sideways.',
+    'The Greenhouse: these bricks were grown, not laid. Mortimer says that is cheating.',
+    'Bomb Alley, where the Bazaar keeps its fireworks. And its fire. And an alley.',
+    'Pip finds a box of tacks in The Nest. He has a plan. The whole plan is pins.',
+    'The Treasury of the Bazaar is one brick. It says TREASURY on it, in pencil.',
+    'A raccoon goes through the capsules. Mortimer: "Ah. Customer services."',
+    'Steel Bars: the Baron has fenced off a corner of the Bazaar. The fence is for sale.',
+    'The bees of Hive Cluster pay their rent in honey. The books now have a column: "Sticky".',
+    'Mortimer built the Golden Pyramid as a joke in 1802. Nobody laughed. Yet.',
+    'The Baron hires the Twin Cannon to slow the count. They argue about which is left.',
+
+    'A crow takes the coins off the bricks and leaves a receipt: "Q. Cheapwing. Collected."',
+    'The Fairground. Old Lumpy rides the dodgems. Lumpy breaks. Lumpy always breaks.',
+    'The Bomb Factory makes bombs and tea. Mostly tea. The bombs are to boil the tea.',
+    'The bees have built a wall. Planning permission: none. Mortimer is quietly impressed.',
+    'A mole tunnels through the Gold Rush with a sack. He calls it "pension planning".',
+    'Fortress II. The first one did so well, the Baron made a sequel. It is worse.',
+    'Mortimer was lost in the Labyrinth for a week once. He calls it "a nice walk".',
+    'Everything: every brick in the Bazaar, in one place. Mortimer is moved. Slightly.',
+    'A letter from the Baron: "Sell me the Bazaar before the Auditor comes. Or else."',
+    'The Bazaar Baron himself, in a hat made of coins. Count him out.',
+
+    'The Baron dropped a treasure map. X marks the brick. Every brick has an X on it.',
+    'The raccoon is back, in the Dice Hall, gambling with your capsules. He is winning.',
+    'Quill writes in a tiny book each time you break a brick. Even the Powder Keg ones.',
+    'The Blob Farm grows slime for export. Mortimer will not go near. "Allergies."',
+    'The mole again. In his sack: coins, a sock, and an old purse that looks very hungry.',
+    'The Vault. On the velvet: a clean spot, coin-shaped. Something was there. Once.',
+    'A storm over the Lightning Rods. Mortimer stays in. "Snails and lightning." Nothing else.',
+    'Checkmate: the Board of Bricks meets about the audit. Lumpy breaks. Adjourned.',
+    'The Slime Moat around the shop is rising. It is not decorative slime. Not this time.',
+    'The parcel arrives: a very small snail. Then the Slime Queen arrives. Mop her up.',
+
+    "Tax Season. The Auditor's forms arrive. Form 1 asks for Form 2. Form 2 is in Form 3.",
+    'The small snail is called Sundry. He looks round the shop as if he remembers it.',
+    'Mortimer finds chalk lines on an old brick in the Honeycomb. He puts it back. Fast.',
+    'The raccoon tries to steal Sundry. Sundry looks at him. The raccoon leaves the Minefield.',
+    'In the Casino the Baron bets you will fail the audit. Mortimer bets a lettuce on you.',
+    "The Auditor's van is parked behind the Iron Curtain. Nobody has seen it move. Or him.",
+    'The Swarm: everyone you have bounced off this act has come to watch. With sandwiches.',
+    'Mortimer polishes every shelf on Rainbow Road, twice. Sundry polishes one, once, slowly.',
+    'Final Exam: Quill hands over his tiny book. Every brick, every coin. Almost adds up.',
+    'The Auditor counts everything, twice, with a red pen. Do not let him finish the sum.',
+  ],
+  act1Letters: [
+    'The Auditor: "Dear Sir. Please have your books ready. All of them. Yours, the Auditor."',
+    'Pip\'s mum: "Pip. Wear your cap. Pin nothing you would not pin at home. Love, Mum."',
+    'The Crate King: "You unpacked me. Nobody has ever unpacked me. Thank you."',
+    'The Baron: "Mortimer. Sell. I will pay in blimps. Many blimps. Yours richly, B."',
+    'The Twin Cannon: "We have agreed which of us is left. It is him. Right."',
+    'The Auditor: "I am on my way. I will be there by level fifty. Exactly."',
+  ],
+  act1LetterAt: [3, 8, 11, 18, 21, 45],
   streets: ['Laundromat Lane', 'Sugar Street', 'Low Tide Market', 'Moon Mall', 'Closing Time Avenue'],
   // chapters[0] belongs to level 51
   chapters: [

@@ -384,13 +384,13 @@
     { id: 'relicbuy', at: 16, cat: 'wild', icon: '🗿', name: 'Relic Dealer', price: () => 400 * Math.pow(2, run.relicsBought), full: () => relicChoices().length === 0,
       desc: () => 'Pick one of three relics, right now.',
       use: () => { run.relicsBought++; run.pendingRelic = true; } },
-    { id: 'life', at: 4, cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => lifePrice(), full: () => run.lives >= 6,
-      desc: () => `+1 life (max 6). You have ${run ? run.lives : 0}.`,
+    { id: 'life', at: 4, cat: 'wild', icon: '❤️', name: 'Extra Life', price: () => lifePrice(), full: () => run.lives >= maxLives(),
+      desc: () => `+1 life (max ${maxLives()}). You have ${run ? run.lives : 0}.`,
       use: () => { run.lives++; run.lifeBought++; } },
     { id: 'parbet', at: 10, cat: 'wild', icon: '🎟️', name: 'Speed Bet', flat: true, price: () => betStake(), full: () => run.bet > 0,
       desc: () => (run.bet ? `You bet ${run.bet} coins on the next level.` : `Bet that you clear the next level in the first half of the clock. Win: ${BET_PAYS} times your stake.`),
       use: () => { run.bet = betStake(); return '🎟️ The bet is on!'; } },
-    { id: 'order', at: 17, cat: 'wild', icon: '📅', name: 'Special Order', price: () => 40 + 8 * run.level, full: () => !run.offer || !!run.nextSpecial || !!levelDef(run.level).boss,
+    { id: 'order', at: 17, cat: 'wild', icon: '📅', name: 'Special Order', price: () => 40 + 8 * run.level, full: () => pact('night') || !run.offer || !!run.nextSpecial || !!levelDef(run.level).boss,
       desc: () => (run.nextSpecial ? `Booked for the next level: ${specialById(run.nextSpecial).name}.` : levelDef(run.level).boss || !run.offer ? 'Book a special for the next level. Not for boss levels.'
         : `Book ${specialById(run.offer).name} for the next level: ${specialById(run.offer).text.toLowerCase()}.`),
       use: () => { run.nextSpecial = run.offer; return `📅 ${specialById(run.offer).name} is booked!`; } },
@@ -425,7 +425,11 @@
       full: () => (!!run.lock && run.lock.at === run.level) || !ITEMS.some((i) => i.base && itemState(i) !== 'locked' && itemState(i) !== 'max'),
       desc: () => 'Pick one upgrade: for this visit it costs its base price, with no price index.',
       use: () => { run.lock = { id: null, at: run.level }; return '🔒 Pick an upgrade to lock its price.'; } },
+    { id: 'u_fish', at: SEAL_FROM, cat: 'up', icon: '🐟', name: 'Bucket of Fish', seals: () => FISH_SEALS * (1 + (run.fish || 0)), full: () => relicChoices().length === 0,
+      desc: () => 'The seals fetch you a relic gift, right now. Each bucket costs three seals more than the last.',
+      use: () => { run.fish = (run.fish || 0) + 1; run.pendingRelic = true; } },
   ];
+  const FISH_SEALS = 3;
   // Relic fusion (Upstairs): two owned relics become one. keep = the fused relic also does what its two parts did.
   const FUSE_SEALS = 3;
   const FUSIONS = [
@@ -489,7 +493,7 @@
   const piggyCap = () => 20 + 2 * run.level;
   // The value of a coin rises with the level, so that the income follows the prices. Upgrades add to it.
   const levelVal = () => 1 + run.level / 20;
-  const coinVal = () => levelVal() * (1 + 0.1 * lv('value')) * (1 + 0.1 * lv('goldage'));
+  const coinVal = () => levelVal() * (1 + 0.1 * lv('value')) * (1 + 0.1 * lv('goldage')) * (pact('arf') ? ARF_K : pact('notake') ? NOTAKE_K : 1);
   // A ticket costs 70% of the best safari haul of the run, so that it stays a gamble.
   const safariPrice = () => Math.max(Math.round(80 * coinVal()), Math.round(0.7 * (run.safariBest || 0)));
   const betStake = () => Math.round((15 + 4 * run.level) * COIN_MULT);
@@ -515,7 +519,7 @@
   const gunMax = () => 5 + lv('workshop');
   const maxOf = (it) => (it.gunItem ? gunMax() : it.max);
   const bondPay = (l) => 10 * l + 4 * l * (l - 1);
-  const odd = (k) => run.odd === k && !(G && G.safari);
+  const odd = (k) => (run.odd === k || run.curse === k) && !(G && G.safari);
   const ODDS = {
     flip: { icon: '🙃', name: 'Upside-Down Map', text: 'The map is upside down: the soft rows are on top.' },
     grease: { icon: '🧈', name: 'Greasy Paddle', text: 'The paddle is 50% wider, but it slides slowly.' },
@@ -544,12 +548,12 @@
   // is always quick.
   const HEAT_TARGET = 0.4, HEAT_GAIN = 0.5, HEAT_BRICKS = 50;
   const heatStep = (share, late) => (late ? -3 : clamp(Math.round((HEAT_GAIN * Math.log(HEAT_TARGET / Math.max(share, 0.03))) / Math.log(HEAT_HP)), -3, 3));
-  const heatPay = () => 1 + Math.min(HEAT_PAY_MAX, HEAT_PAY * Math.max(0, run.heat));
+  const heatPay = () => 1 + Math.min(pact('sauce') ? 0.6 : HEAT_PAY_MAX, HEAT_PAY * Math.max(0, run.heat));
   // The game holds these features back until the given level, so that a new player meets one thing at a time.
   const FROM = { capsules: 2, fever: 5, sales: 6, streak: 7, blimp: 8, clock: 9, sweet: 11, heat: 12, specials: 13, pin: 14, smash: 16 };
   // The first level on which each capsule can drop.
   const PU_FROM = { wide: 2, multi: 2, slow: 2, cash: 3, life: 4, glue: 5, fire: 6, ammo: 6, net: 7, mega: 8, freeze: 9, blimp: 10, x2: 11, pip: 12, storm: 14, gold: 17, nuke: 20, quake: QUAKE_FROM, suds: 15, barn: 18, jar: 25, potato: 28 };
-  const unlocked = (it) => (run.level >= it.at || lv(it.id) > 0) && (!it.seals || run.sealsEver > 0) && (!it.show || it.show());
+  const unlocked = (it) => (run.level >= (it.seals ? Math.min(it.at, sealFrom()) : it.at) || lv(it.id) > 0) && (!it.seals || run.sealsEver > 0) && (!it.show || it.show());
   // upgrades that can still go up: the pool for sales and the Mystery Box
   const upgradePool = () => ITEMS.filter((it) => it.base && it.max < 99 && it.cat !== 'dark' && unlocked(it) && !(it.req && !it.req()) && lv(it.id) < maxOf(it));
   // Item sets: from SET_FROM, all items of a set at their maximum add one rule.
@@ -589,10 +593,10 @@
     run.sundry = tags;
   }
   function itemCost(it) {
-    if (it.seals) return it.seals;
+    if (it.seals) return typeof it.seals === 'function' ? it.seals() : it.seals;
     if (it.price) return Math.round(it.price() * (it.flat ? 1 : priceIndex()));
     if (run.sundry && run.sundry[it.id] != null) return run.sundry[it.id];
-    const base = it.base * Math.pow(it.grow, lv(it.id)), cost = Math.round(base * (onSale(it) ? SALE : 1) * haggleF(it) * priceIndex());
+    const base = it.base * Math.pow(it.grow, lv(it.id) + due(it.id)), cost = Math.round(base * (onSale(it) ? SALE : 1) * haggleF(it) * priceIndex() * pactK(it));
     // a lock never makes the price higher
     return priceLocked(it) ? Math.min(cost, Math.round(base)) : cost;
   }
@@ -600,8 +604,8 @@
   const SALE = 0.7;
   const onSale = (it) => run.deals.includes(it.id);
   function itemState(it) {
-    if (!unlocked(it) || (it.req && !it.req())) return 'locked';
-    if (it.use ? it.full && it.full() : lv(it.id) >= maxOf(it)) return 'max';
+    if (!unlocked(it) || (it.req && !it.req()) || pactLock(it)) return 'locked';
+    if (it.use ? it.full && it.full() : lv(it.id) + due(it.id) >= maxOf(it)) return 'max';
     return (it.seals ? run.seals : run.coins) >= itemCost(it) ? 'ok' : 'poor';
   }
   const priceLocked = (it) => !!run.lock && run.lock.at === run.level && run.lock.id === it.id;
@@ -650,6 +654,7 @@
     if (run.sundry) { keeper = pick(SUNDRY_LINES); return; }
     const idx = priceIndex(), last = lastSummary, pct = Math.round(Math.abs(idx - 1) * 100);
     if (levelDef(run.level).boss) quip('boss');
+    else if (run.level === 2 && Math.random() < 0.7) quip('firstShop');
     else if (last && last.boss) quip('afterBoss');
     else if (last && last.late) quip('lateVisit');
     else if (run.lives <= 1) quip('lives1');
@@ -699,7 +704,11 @@
     else { run.coins -= cost; run.spent = (run.spent || 0) + cost; lastPaid = cost; }
     shopMsg = ''; lastBox = null;
     if (it.use) shopMsg = it.use() || '';
-    else { run.up[it.id] = lv(it.id) + 1; if (priceLocked(it)) run.lock.id = '-'; if (run.sundry) delete run.sundry[it.id]; }
+    else {
+      const posted = pact('mail') && !!run.post;
+      if (posted) { run.post[it.id] = due(it.id) + 1; shopMsg = `📦 ${it.icon} ${it.name} is in the post. It arrives after the next level.`; } else run.up[it.id] = lv(it.id) + 1;
+      if (priceLocked(it)) run.lock.id = '-'; if (run.sundry) delete run.sundry[it.id];
+    }
     const set = SETS.find((s) => setOn(s) && !setsBefore.includes(s));
     if (set) shopMsg = `🧩 Set complete: ${set.icon} ${set.name}! ${set.text}`;
     if (it.cap && lv(it.id) >= it.max) shopMsg = `★ ${it.icon} ${it.cap.name}! ${it.cap.text}`;
@@ -716,7 +725,7 @@
     return { level: 1, coins: 0, lives: 3, up: {}, lifeBought: 0, relicsBought: 0, score: 0,
       relics: {}, fever: 0, deals: [], pendingRelic: false, champion: false, bonusStart: 0, stats: newStats(),
       heat: 0, bet: 0, offer: null, nextSpecial: null, safariAt: 0, pendingSafari: false,
-      spent: 0, kit: 'none', tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0, seals: 0, sealsEver: 0, quill: newQuill() };
+      spent: 0, kit: 'none', pv: 1, tips: 0, dare: null, dareOffer: null, banked: {}, star3: 0, seals: 0, sealsEver: 0, quill: newQuill() };
   }
   const newStats = () => ({ bricks: 0, coins: 0, streak: 0, foes: 0, stars: 0, blimps: 0 });
   // bands = the QUILL_BANDS that Quill Cheapwing has visited, beaten = the visits that ended with him driven off
@@ -742,6 +751,8 @@
     if (!DARES[r.dareOffer]) r.dareOffer = null;
     r.heat = r.heat || 0; r.bet = r.bet || 0; r.tips = r.tips || 0; r.banked = r.banked || {}; r.star3 = r.star3 || 0;
     r.seals = r.seals || 0; r.sealsEver = r.sealsEver || 0; r.quill = r.quill || newQuill();
+    // a save from before the pacts has a kit that no longer exists
+    if (!r.pv) { r.kit = 'none'; r.pv = 1; }
     // The Big Ball upgrade is gone. A save that has it gets the coins back.
     for (let i = 0; i < (r.up.bigball || 0); i++) r.coins += Math.round(85 * Math.pow(1.8, i));
     delete r.up.bigball;
@@ -755,6 +766,8 @@
   const saveMeta = () => store.set(META_KEY, meta);
   const STICKERS = [
     { id: 'first', icon: '🧱', name: 'First Brick', hint: 'Clear level 1.' },
+    { id: 'nemesis', icon: '🧐', name: 'Nemesis Defeated', hint: 'Break the brick that ended your last run. With a ball.' },
+    { id: 'shuffle', icon: '🕺', name: 'The Bazaar Shuffle', hint: 'Wiggle the paddle before a serve.' },
     { id: 'runner', icon: '🏃', name: 'Tag, You Are It', hint: 'Catch a runaway brick.' },
     { id: 'perfect', icon: '🔔', name: 'Ding Dong', hint: 'Hit the sweet spot 5 times in a row.' },
     { id: 'boss1', icon: '👑', name: 'Regicide', hint: 'Beat the Crate King.' },
@@ -804,19 +817,122 @@
     for (const k of ['bricks', 'blimps', 'foes', 'coins']) { meta[k] += run.stats[k] - (run.banked[k] || 0); run.banked[k] = run.stats[k]; }
     saveMeta();
   }
-  // Starting kits. A kit opens when the album has enough stickers.
-  const KITS = [
-    { id: 'none', icon: '🧺', name: 'Empty Pockets', need: 0, desc: 'The normal start.', apply: () => {} },
-    { id: 'hoarder', icon: '💰', name: 'Hoarder', need: 3, desc: 'Start with 150 coins.', apply: (r) => { r.coins = 150; } },
-    { id: 'plumber', icon: '🗿', name: 'Plumber', need: 6, desc: 'Start with a relic of your choice.', apply: (r) => { r.pendingRelic = true; } },
-    { id: 'blimps', icon: '🎈', name: 'Blimp Whisperer', need: 9, desc: 'Blimps come from level 2, and one more visits every level.', apply: () => {} },
-    { id: 'sauce', icon: '🌶️', name: 'Hot Sauce', need: 12, desc: 'Start at Heat 3 with a Pea Blaster. Tougher bricks, bigger bonuses.', apply: (r) => { r.heat = 3; r.up.gun_blaster = 1; } },
-    { id: 'cat', icon: '🐈', name: 'Nine Lives', need: 15, desc: 'Start with 6 lives.', apply: (r) => { r.lives = 6; } },
+  // ---------- starting pacts ----------
+  // A run starts in the Shed of Junk: the player signs for one heirloom (a pact). Each has a boon that shapes the
+  // whole run and a grudge that the player feels on every level. run.kit holds its id; pact(id) asks for it.
+  // need = the stickers that open it. tag() = a short counter for the chip in the corner of the field.
+  // Rules for a new pact: the boon must be felt on level 50 as well as on level 5, the grudge must be a rule and
+  // not only a number (Heat takes back plain damage), and both must show on the screen.
+  const MORTGAGE_COINS = 250, MORTGAGE_DEBT = 400, MORTGAGE_FROM = 6, MORTGAGE_SHARE = 0.5;
+  const SALARY_K = 1.4, SUNDAY_K = 1.4, ARF_K = 0.8, ONLY_K = 2.5, SPEEDRUN_K = 2.5, SPEEDRUN_CLOCK = 0.7, NOTAKE_K = 1.4, DRAWER_UNTIL = 25, PENNY_MAX = 10, PENNY_K = 0.1, HOARD_STEP = 40, HOARD_MAX = 1, SNEEZE = 0.08, CAT_SPILL = 0.1, MAIL_OFF = 0.75;
+  const PACTS = [
+    { id: 'none', icon: '🧺', name: 'Nothing To Declare', need: 0, boon: 'Relic gifts show four cards. Every boss pays a Bazaar Seal.', curse: 'No heirloom, no grudge. Nan Woodworm looks a bit hurt.', apply: () => {} },
+    { id: 'mortgage', icon: '🏚️', name: "Mortimer's Mortgage", need: 0, boon: 'Start with 250 coins.', curse: 'You owe 400. From level 6, half of each level bonus pays it back.',
+      apply: (r) => { r.coins = MORTGAGE_COINS; r.debt = MORTGAGE_DEBT; }, tag: () => (run.debt > 0 ? '-' + run.debt : 'paid') },
+    { id: 'glass', icon: '🥂', name: 'Glass Cannon', need: 0, boon: 'The ball and the guns hit 50% harder.', curse: 'Two lives at most, forever.', apply: (r) => { r.lives = 2; } },
+    { id: 'cat', icon: '🐈', name: 'Nine Lives', need: 0, boon: 'Start with nine lives.', curse: 'With each lost ball, the cat knocks 10% of your coins onto the field.', apply: (r) => { r.lives = 9; } },
+    { id: 'bouncy', icon: '🏰', name: 'Bouncy Castle', need: 0, boon: 'The ball hits 50% harder, all run long.', curse: 'The ball is 25% faster, all run long.', apply: (r) => { r.curse = 'bouncy'; } },
+    { id: 'sunday', icon: '🛋️', name: 'Lazy Sunday', need: 0, boon: 'No clock. Take all day. The clear bonus is 40% bigger.', curse: 'No speed bonus, and two stars a level at most.', apply: () => {} },
+    { id: 'grandpa', icon: '🔫', name: "Grandpa's Pea Shooter", need: 1, boon: 'Start with a Pea Blaster at level 3. Its upgrades are cheap.', curse: 'Grandpa forbids every other gun.', apply: (r) => { r.up.gun_blaster = 3; } },
+    { id: 'speedrun', icon: '⏱️', name: "Speedrunner's Sponsor", need: 1, boon: 'The speed bonus pays two and a half times as much, from level 1.', curse: 'Every clock is 30% shorter.', apply: () => {} },
+    { id: 'notake', icon: '🚫', name: 'No Take-Backs', need: 2, boon: 'Coins are worth 40% more. Every beaten boss gives a life.', curse: 'No "Try again": when the balls are gone, the run is over.', apply: () => {} },
+    { id: 'heirloom', icon: '🗿', name: 'Cursed Heirloom', need: 2, boon: 'Pick one of three relics now.', curse: 'Each comes with a twist that lasts the whole run.', apply: (r) => { r.pendingRelic = true; r.heirloom = true; },
+      tag: () => (ODDS[run.curse] ? ODDS[run.curse].icon : '') },
+    { id: 'coinop', icon: '🕹️', name: 'Coin-Op Paddle', need: 3, boon: 'No lives. Start with 60 coins. Pay and you keep playing.', curse: 'A lost ball costs coins, more each time in a level. Broke means over.',
+      apply: (r) => { r.lives = 1; r.coins = 60; }, tag: () => '' },
+    { id: 'hoard', icon: '🐉', name: "Dragon's Hoard", need: 4, boon: 'The coins you hold make the ball hit harder, up to twice as hard.', curse: 'A lost ball makes the dragon sneeze 8% of your coins onto the field.',
+      apply: () => {}, tag: () => '+' + Math.round(hoardBonus() * 100) + '%' },
+    { id: 'espresso', icon: '☕', name: 'Espresso Holster', need: 5, boon: 'Start with a Pea Blaster. Paddle bounces reload guns twice as fast.', curse: 'Guns never reload by themselves.', apply: (r) => { r.up.gun_blaster = 1; } },
+    { id: 'only', icon: '👶', name: 'Only Child', need: 6, boon: 'Your one ball hits two and a half times as hard and is 30% bigger.', curse: 'No second ball, ever.', apply: () => {} },
+    { id: 'salary', icon: '💼', name: 'Nine-to-Five', need: 7, boon: `You are on salary: every level bonus pays ×${SALARY_K}.`, curse: 'Bricks drop no coins.', apply: () => {} },
+    { id: 'hermitlife', icon: '🦀', name: 'Hermit Life', need: 8, boon: 'Two random relics move in for every level, free.', curse: 'You can never own a relic.', apply: () => {},
+      tag: () => (run.hermit || []).map((id) => relicById(id).icon).join('') },
+    { id: 'penny', icon: '🧿', name: 'The Cursed Penny', need: 9, boon: 'A haunted penny falls on every level. Catch it: it pays more each time.', curse: 'Drop it and you lose a life (never the last one).',
+      apply: (r) => { r.pennies = 0; }, tag: () => '×' + Math.min(PENNY_MAX, (run.pennies || 0) + 1) },
+    { id: 'fever', icon: '🔥', name: 'Fever Pitch', need: 10, boon: 'Fever from level 1. It fills twice as fast and lasts 3 seconds longer.', curse: 'Outside a fever, the ball hits 30% softer.', apply: () => {} },
+    { id: 'mail', icon: '📦', name: 'Snail Mail Order', need: 11, boon: 'Every upgrade is 25% off.', curse: 'It arrives one level later. There are no sales.', apply: (r) => { r.post = {}; },
+      tag: () => { const n = Object.values(run.post || {}).reduce((a, x) => a + x, 0); return n ? n + ' due' : ''; } },
+    { id: 'shell', icon: '🐚', name: "Mortimer's Old Shell", need: 12, boon: 'One more Safety Net on every level: it saves a ball.', curse: 'Your paddle moves at snail pace.', apply: () => {} },
+    { id: 'sauce', icon: '🌶️', name: 'Ghost Pepper', need: 13, boon: 'Start with a Pea Blaster and an Ammo Belt. Heat pays up to 60% more.', curse: 'Start at Heat 4. Heat never drops below 3.', apply: (r) => { r.heat = 4; r.up.gun_blaster = 1; r.up.belt = 1; } },
+    { id: 'ice', icon: '🧊', name: 'Ice Bath', need: 14, boon: 'Heat is frozen: the bricks never get tougher for a fast player.', curse: 'No speed bonus is ever paid.', apply: () => {} },
+    { id: 'robots', icon: '🤖', name: 'Robot Custody', need: 15, boon: 'Start with an Orbiter. Bots cost 35% less.', curse: 'Guns cost twice as much.', apply: (r) => { r.up.d_orbit = 1; } },
+    { id: 'drawer', icon: '🎰', name: 'The Junk Drawer', need: 16, boon: 'Three random relics tumble out, right now.', curse: `No relic gifts until level ${DRAWER_UNTIL}.`,
+      apply: (r) => { for (const x of relicChoices()) r.relics[x.id] = true; } },
+    { id: 'blimps', icon: '🎈', name: 'Blimp Magnet', need: 17, boon: 'Blimps from level 2, one more on every level, 50% more cargo.', curse: 'Bricks drop coins half as often.', apply: () => {} },
+    { id: 'arf', icon: '🦭', name: 'Arf Arf Contract', need: 18, boon: 'Bazaar Seals from level 1, and twice as many. Seals buy relics Upstairs.', curse: 'Coins and level bonuses are worth 20% less.', apply: (r) => { r.sealsEver = 1; } },
+    { id: 'night', icon: '🌙', name: 'Blackout Bazaar', need: 19, boon: 'Every level is a Night Market: coins are worth 50% more.', curse: 'It is dark all run, and there is no other special.', apply: () => {} },
+    { id: 'under', icon: '🙃', name: 'Down Under', need: 20, boon: 'Every level cleared in time pays a Bazaar Seal. Seals buy relics Upstairs.', curse: 'Every map that can be turned is upside down.', apply: (r) => { r.sealsEver = 1; } },
   ];
+  const PACT_BY_ID = Object.fromEntries(PACTS.map((p) => [p.id, p]));
+  const pact = (id) => !!run && run.kit === id;
+  const myPact = () => (run && PACT_BY_ID[run.kit]) || PACTS[0];
+  // The most lives a run can hold.
+  const maxLives = () => (pact('glass') ? 2 : pact('cat') ? 9 : pact('coinop') ? 1 : 6);
+  // Coin-Op Paddle: the price of the next ball. It grows with each ball lost in the level.
+  const ballFee = (n = G ? G.lost : 0) => Math.round(15 * levelVal() * priceIndex() * Math.pow(1.5, n));
+  // The first level that pays Bazaar Seals, and that opens the seal shop.
+  const sealFrom = () => (pact('arf') || pact('under') ? 1 : pact('none') ? 10 : SEAL_FROM);
+  // Snail Mail Order: the levels of an upgrade that are in the post
+  const due = (id) => (run && run.post && run.post[id]) || 0;
+  function deliverPost() {
+    const ids = Object.keys(run.post || {}).filter((id) => run.post[id] > 0);
+    for (const id of ids) run.up[id] = lv(id) + run.post[id];
+    if (run.post) run.post = {};
+    return ids.map((id) => ITEM_BY_ID[id].icon).join(' ');
+  }
+  // What a pact does to the price of an upgrade.
+  const pactK = (it) => (pact('grandpa') && it.id === 'gun_blaster' ? 0.6 : pact('robots') && it.cat === 'drone' ? 0.65 : pact('robots') && it.gunItem ? 2 : pact('mail') ? MAIL_OFF : 1);
+  // A pact can forbid an item: the text for the lock on its card, or ''.
+  const pactLock = (it) => (pact('only') && it.id === 'twin' ? 'Only Child' : pact('grandpa') && it.gunItem && it.id !== 'gun_blaster' ? 'Grandpa says no' : '');
+  // The Cursed Penny: it falls once on each level, through the bricks. It pays PENNY_K of the clear bonus for each
+  // penny caught in a row (up to PENNY_MAX). A penny that falls past the paddle takes a life and ends the row.
+  const pennyPay = () => Math.max(3, Math.round(PENNY_K * (15 + run.level * 4) * COIN_MULT * levelVal() * Math.min(PENNY_MAX, (run.pennies || 0) + 1)));
+  function pennyDrop() {
+    if (!pact('penny') || G.penny || G.clock < G.pennyAt) return;
+    G.penny = true;
+    G.coins.push({ x: rand(50, W - 50), y: HUD_H + 12, vx: 0, vy: 0, spin: Math.random() * 6, val: pennyPay(), bub: 0, cursed: true });
+    say(W / 2, HUD_H + 64, '🧿 THE PENNY DROPS!', '#d9a8ff', 1.5, true); sfx.teleport();
+  }
+  function pennyCaught(c) {
+    run.pennies = (run.pennies || 0) + 1;
+    say(clamp(c.x, 90, W - 90), c.y - 34, `🧿 PENNY ×${Math.min(PENNY_MAX, run.pennies)}!`, '#d9a8ff', 1.2, true); sfx.jackpot();
+  }
+  function pennyLost() {
+    run.pennies = 0; shake(10); flashScreen('#7a2aff', 0.3); sfx.lose(); buzz(60);
+    if (run.lives > 1) { run.lives--; say(W / 2, H * 0.5, '🧿 The penny got away! −1 life', '#ff6b8b', 1.8, true); }
+    else say(W / 2, H * 0.5, '🧿 The penny got away!', '#ff6b8b', 1.8, true);
+  }
+  // Dragon's Hoard: +10% ball damage for each pile of HOARD_STEP coins (times the coin value and the price index).
+  const hoardBonus = () => (pact('hoard') ? Math.min(HOARD_MAX, 0.1 * Math.floor(run.coins / (HOARD_STEP * levelVal() * priceIndex()))) : 0);
+  // share of the player's coins falls from the top of the field as real coins: they can be caught again
+  function spillCoins(share, word) {
+    const total = Math.floor(run.coins * share);
+    if (total < 1) return;
+    run.coins -= total;
+    const n = Math.min(12, total);
+    for (let i = 0; i < n; i++) G.coins.push({ x: rand(30, W - 30), y: HUD_H + 14 + rand(0, 40), vx: rand(-30, 30), vy: rand(-60, 20), spin: Math.random() * 6, val: Math.floor(total / n) + (i < total % n ? 1 : 0), bub: 0, spilt: true });
+    say(W / 2, HUD_H + 70, word, '#ffd23f', 1.2, true);
+  }
+  // The pact pick is dealt from the pacts that the stickers have opened: PACT_DEAL cards and Nothing To Declare.
+  // A pact that the player has never been dealt comes first. One rummage is free; each one after it costs a life.
+  const PACT_DEAL = 3;
+  let pactDeal = [], pactPick = null, pactRummage = 0, pactKeep, pactLine = '';
+  function dealPacts() {
+    const have = stickerCount(), seen = meta.pactSeen || (meta.pactSeen = {});
+    const pool = PACTS.filter((p) => p.id !== 'none' && have >= p.need && !pactDeal.includes(p.id));
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    pool.sort((a, b) => (seen[a.id] ? 1 : 0) - (seen[b.id] ? 1 : 0));
+    const next = pool.slice(0, PACT_DEAL).map((p) => p.id);
+    // a small pool deals the old cards again
+    pactDeal = next.length >= PACT_DEAL ? next : next.concat(pactDeal).slice(0, PACT_DEAL);
+    for (const id of pactDeal) seen[id] = true;
+    saveMeta(); pactPick = null;
+  }
   const blimpFrom = () => (run.kit === 'blimps' ? 2 : FROM.blimp);
+  const feverFrom = () => (pact('fever') ? 1 : FROM.fever);
   // keep = a relic that a star run takes along (a star run is one that showKeepRelic starts)
   function beginRun(kitId, keep) {
-    const kit = KITS.find((k) => k.id === kitId) || KITS[0], star = keep !== undefined;
+    const kit = PACT_BY_ID[kitId] || PACTS[0], star = keep !== undefined;
     run = newRun(); lastSummary = null; store.del(SAVE_KEY); shopLevel = 0;
     run.kit = kit.id; kit.apply(run);
     if (star) { run.stars = meta.stars; run.heat += STAR_HEAT * meta.stars; if (keep) run.relics[keep] = true; }
@@ -918,7 +1034,7 @@
   }
   function levelDef(n) { return n <= LEVELS.length ? LEVELS[n - 1] : endlessLevel(n); }
   // The Upside-Down Map oddity turns the map over. Boss maps stay as they are.
-  const flipped = (def) => run.odd === 'flip' && !def.boss;
+  const flipped = (def) => (run.odd === 'flip' || (pact('under') && !def.wheel && !def.map.some((row) => /[XL()]/.test(row)))) && !def.boss;
   const levelMap = (def) => (flipped(def) ? def.map.slice().reverse() : def.map);
   // def.slide = { row: px per second }: the row is a conveyor that wraps around.
   // def.wheel = { x, y, r, n, speed, hp }: n bricks that turn around a hub.
@@ -998,6 +1114,7 @@
     { id: 'twins', name: 'DOUBLE TROUBLE', text: 'Two more balls on every serve' },
     { id: 'wind', name: 'WINDY DAY', text: 'Gusts push the ball and the coins' },
     { id: 'night', name: 'NIGHT MARKET', text: 'Lights out. Coins are worth 50% more' },
+    { id: 'cheese', name: 'CHEESE DAY', text: 'Every hit takes a bite: a hurt brick gets narrower', open: true, fixed: true },
     { id: 'bill', name: 'YOU BREAK IT, YOU BUY IT', text: 'Every brick goes on your bill' },
     { id: 'happy', name: 'HAPPY HOUR', text: 'A bell rings now and then. For 3 seconds coins are worth triple' },
     { id: 'wrap', name: 'ROUND THE WORLD', text: 'The side walls are open. The ball comes back in on the other side' },
@@ -1019,7 +1136,7 @@
   }
   function rollSpecial(def, bricks) {
     if (def.boss) return null;
-    const booked = run.daily ? run.daily.special : run.nextSpecial;
+    const booked = run.daily ? run.daily.special : pact('night') ? 'night' : run.nextSpecial;
     if (!booked && (run.level < FROM.specials || (run.level > FROM.specials && Math.random() > 0.35))) return null;
     const sp = booked ? specialById(booked) : clockSpecial(run.level) || pick(specialPool(def, run.level));
     const swap = (type, share) => { for (const b of bricks) if (b.type === 'normal' && Math.random() < share) { b.type = type; if (type === 'bomb') b.hp = b.maxhp = 1; } };
@@ -2241,7 +2358,7 @@
       sweet: 0, sweetN: 0, tapT: -9, cam: null, eventAt: -1, event: null, bingo: null, card: null, auction: null, happy: false, lastHit: null, wantedWon: false, convoyN: 0, convoys: {}, rounds: 0,
       raccoon: null, conga: null,
       bricks: safari ? [] : genLevel(run.level), balls: [], coins: [], pus: [], shots: [], parts: [], texts: [], drones: [], bolts: [],
-      fx: noFx(), fxMax: {}, net: lv('net'), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
+      fx: noFx(), fxMax: {}, net: lv('net') + (pact('shell') ? 1 : 0), goalieCd: 0, combo: 0, comboBest: 0, comboPop: 0,
       level: run.level, timers: [], beams: [], feverT: 0, feverMax: 8, feverIdle: 0, stormT: 0, hitstop: 0, slowmo: 0,
       flash: 0, flashC: '#ffffff', flawless: true, paddleHits: 0, coinChain: 0, coinChainT: 0, celebT: 0, blimpT: -1,
       lasers: [], clip: {}, reload: {}, special: null, coinCount: 0,
@@ -2250,14 +2367,17 @@
       foes: [], eshots: [], foeQueue: [], foeQueueT: 1.2, champs: 0, echoN: 0, lumpySaid: false, lode: 0, luckN: 0, puN: 0, thumpT: 0, graves: [], boss: null, stun: 0, shield: lv('shield'), secondWind: lv('second'),
       def: safari ? { map: [], ...BONUS[safari] } : levelDef(run.level), crumbleT: 0, crumbling: false, seekT: 0,
     };
+    G.pennyAt = rand(6, 12);
     G.par = safari ? SAFARI_S : Math.max(30, parTime(run.level) + (G.def.boss ? BOSS_CLOCK_S : 0) + SAND_S * lv('sand') - EDGE_S * lv('edge'));
     // Heat reads the clock without the Sand Timer and the Double Edge, so that bought time does not make the bricks tougher
     G.par0 = Math.max(30, G.par - SAND_S * lv('sand') + EDGE_S * lv('edge'));
+    if (!safari && pact('speedrun')) G.par = Math.round(G.par * SPEEDRUN_CLOCK);
     G.special = safari ? null : rollSpecial(G.def, G.bricks);
     if (!safari && !G.def.boss) {
       const plain = G.bricks.filter((b) => b.type === 'normal');
       if (run.wanted && plain.length) { const top = Math.min(...plain.map((b) => b.row)); pick(plain.filter((b) => b.row === top)).wanted = true; }
       const rest = plain.filter((b) => !b.wanted);
+      nemesisIn(rest);
       if (run.favourite && rest.length) {
         const fav = rest.splice((Math.random() * rest.length) | 0, 1)[0];
         fav.type = 'pinata'; fav.hp = fav.maxhp = PINATA_HITS;
@@ -2391,7 +2511,7 @@
       b.pierce = lv('pierce');
       if (b.serve) {
         b.serve = false;
-        for (let i = 0; i < lv('twin') + (special('twins') || G.safari ? 2 : 0); i++) {
+        for (let i = 0; i < (pact('only') && !G.safari ? 0 : lv('twin') + (special('twins') || G.safari ? 2 : 0)); i++) {
           const a2 = a + (i % 2 ? -1 : 1) * (0.32 + 0.15 * Math.floor(i / 2));
           const nb = makeBall(b.x, b.y, Math.sin(a2) * s, -Math.cos(a2) * s); nb.pierce = lv('pierce');
           G.balls.push(nb);
@@ -2433,9 +2553,62 @@
     explode(b.x, b.y, potatoRad(n), dmg, '#ff9a3d');
     say(b.x, b.y - 18, n >= POTATO_MAX ? 'MASHED!' : 'HOT!', '#ff9a3d', 0.8, n >= POTATO_MAX);
   }
+  // WISHBONE CAPSULES: from level WISH_FROM, some capsule drops are two different capsules on one string. The paddle
+  // takes the one that is nearer to its middle, and the other one pops with no effect.
+  const WISH_FROM = 3, WISH_P = 0.25, WISH_GAP = 66;
+  function dropCapsule(x, y) {
+    const a = { x, y, vy: 110, k: rollPU() };
+    G.pus.push(a);
+    if (G.level < WISH_FROM || G.safari || Math.random() > WISH_P) return;
+    let k2 = rollPU();
+    for (let i = 0; i < 5 && k2 === a.k; i++) k2 = rollPU();
+    if (k2 === a.k) return;
+    a.x = clamp(x - WISH_GAP / 2, 20, W - 20 - WISH_GAP);
+    const b = { x: a.x + WISH_GAP, y, vy: 110, k: k2, pair: a };
+    a.pair = b; G.pus.push(b);
+  }
+  function snapWish(o) {
+    o.dead = true; burst(o.x, o.y, PU[o.k].c, 6, 120); say(o.x, o.y - 12, 'snap!', '#ffffff', 0.6); sfx.pop(4);
+  }
+  function drawWish() {
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5;
+    for (const p of G.pus) {
+      const o = p.pair;
+      if (!o || o.dead || p.dead || p.x > o.x) continue;
+      ctx.beginPath(); ctx.moveTo(p.x + 14, p.y); ctx.quadraticCurveTo((p.x + o.x) / 2, p.y + 10 + Math.sin(G.time * 5) * 3, o.x - 14, o.y); ctx.stroke();
+    }
+  }
+  // THE NEMESIS BRICK: when a run ends, a brick is crowned (meta.nemesis = { name, wins }). In the next runs it
+  // comes back on the levels in NEMESIS_AT with NEMESIS_HP times the health, a moustache and a monocle. Only a ball
+  // can beat it; then it pays its purse (more for every run that it won) and a new one is crowned at the next end.
+  const NEMESIS_AT = [3, 7, 12, 17, 23, 29, 36, 44], NEMESIS_HP = 3;
+  const NEM_NAMES = [['Sir', 'Lady', 'Baron', 'Dame', 'Count', 'Professor', 'Captain', 'Little'], ['Reginald', 'Mildred', 'Clive', 'Agatha', 'Bartholomew', 'Edna', 'Cuthbert', 'Gertrude'],
+    ['Mortar', 'Grout', 'Clinker', 'Rubble', 'Kiln', 'Brickley', 'Cobble', 'Plinth']];
+  const nemesisName = () => NEM_NAMES.map(pick).join(' ');
+  function nemesisIn(rest) {
+    if (!meta.nemesis || run.daily || run.nemesisDone || !NEMESIS_AT.includes(run.level) || rest.length < 4) return;
+    const b = rest.splice((Math.random() * rest.length) | 0, 1)[0];
+    b.nemesis = true; b.hp = b.maxhp = b.maxhp * NEMESIS_HP;
+    G.toasts.push({ s: `🧐 ${meta.nemesis.name} is back. Wins: ${meta.nemesis.wins}`, t: 3.2 });
+  }
+  function nemesisDown(b, cx, cy) {
+    const nm = meta.nemesis;
+    if (!nm) return;
+    if (!b.byBall) { say(clamp(cx, 120, W - 120), cy - 16, `🧐 ${nm.name} slips away!`, '#ffffff', 1.8); return; }
+    dropCoin(cx, cy, clamp(8 + 4 * nm.wins, 8, 40), true);
+    say(clamp(cx, 130, W - 130), cy - 16, `🧐 ${nm.name} is DEFEATED!`, '#ffd23f', 2.2, true); sfx.cheer(2); sticker('nemesis');
+    meta.nemesis = null; run.nemesisDone = true; saveMeta();
+  }
+  // a run ends: the old nemesis wins again, or a new brick is crowned
+  function nemesisCrown() {
+    if (run.daily) return '';
+    if (meta.nemesis) meta.nemesis.wins++; else meta.nemesis = { name: nemesisName(), wins: 1 };
+    saveMeta();
+    return `<div class="stat">🧐 Your nemesis: <b>${meta.nemesis.name}</b>, a brick. Wins: <b>${meta.nemesis.wins}</b>. It will be back.</div>`;
+  }
   function rollPU() {
     const foes = G.foes.some((f) => !passive(f)) || (G.boss && !G.boss.dead);
-    const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < 6)
+    const opts = Object.entries(PU).filter(([k]) => k !== 'ammo' || ownsAnyGun()).filter(([k]) => k !== 'life' || run.lives < maxLives()).filter(([k]) => k !== 'multi' || !pact('only'))
       .filter(([k]) => k !== 'freeze' || foes).filter(([k]) => G.level >= PU_FROM[k]).filter(([k]) => !G.safari || (k !== 'blimp' && k !== 'nuke' && k !== 'storm' && k !== 'potato' && k !== 'pip' && k !== 'jar' && k !== 'quake' && k !== 'suds' && k !== 'barn'));
     let tot = 0; for (const [, v] of opts) tot += v.w;
     let r = Math.random() * tot;
@@ -2488,7 +2661,7 @@
     else if (k === 'storm') setFx('storm', puDur(6));
     else if (k === 'x2') setFx('x2', puDur(12));
     else if (k === 'freeze') setFx('freeze', puDur(7));
-    else if (k === 'life') { run.lives = Math.min(6, run.lives + 1); sfx.life(); }
+    else if (k === 'life') { run.lives = Math.min(maxLives(), run.lives + 1); sfx.life(); }
     else if (k === 'net') G.net++;
     else if (k === 'cash') dropCoin(p.x, p.y - 20, 8);
     else if (k === 'ammo') { for (const g in GUNS) { G.clip[g] = clipSize(g); G.reload[g] = 0; } setFx('over', puDur(6)); sfx.overdrive(); }
@@ -2503,7 +2676,7 @@
     else if (k === 'potato') { const b = G.balls.reduce((a, o) => (!a || o.y > a.y ? o : a), null); if (b) b.potato = { n: 0, t: puDur(POTATO_S) }; }
     else if (k === 'multi') {
       if (G.balls.some((b) => b.stuck)) launch();
-      const src = G.balls.slice();
+      const src = pact('only') && !G.safari ? [] : G.balls.slice();
       for (const b of src) {
         if (G.balls.length >= MAX_BALLS) break;
         for (const d of [-0.4, 0.4]) {
@@ -2660,10 +2833,16 @@
       if (capped('crit')) critJump(b, dmg);
     }
     b.hp -= dmg; b.flash = 0.12; b.punch = 1;
+    if (special('cheese') && b.type === 'normal' && b.hp > 0) {
+      // CHEESE DAY: the brick shrinks around its middle, so gaps open in the wall; a bite can drop a crumb
+      const mid = b.x + b.w / 2;
+      b.w = BW * (0.35 + 0.65 * b.hp / b.maxhp); b.x = mid - b.w / 2;
+      if (fromBall && Math.random() < 0.3) dropCoin(mid, b.y + b.h, 1, true);
+    }
     if (b.type === 'pillow') pfft(b);
     if (b.lumpy && fromBall && relic('helmet')) dropCoin(b.x + b.w / 2, b.y + b.h, 1, true);
     if (b.lumpy && !G.lumpySaid) { G.lumpySaid = true; say(clamp(b.x + b.w / 2, 80, W - 80), b.y - 12, pick(LUMPY_OW), '#ffffff', 1.4); sfx.eek(); }
-    if (b.type === 'chest' && b.loot > 0) { b.loot--; dropCoin(b.x + b.w / 2, b.y + b.h, 1); }
+    if (b.type === 'chest' && b.loot > 0 && !pact('salary')) { b.loot--; dropCoin(b.x + b.w / 2, b.y + b.h, 1); }
     if (fromBall && G.fx.gold > 0 && Math.random() < 0.35) dropCoin(b.x + b.w / 2, b.y + b.h, 1);
     if (fromBall && lv('splash') && Math.random() < 0.15 * lv('splash')) {
       const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
@@ -2745,6 +2924,7 @@
     if (!b.alive) return;
     b.alive = false;
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    if (b.nemesis) nemesisDown(b, cx, cy);
     shards(b); burst(cx, cy, brickColor(b), 5);
     run.score += 10 * b.maxhp * (feverOn() ? 2 : 1);
     G.combo += relic('sheep') && feverOn() ? 2 : 1; G.comboPop = 1; A.streak(G.combo); G.dry = 0;
@@ -2782,15 +2962,17 @@
       if (won) { G.wantedWon = true; sfx.jackpot(); flashScreen('#ffd23f', 0.25); }
       say(clamp(cx, 90, W - 90), cy + 26, won ? 'BOUNTY CLAIMED! A relic waits' : 'The bandit got away', won ? '#ffd23f' : '#ff9aa8', 1.8, won);
     }
+    // Nine-to-Five: bricks drop no coins. Blimp Magnet: plain bricks drop coins half as often.
+    const paid = !pact('salary');
     if (b.type === 'gold') {
-      dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5));
+      if (paid) dropCoin(cx, cy, 5 + Math.floor(Math.random() * 5));
       if (relic('bombardier')) explode(cx, cy, 44, Math.round(2 * power()), '#ffd23f', true);
       if (relic('motherlode')) motherLode(b);
     }
-    else if (b.type === 'chest') dropCoin(cx, cy, 6);
-    else if (Math.random() < coinChance(lv('luck'))) dropCoin(cx, cy, 1);
+    else if (b.type === 'chest') { if (paid) dropCoin(cx, cy, 6); }
+    else if (paid && Math.random() < coinChance(lv('luck')) * (pact('blimps') ? 0.5 : 1)) dropCoin(cx, cy, 1);
     if (G.combo % STREAK_STEP === 0) streakPayout(cx, cy);
-    if (b.type === 'mystery' || (G.level >= FROM.capsules && Math.random() < (0.075 + 0.02 * lv('puluck')) * (special('capsules') ? 3 : 1))) G.pus.push({ x: cx, y: cy, vy: 110, k: rollPU() });
+    if (b.type === 'mystery' || (G.level >= FROM.capsules && Math.random() < (0.075 + 0.02 * lv('puluck')) * (special('capsules') ? 3 : 1))) dropCapsule(cx, cy);
     if (b.type === 'bomb') explode(cx, cy, 30 + 14 * lv('demo'), Math.round((2 + lv('demo')) * power()), '#ff6b3d');
     else if (b.type === 'tnt') explode(cx, cy, 80 + 14 * lv('demo'), Math.round((4 + lv('demo')) * power()), '#ff8a3d');
     else if (b.type === 'volt') zapRow(b);
@@ -3164,6 +3346,16 @@
     G.lull = clamp(G.lull + (on ? dt * 2 : -dt * 6), 0, 1);
     return 1 - (1 - LULL_K) * G.lull;
   }
+  // The heirloom of the run: a small chip in the corner of the field, with its counter.
+  function drawPact() {
+    if (!G || G.safari || run.daily || run.kit === 'none') return;
+    const p = myPact(), tag = p.tag ? String(p.tag()) : '';
+    ctx.globalAlpha = 0.85; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.font = 'bold 13px system-ui, sans-serif';
+    const w = 28 + (tag ? ctx.measureText(tag).width + 7 : 0);
+    ctx.fillStyle = 'rgba(16,18,40,0.75)'; rr(4, H - 28, w, 24, 12); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.fillText(p.icon, 9, H - 15); if (tag) { ctx.fillStyle = '#ffe680'; ctx.fillText(tag, 30, H - 15); }
+    ctx.globalAlpha = 1;
+  }
   function drawLull() {
     if (mode !== 'play' || !G || G.lull < 0.05) return;
     const s = '🌙 Lullaby · touch to wake', y = PADDLE_Y + 38;
@@ -3204,7 +3396,8 @@
     const targetW = basePaddleW() * relicW() * (G.fx.wide > 0 ? 1.5 : 1) * (G.stun > 0 ? 0.75 : 1);
     paddle.w += (targetW - paddle.w) * Math.min(1, dt * 8);
     autopilot(dt);
-    paddle.x += (paddle.tx - paddle.x) * Math.min(1, dt * (G.stun > 0 ? 12 : odd('grease') ? 7 : 30));
+    shuffleStep(dt);
+    paddle.x += (paddle.tx - paddle.x) * Math.min(1, dt * (G.stun > 0 ? 12 : odd('grease') ? 7 : pact('shell') ? 8 : 30));
     paddle.x = clamp(paddle.x, paddle.w / 2, W - paddle.w / 2);
     paddle.vx = (paddle.x - (paddle.px == null ? paddle.x : paddle.px)) / dt; paddle.px = paddle.x;
     if (G && relic('latepaddle')) { (G.padHist = G.padHist || []).push([G.time, paddle.x]); if (G.padHist.length > 60) G.padHist.shift(); }
@@ -3534,8 +3727,32 @@
     }
   }
   // The damage of one ball hit on brick k. The smash, the Bank Shot relic and a bullseye multiply it.
+  // THE BAZAAR SHUFFLE: a serve ritual. Wiggle the paddle under the ball before the serve (SHUFFLE_TURNS turns of
+  // SHUFFLE_PX or more inside SHUFFLE_S) and the ball goes out charged: its first brick takes SHUFFLE_K times the
+  // damage and drops two coins.
+  const SHUFFLE_FROM = 2, SHUFFLE_TURNS = 3, SHUFFLE_PX = 36, SHUFFLE_S = 1.6, SHUFFLE_K = 3;
+  function shuffleStep(dt) {
+    const b = G.balls.find((x) => x.stuck && x.serve);
+    if (!b || b.charged || G.safari || G.level < SHUFFLE_FROM) { G.shuf = null; return; }
+    const s = G.shuf || (G.shuf = { x0: paddle.x, ext: paddle.x, dir: 0, n: 0, t: 0 });
+    if (s.dir === 0) {
+      if (Math.abs(paddle.x - s.x0) >= SHUFFLE_PX) { s.dir = Math.sign(paddle.x - s.x0); s.ext = paddle.x; s.t = 0; s.n = 0; }
+      return;
+    }
+    s.t += dt;
+    if ((paddle.x - s.ext) * s.dir > 0) s.ext = paddle.x;
+    else if ((s.ext - paddle.x) * s.dir >= SHUFFLE_PX) { s.dir = -s.dir; s.ext = paddle.x; s.n++; sfx.tick(); }
+    if (s.n >= SHUFFLE_TURNS) {
+      b.charged = true; G.shuf = null; sticker('shuffle');
+      say(clamp(paddle.x, 110, W - 110), PADDLE_Y - 56, `SHUFFLE! First hit ×${SHUFFLE_K}`, '#ffd23f', 1.4, true); sfx.jackpot(); buzz(20);
+    } else if (s.t > SHUFFLE_S) G.shuf = null;
+  }
   function ballHit(b, dmg, k) {
     G.lastHit = k; b.hits++;
+    if (b.charged && k) {
+      b.charged = false; dmg *= SHUFFLE_K;
+      dropCoin(k.x + k.w / 2, k.y + k.h, 2, true); say(clamp(b.x, 60, W - 60), b.y - 18, `×${SHUFFLE_K}!`, '#ffd23f', 0.8, true);
+    }
     if (b.duckT > 0) riderBlast(b);
     if (b.discoT > 0) discoRay(b);
     botBallHit(k);
@@ -3582,7 +3799,7 @@
     if (G.fx.quake > 0) { for (const c of G.coins) hop(c); shake(4); sfx.stone(); }
     if (b.potato) b.potato.n = Math.min(POTATO_MAX, b.potato.n + 1);
     if (lv('d_parrot') && !holstered() && G.paddleHits % PARROT_EVERY === 0) parrotPeck();
-    for (const g in GUNS) if (G.reload[g] > 0) G.reload[g] = Math.max(0.01, G.reload[g] - RELOAD_HIT);
+    for (const g in GUNS) if (G.reload[g] > 0) G.reload[g] = Math.max(0.01, G.reload[g] - RELOAD_HIT * (pact('espresso') ? 2 : 1));
     botBounce(b);
     if (thunderhead()) for (let i = 0; i < 3; i++) after(0.05 + i * 0.12, cloudStrike);
     if (lv('gun_scatter') >= ULTRA_LV && !holstered() && !G.safari && G.paddleHits % 5 === 0 && anyTarget()) paddleSneeze();
@@ -3623,6 +3840,7 @@
   }
   function loseLife() {
     G.combo = 0; G.flawless = false; G.lost++; A.streak(0); pip('pipLost', true);
+    if (G.lastHit && G.lastHit.nemesis && G.lastHit.alive) say(clamp(G.lastHit.x + G.lastHit.w / 2, 60, W - 60), G.lastHit.y + G.lastHit.h + 14, 'Ha! Mine.', '#ffffff', 1.6);
     ach('lose', 'Lost a ball. It happens');
     heckle('lose');
     if (G.secondWind > 0) {
@@ -3630,11 +3848,22 @@
       say(W / 2, H / 2, 'Second Wind!', '#6ee7ff', 1.4, true);
       serve(); return;
     }
+    if (pact('coinop')) {
+      // Coin-Op Paddle: the next ball is bought. The fee counts as spent, so that the price index does not fall.
+      const fee = ballFee(G.lost - 1);
+      sfx.lose(); shake(10); flashScreen('#ff2a4d', 0.3); buzz(90); G.fx = noFx();
+      if (run.coins < fee) { run.lives = 0; gameOver(); return; }
+      run.coins -= fee; run.spent += fee;
+      say(W / 2, H / 2, `🕹️ INSERT COIN: −${fee}`, '#ffd23f', 1.4, true);
+      serve(); return;
+    }
     run.lives--; sfx.lose();
     if (run.lives === 1) { G.heckled.lastLife = false; G.heckle = null; heckle('lastLife'); } shake(12); flashScreen('#ff2a4d', 0.35); buzz(90);
     G.fx = noFx();
     if (run.lives <= 0) { gameOver(); return; }
     say(W / 2, H / 2, 'Ball lost!', '#ff6b8b', 1.2, true);
+    if (pact('cat')) spillCoins(CAT_SPILL, '🐈 The cat knocks your coins off!');
+    if (pact('hoard')) spillCoins(SNEEZE, '🐉 ACHOO!');
     serve();
   }
 
@@ -3642,10 +3871,11 @@
   // From level FROM.clock each level has a clock. A level that is not clear when the clock runs out pays no bonus,
   // and the bricks crumble fast, without loot. Before that level the bricks crumble slowly, as a quiet helping hand.
   // When few bricks are left, balls home in on them. On the first three levels they home in sooner.
-  const clockOn = () => G.safari || G.level >= FROM.clock;
+  const clockOn = () => G.safari || (G.level >= FROM.clock && !pact('sunday'));
   const timeLeft = () => Math.max(0, G.par - G.clock);
   function updateOvertime(dt) {
     if (G.clearT >= 0 || !G.started || G.safari) return;
+    pennyDrop();
     const left = timeLeft();
     if (clockOn() && left > 0 && left <= 10 && Math.ceil(left) < G.lastTick) { G.lastTick = Math.ceil(left); sfx.tick(); A.rush(left); heckle('timeLow'); }
     if (left <= 0 && relic('snooze') && !G.snoozed && clockOn()) {
@@ -3722,8 +3952,8 @@
 
   const power = () => (1 + 0.1 * lv('power')) * (1 + 0.25 * lv('edge'));
   // Base damage, scaled by the gun level (30% per level), Hardened Rounds (35% per level) and Overcharge.
-  const gunDmg = (d, gl = 1) => Math.max(1, Math.round(d * (1 + 0.3 * (gl - 1)) * (1 + 0.35 * lv('rounds')) * power()));
-  const clipSize = (g) => Math.round(GUNS[g].clip * (1 + 0.25 * lv('belt')));
+  const gunDmg = (d, gl = 1) => Math.max(1, Math.round(d * (1 + 0.3 * (gl - 1)) * (1 + 0.35 * lv('rounds')) * power() * (pact('glass') ? 1.5 : 1)));
+  const clipSize = (g) => Math.max(1, Math.round(GUNS[g].clip * (1 + 0.25 * lv('belt'))));
   const reloadTime = (g) => GUNS[g].reload * Math.pow(RELOAD_CUT, lv('belt'));
   const overdrive = () => G.fx.over > 0;
   const ECHO_BASE = 6;
@@ -3961,7 +4191,7 @@
     for (const g in GUNS) {
       const l = lv('gun_' + g); if (!l) continue;
       if (G.reload[g] > 0) {
-        G.reload[g] -= dt * (overdrive() ? 4 : RELOAD_IDLE);
+        G.reload[g] -= dt * (overdrive() ? 4 : pact('espresso') ? 0 : RELOAD_IDLE);
         if (G.reload[g] <= 0) { G.clip[g] = clipSize(g); if (active) sfx.reload(); }
         continue;
       }
@@ -4626,6 +4856,13 @@
         if (b) { c.val *= 2; say(c.x, c.y - 16, 'POP! ×2', '#bfe9ff', 0.6); }
       }
       const grav = G.fx.moon > 0 ? MOON_G : 1;
+      if (c.cursed) {
+        // the cursed penny flutters down through the bricks; no magnet and no brick holds it
+        c.x = clamp(c.x + Math.sin(G.time * 2.4 + c.spin) * 70 * dt, 12, W - 12); c.y += 115 * dt; c.spin += dt * 5;
+        if (onPaddle(c.x, c.y, 10)) { c.dead = true; collectCoin(c); pennyCaught(c); }
+        else if (c.y > bottom() + 10) { c.dead = true; pennyLost(); }
+        continue;
+      }
       c.vy = Math.min(c.vy + 420 * grav * dt, (c.fat ? FAT_FALL : 330) * grav); c.vx *= 1 - dt * (c.on ? 6 : 1.5); c.vx += G.wind * dt;
       if (c.on && G.fx.stampede > 0) { c.run = c.run || (c.x < paddle.x ? 1 : -1); c.vx = c.run * STAMPEDE_V; }
       if (c.fat && c.on && (c.crackT -= dt) <= 0) {
@@ -4663,12 +4900,17 @@
     for (const p of G.pus) {
       if (p.dead) continue;
       p.vy = Math.min(p.vy + 60 * dt, 200);
-      if (ml >= 3) {
+      if (ml >= 3 && !p.pair) {
         const dx = pcx - p.x, dy = pcy - p.y, d = Math.hypot(dx, dy);
         if (d < mRad * 0.8 && d > 1) { p.x += (dx / d) * 160 * dt; }
       }
       p.x = clamp(p.x + G.wind * 0.4 * dt, 16, W - 16); p.y += p.vy * (G.fx.moon > 0 ? 2 * MOON_G : 1) * dt;
-      if (onPaddle(p.x, p.y, 10)) { p.dead = true; collectPU(p); }
+      if (onPaddle(p.x, p.y, 10)) {
+        // a wishbone: the capsule nearer to the middle of the paddle wins
+        const o = p.pair && !p.pair.dead ? p.pair : null, win = o && Math.abs(o.x - paddle.x) < Math.abs(p.x - paddle.x) ? o : p;
+        win.dead = true; if (o) snapWish(win === p ? o : p);
+        collectPU(win);
+      }
       else if (p.y > bottom() + 14) p.dead = true;
     }
     if (G.clearT < 0) mergeCoins();
@@ -4825,7 +5067,7 @@
     return f;
   }
   function blimpHit(f) {
-    const n = 2 + lv('cargo');
+    const n = Math.round((2 + lv('cargo')) * (pact('blimps') ? 1.5 : 1));
     shake(3);
     if (f.kind === 'gift') G.pus.push({ x: f.x, y: f.y, vy: 110, k: rollPU() });
     else if (f.kind !== 'gold') dropCoin(f.x, f.y, f.kind === 'mother' ? n + 2 : n, true);
@@ -5709,14 +5951,21 @@
     }
     const lvl = run.level, late = G.timeUp, timed = clockOn();
     // one star each for: clearing, beating the clock, losing no ball
-    const stars = 1 + (G.clock <= G.par ? 1 : 0) + (G.flawless ? 1 : 0);
-    const clear = Math.round((15 + lvl * 4) * COIN_MULT * levelVal() * (1 + 0.15 * lv('bounty')));
-    const speed = timed ? Math.round(clear * clamp(1 - G.clock / G.par, 0, 1)) : 0;
-    const starPay = Math.round(stars * (3 + lvl) * levelVal());
+    const stars = 1 + (G.clock <= G.par && !pact('sunday') ? 1 : 0) + (G.flawless ? 1 : 0);
+    const sal = pact('salary') ? SALARY_K : pact('sunday') ? SUNDAY_K : pact('arf') ? ARF_K : 1;
+    const clear = Math.round((15 + lvl * 4) * COIN_MULT * levelVal() * (1 + 0.15 * lv('bounty')) * sal);
+    const speed = (timed || pact('speedrun')) && !pact('ice') ? Math.round(clear * clamp(1 - G.clock / G.par, 0, 1) * (pact('speedrun') ? SPEEDRUN_K : 1)) : 0;
+    const starPay = Math.round(stars * (3 + lvl) * levelVal() * sal);
     const heatBonus = Math.round((clear + speed + starPay) * (heatPay() - 1));
     // a level that ends after the clock pays no bonus
     const pay = late ? { bonus: 0, speed: 0, starBonus: 0, heatBonus: 0 } : { bonus: clear, speed, starBonus: starPay, heatBonus };
     run.coins += pay.bonus + pay.speed + pay.starBonus + pay.heatBonus;
+    // Mortimer's Mortgage: a share of the level pay goes to the debt
+    let mortgage = 0, debtPaid = false;
+    if (run.debt > 0 && lvl >= MORTGAGE_FROM) {
+      mortgage = -Math.min(run.debt, Math.round((pay.bonus + pay.speed + pay.starBonus + pay.heatBonus) * MORTGAGE_SHARE));
+      run.debt += mortgage; run.coins += mortgage; debtPaid = run.debt <= 0;
+    }
     const pl = lv('piggy');
     const interest = pl && !late ? Math.min(Math.floor(run.coins * 0.05 * pl), piggyCap() * pl) : 0;
     const bonds = bondPay(lv('bonds'));
@@ -5730,6 +5979,7 @@
     // the ball boy takes his wage last; a player who cannot pay loses him
     const wage = lv('ballboy') ? Math.round(pay.bonus * BOY_WAGE) : 0, boyQuit = wage > run.coins;
     if (boyQuit) run.up.ballboy = 0; else run.coins -= wage;
+    if (pact('notake') && G.def.boss && run.lives < maxLives()) run.lives++;
     const seals = earnSeals(stars, darePay > 0, !!G.def.boss);
     run.stats.stars += stars;
     run.star3 = stars === 3 ? run.star3 + 1 : 0;
@@ -5749,10 +5999,10 @@
     let heat = 0;
     if (lvl >= FROM.heat && !G.def.boss) {
       const r = G.clock / G.par0, was = run.heat;
-      run.heat = clamp(run.heat + heatStep(r * Math.pow(HEAT_BRICKS / Math.max(10, G.brick0), 0.6), late), HEAT_MIN, 99);
+      if (!pact('ice')) run.heat = clamp(run.heat + heatStep(r * Math.pow(HEAT_BRICKS / Math.max(10, G.brick0), 0.6), late), pact('sauce') ? 3 : HEAT_MIN, 99);
       heat = run.heat - was;
     }
-    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, spilled: G.spilled, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance, alley,
+    lastSummary = { level: lvl, name: G.def.name, picked: G.levelCoins, spilled: G.spilled, ...pay, lost: late ? clear + starPay + heatBonus : 0, interest, bonds, bet: run.bet, betWon, heat, dare, darePay, insurance, alley, mortgage, debtPaid, debt: run.debt || 0, post: deliverPost(),
       wage: boyQuit ? 0 : wage, boyQuit, seals,
       combo: G.comboBest, streak: G.streakCoins, stars, time: Math.ceil(G.clock), par: G.par, flawless: G.flawless, late, timed, boss: !!G.def.boss };
     run.bet = 0; run.nextSpecial = null; run.wanted = false; run.dare = null; run.odd = null; if (!G.def.boss) run.favourite = false;
@@ -5760,7 +6010,7 @@
     run.score += 100 * lvl * stars;
     run.level = run.daily ? dailyNext() || run.level + 1 : run.level + 1;
     if (G.wantedWon) run.wantedWon = (run.wantedWon || 0) + 1;
-    run.pendingRelic = (lvl % 5 === 0 || G.wantedWon) && relicChoices().length > 0;
+    run.pendingRelic = (lvl % 5 === 0 || G.wantedWon) && relicChoices().length > 0 && !(pact('drawer') && lvl < DRAWER_UNTIL);
     rollDeals();
     recordBest();
     saveRun();
@@ -5768,8 +6018,12 @@
   }
   // Bazaar Seals: only skill pays them, and the price index never touches them. Returns the number earned.
   function earnSeals(stars, dare, boss) {
-    if (run.level < SEAL_FROM || G.timeUp) return 0;
-    const n = (stars === 3 ? 1 : 0) + (dare ? 1 : 0) + (boss ? 2 : 0) + (G.ding3 >= 3 ? 1 : 0);
+    if (G.timeUp) return 0;
+    let n = run.level >= SEAL_FROM || pact('arf') ? (stars === 3 ? 1 : 0) + (dare ? 1 : 0) + (boss ? 2 : 0) + (G.ding3 >= 3 ? 1 : 0) : 0;
+    if (pact('arf')) n *= 2;
+    if (pact('none') && boss) n++;
+    if (pact('under') && G.clock <= G.par) n++;
+    if (!n) return 0;
     run.seals += n; run.sealsEver += n;
     if (run.sealsEver >= 5) sticker('seal');
     return n;
@@ -5780,22 +6034,24 @@
     bankStats();
     const record = run.daily ? dailyRecord() : run.level > best.level || run.score > best.score;
     recordBest();
-    const keep = Math.floor(run.coins / 2), st = run.stats;
+    const keep = Math.floor(run.coins / 2), st = run.stats, nemesis = nemesisCrown();
+    if (pact('notake')) store.del(SAVE_KEY);
     showOverlay(`<div class="center">
-      <h2>Out of balls</h2>
+      <h2>${pact('coinop') ? 'Out of coins' : 'Out of balls'}</h2>
       ${snailBubble('gameOver')}
       ${record ? '<div class="newbest">★ NEW BEST ★</div>' : ''}
       <div class="stat">Reached level <b>${run.level}</b> · Score <b>${run.score}</b></div>
       <div class="stat">Bricks <b>${st.bricks}</b> · Monsters <b>${st.foes}</b> · Stars <b>${st.stars}</b></div>
       <div class="stat">Coins earned <b>${st.coins}</b> · Best streak <b>${st.streak}</b></div>
       <div class="stat">Best: level <b>${best.level}</b> · score <b>${best.score}</b></div>
+      ${nemesis}
       ${snailBill()}
       ${stickerNote()}
       <div style="height:1.2em"></div>
-      ${run.daily ? '' : `<button class="big gold" data-act="continue">Try again (keep upgrades, ${keep} 🪙)</button>
+      ${run.daily ? '' : pact('notake') ? '<button class="big gold" data-act="newrun">New run</button>' : `<button class="big gold" data-act="continue">Try again (keep upgrades, ${keep} 🪙)</button>
       <button class="big alt" data-act="newrun">New run</button>`}
       <button class="big alt" data-act="menu">Menu</button>
-      ${run.daily ? '' : '<div class="hint">Trying again keeps everything you bought but costs half your coins.</div>'}
+      ${run.daily ? '' : pact('notake') ? '<div class="hint">🚫 No Take-Backs: this run is over.</div>' : '<div class="hint">Trying again keeps everything you bought but costs half your coins.</div>'}
     </div>`);
   }
 
@@ -5840,20 +6096,40 @@
     const have = stickerCount();
     const cell = (on, icon, name, text) => `<div class="stk ${on ? 'on' : ''}"><span class="si">${icon}</span><b>${name}</b><i>${text}</i></div>`;
     const cells = STICKERS.map((k) => { const on = !!meta.stickers[k.id]; return cell(on, on ? k.icon : '❔', on ? k.name : '???', k.hint); }).join('');
-    const kits = KITS.slice(1).map((k) => cell(have >= k.need, k.icon, k.name, have >= k.need ? k.desc : `Opens at ${k.need} stickers.`)).join('');
+    const kits = PACTS.map((k) => cell(have >= k.need, k.icon, k.name, have >= k.need ? `${k.boon} ${k.curse}` : `Opens at ${k.need} stickers.`)).join('');
     showOverlay(`<div class="shop">
       <div class="shop-head"><div><div class="t">Sticker Album</div><div class="sub">${have} of ${STICKERS.length} · ${meta.blimps} blimps popped · ${meta.wins} campaign${meta.wins === 1 ? '' : 's'} won</div></div></div>
-      <div class="items">${cells}<div class="teaser">🧺 Starting kits: stickers open them</div>${kits}</div>
+      <div class="items">${cells}<div class="teaser">🧺 The Shed of Junk: stickers open more heirlooms</div>${kits}</div>
       <div class="shopfoot"><button class="big" data-act="menu">Back</button></div>
     </div>`);
   }
-  function showKits() {
-    mode = 'kits';
-    const have = stickerCount();
-    const btns = KITS.filter((k) => have >= k.need).map((k) => `<button class="relic kit" data-kit="${k.id}">
-      <span class="ric">${k.icon}</span><span class="rnm">${k.name}</span><span class="rds">${k.desc}</span></button>`).join('');
-    showOverlay(`<div class="center"><div class="tally-sub">THE SHED OF JUNK</div><h2>Pick a starting kit</h2>${snailBubble('kits')}<div class="relics">${btns}</div>
-      <div class="hint">More stickers open more kits.</div></div>`, 'see');
+  // keep = the relic that a star run takes along (undefined for a normal run)
+  function showKits(keep) {
+    mode = 'kits'; pactKeep = keep;
+    if (!pactDeal.length || keep !== undefined) { pactDeal = []; pactRummage = 0; dealPacts(); }
+    pactLine = snailSay('kits');
+    renderKits();
+  }
+  function renderKits() {
+    const card = (k) => `<button class="relic kit pact ${pactPick === k.id ? 'on' : ''}" data-kit="${k.id}">
+      <span class="ric">${k.icon}</span><span class="rnm">${k.name}</span><span class="rds"><span class="boon">＋ ${k.boon}</span><br><span class="curse">－ ${k.curse}</span></span></button>`;
+    const cards = pactDeal.map((id) => card(PACT_BY_ID[id])).join('') + card(PACTS[0]);
+    const more = PACTS.filter((p) => p.id !== 'none' && stickerCount() >= p.need).length > PACT_DEAL;
+    const rummage = more && pactRummage < 3 ? `<button class="big alt" data-act="rummage">🔍 ${pactRummage ? 'Rummage again (costs a life)' : 'Rummage for others (free once)'}</button>` : '';
+    const sign = pactPick ? `<button class="big gold" data-act="sign">✍️ Sign for ${PACT_BY_ID[pactPick].name}</button>` : '<div class="hint">Tap a card to read it. Then sign the Grudge Ledger.</div>';
+    showOverlay(`<div class="center"><div class="tally-sub">THE SHED OF JUNK</div><h2>Sign for an heirloom</h2>
+      ${pactKeep === undefined && LORE.act1 ? `<div class="lore"><b>📖 The Notice · 1</b> ${LORE.act1[0]}</div>` : ''}
+      <div class="keeper"><span class="snail">🐌</span><span class="bubble">${pactLine || 'Returned without a receipt. They work out of spite.'}</span></div>
+      <div class="relics">${cards}</div>${sign}${rummage}
+      <div class="hint">An heirloom lasts for the whole run: the gift and the grudge.${pactRummage ? ` Lives: ${'❤️'.repeat(3 - Math.max(0, pactRummage - 1))}` : ''}</div></div>`, 'see');
+  }
+  function signPact() {
+    if (!pactPick) return;
+    const id = pactPick, lost = pactRummage > 1 ? pactRummage - 1 : 0;
+    pactDeal = []; pactPick = null; pactRummage = 0;
+    beginRun(id, pactKeep);
+    // each rummage after the free one cost a life
+    if (lost && !pact('coinop')) { run.lives = Math.max(1, run.lives - lost); saveRun(); }
   }
   function showPause() {
     mode = 'pause'; A.music(0);
@@ -5863,6 +6139,8 @@
       ${snailSay('bugle') ? `<div class="stat">📰 <i>The Bazaar Bugle:</i> <b>${snailSay('bugle')}</b></div>` : ''}
       <div class="stat">Level <b>${run.level}</b> · <b>${run.coins}</b> 🪙 · ${'❤️'.repeat(run.lives)}${run.heat ? ` · ${heatTag()}` : ''}</div>
       ${owned.length ? `<div class="owned">${owned.map((r) => `<div><span>${r.icon}</span> <b>${r.name}</b> ${r.desc}</div>`).join('')}</div>` : ''}
+      ${run.hermit && run.hermit.length ? `<div class="owned">${run.hermit.map(relicById).map((r) => `<div><span>${r.icon}</span> <b>${r.name}</b> (borrowed for this level) ${r.desc}</div>`).join('')}</div>` : ''}
+      ${run.daily ? '' : `<div class="owned"><div><span>${myPact().icon}</span> <b>${myPact().name}</b> <span class="boon">＋ ${myPact().boon}</span> <span class="curse">－ ${myPact().curse}</span>${run.curse && ODDS[run.curse] && !pact('bouncy') ? ` Twist: ${ODDS[run.curse].text}` : ''}</div></div>`}
       <div style="height:1em"></div>
       <button class="big" data-act="unpause">Resume</button>
       ${soundBtns()}
@@ -5887,16 +6165,17 @@
   // screen for the whole visit.
   const MAIL_PAY = 10;
   function snailMail() {
-    if (run.daily || !LORE.letterAt.includes(run.level) || (run.mail && run.mail.at === run.level)) return;
+    if (run.daily || !(LORE.letterAt.includes(run.level) || LORE.act1LetterAt.includes(run.level)) || (run.mail && run.mail.at === run.level)) return;
     run.mail = { at: run.level, pay: Math.round(MAIL_PAY * levelVal()) };
     run.coins += run.mail.pay; sfx.coin(3);
   }
   function loreCard() {
-    const i = run.level - ACT1 - 1;
-    if (run.daily || i < 0 || i >= LORE.chapters.length) return '';
-    const m = LORE.letterAt.indexOf(run.level), paid = run.mail && run.mail.at === run.level;
-    const letter = m >= 0 ? `<div class="letter">✉️ ${LORE.letters[m]}${paid ? ` <b>+${run.mail.pay} 🪙</b>` : ''}</div>` : '';
-    return `<div class="lore"><b>📖 ${LORE.streets[Math.floor(i / 10)]} · ${run.level}</b> ${LORE.chapters[i]}${letter}</div>`;
+    const i = run.level - ACT1 - 1, paid = run.mail && run.mail.at === run.level;
+    if (run.daily || i >= LORE.chapters.length) return '';
+    const mail = (list, m) => (m >= 0 ? `<div class="letter">✉️ ${list[m]}${paid ? ` <b>+${run.mail.pay} 🪙</b>` : ''}</div>` : '');
+    // act one: "The Notice"
+    if (i < 0) return LORE.act1 && LORE.act1[run.level - 1] ? `<div class="lore"><b>📖 The Notice · ${run.level}</b> ${LORE.act1[run.level - 1]}${mail(LORE.act1Letters, LORE.act1LetterAt.indexOf(run.level))}</div>` : '';
+    return `<div class="lore"><b>📖 ${LORE.streets[Math.floor(i / 10)]} · ${run.level}</b> ${LORE.chapters[i]}${mail(LORE.letters, LORE.letterAt.indexOf(run.level))}</div>`;
   }
   const SHOP_TABS_FROM = 10; // with fewer items than this, the shop is one short list without tabs
   function renderShop(keepScroll, flashId) {
@@ -5915,7 +6194,7 @@
       const desc = it.desc(l);
       const sale = onSale(it) && open(it);
       let btn;
-      if (state === 'locked') btn = `<button class="buy no" disabled>🔒 ${it.reqText || 'Locked'}</button>`;
+      if (state === 'locked') btn = `<button class="buy no" disabled>🔒 ${pactLock(it) || it.reqText || 'Locked'}</button>`;
       else if (state === 'max') btn = `<button class="buy max" disabled>${it.id === 'life' ? 'Full' : it.use ? 'Sold out' : 'Maxed'}</button>`;
       else {
         const verb = l ? 'Upgrade' : 'Buy';
@@ -5929,7 +6208,7 @@
       return `<div class="card ${state === 'locked' ? 'locked' : ''} ${state === 'ok' ? 'can' : ''} ${sale ? 'onsale' : ''} ${flashId === it.id ? 'flash' : ''}">
         ${priceLocked(it) ? '<span class="sale lock">🔒</span>' : sale ? '<span class="sale">−30%</span>' : fresh(it) ? '<span class="sale new">NEW</span>' : ''}
         <div class="top"><span class="ic">${it.icon}</span><span class="nm">${it.name}</span></div>
-        ${pips}<div class="ds">${desc}</div>${setLine}${btn}</div>`;
+        ${pips}<div class="ds">${desc}</div>${due(it.id) ? `<div class="setline on">📦 ${due(it.id)} in the post</div>` : ''}${setLine}${btn}</div>`;
     }).join('');
     const tabs = cats.map((c) => {
       const items = stock.filter((it) => it.cat === c.id);
@@ -5976,6 +6255,7 @@
     } });
   }
   function takeRelic(id) {
+    if (run.heirloom) { run.curse = relicTwist[id] || 'grease'; run.heirloom = false; }
     run.relics[id] = true; run.pendingRelic = false; saveRun();
     if (Object.keys(run.relics).length >= 8) sticker('hoard');
     sfx.relic(); buzz(30);
@@ -5997,11 +6277,13 @@
     }
     if (t.dataset.relic) { takeRelic(t.dataset.relic); return; }
     if (t.dataset.keep) { beginStarRun(t.dataset.keep); return; }
-    if (t.dataset.kit) { beginRun(t.dataset.kit); return; }
+    if (t.dataset.kit) { pactPick = t.dataset.kit; pactLine = snailSay(pactPick === 'none' ? 'pactNone' : 'pactPick') || pactLine; sfx.tick(); renderKits(); return; }
     if (t.dataset.fork) { takeFork(t.dataset.fork); return; }
     if (t.dataset.district) { takeDistrict(t.dataset.district); return; }
     const act = t.dataset.act;
-    if (act === 'newrun') { if (KITS.some((k) => k.need > 0 && stickerCount() >= k.need)) showKits(); else beginRun('none'); }
+    if (act === 'newrun') showKits();
+    else if (act === 'sign') signPact();
+    else if (act === 'rummage') { pactRummage++; dealPacts(); pactLine = snailSay('kits') || pactLine; sfx.stone(); renderKits(); }
     else if (act === 'album') showAlbum();
     else if (act === 'reroll') { run.reroll = false; saveRun(); showRelics(relicShown); }
     else if (act === 'ngplus') showKeepRelic();
@@ -6025,7 +6307,7 @@
     }
     else if (act === 'quit') { showMenu(); }
     else if (act === 'menu') { showMenu(); }
-    else if (act === 'continue') { run.coins = Math.floor(run.coins / 2); run.lives = 3; saveRun(); startLevel(); }
+    else if (act === 'continue' && !pact('notake')) { run.coins = Math.floor(run.coins / 2); run.lives = Math.min(3, maxLives()); saveRun(); startLevel(); }
     else if (act === 'mute') { muted = !muted; store.set(MUTE_KEY, muted); A.setSfx(!muted); t.textContent = 'Sound: ' + (muted ? 'off' : 'on'); }
     else if (act === 'lull') { meta.lull = meta.lull === false; saveMeta(); t.textContent = '🌙 Lullaby: ' + (meta.lull ? 'on' : 'off'); }
     else if (act === 'music') { musicOff = !musicOff; store.set(MUSIC_KEY, musicOff); A.setMusic(!musicOff); t.textContent = 'Music: ' + (musicOff ? 'off' : 'on'); }
@@ -6098,13 +6380,13 @@
   const feverOn = () => G.feverT > 0;
   const coinMult = () => 1 + (feverOn() ? 1 : 0) + (G.fx.x2 > 0 ? 1 : 0) + (G.fx.film > 0 ? 1 : 0) + (G.happy ? 2 : 0) + (G.balls.some((b) => b.chicken) ? 1 : 0) + (special('night') || special('insomnia') ? 0.5 : 0);
   function addFever(v) {
-    if (feverOn() || G.clearT >= 0 || G.level < FROM.fever) return;
+    if (feverOn() || G.clearT >= 0 || G.level < feverFrom()) return;
     G.feverIdle = 0;
-    run.fever = Math.min(1, run.fever + v * (relic('engine') ? 1.4 : 1));
+    run.fever = Math.min(1, run.fever + v * (relic('engine') ? 1.4 : 1) * (pact('fever') ? 2 : 1));
     if (run.fever >= 1) startFever();
   }
   function startFever() {
-    run.fever = 0; G.feverT = G.feverMax = 8 + (relic('engine') ? 4 : 0);
+    run.fever = 0; G.feverT = G.feverMax = 8 + (relic('engine') ? 4 : 0) + (pact('fever') ? 3 : 0);
     say(W / 2, H * 0.46, 'FEVER! ×2', '#ffe066', 1.8, true);
     heckle('fever');
     sfx.fever(); sfx.riser(); buzz([30, 40, 30]); flashScreen('#ffe066', 0.35); A.music(2); A.fever(true);
@@ -6141,6 +6423,7 @@
   }
   const BROOD_FIRE = 2;
   function splitBall(x, y, vx, vy) {
+    if (pact('only')) return;
     const s = ballSpeed(), base = vx == null ? 0 : Math.atan2(vx, -vy);
     for (const d of vx == null ? [-0.6, 0.6] : [0.45]) {
       if (G.balls.length >= MAX_BALLS) break;
@@ -6235,7 +6518,7 @@
   // The Hermit Crab (and the Lobster) borrow relics for one level. The pick comes before the level is built.
   const NO_BORROW = ['hermit', 'hats', 'leech'];
   function hermitMove() {
-    const n = run.relics.lobster ? 2 : run.relics.hermit ? 1 : 0;
+    const n = run.relics.lobster || pact('hermitlife') ? 2 : run.relics.hermit ? 1 : 0;
     run.hermit = [];
     if (!n) return;
     const pool = RELICS.filter((r) => !r.fused && !run.relics[r.id] && !fusedAway(r.id) && !NO_BORROW.includes(r.id) && (r.at || 0) <= run.level && !FUSIONS.some((f) => f.keep && run.relics[f.id] && (f.a === r.id || f.b === r.id)));
@@ -6283,10 +6566,14 @@
   // The extra width of the paddle from relics.
   const relicW = () => (relic('accordion') ? 1 + 0.12 * Math.min(G.sweetN, 5) : 1) * (relic('strike') ? 1.25 : 1) * (relic('hats') ? 1 + 0.04 * (run.hats || 0) : 1);
   // The extra size of a ball from relics.
-  const relicR = (b) => (relic('snowball') ? 1 + 0.04 * Math.min(G.combo, 25) : 1) * (relic('sauna') ? 1 + 0.06 * clamp(run.heat || 0, 0, 7) : 1) * (b.baby != null ? 0.55 : 1);
+  const relicR = (b) => (relic('snowball') ? 1 + 0.04 * Math.min(G.combo, 25) : 1) * (relic('sauna') ? 1 + 0.06 * clamp(run.heat || 0, 0, 7) : 1) * (b.baby != null ? 0.55 : 1) * (pact('only') ? 1.3 : 1);
   // The damage of a ball hit, from the relics of the second shelf.
   function relicHit(b, k) {
     let m = 1;
+    if (pact('glass')) m *= 1.5;
+    if (pact('only')) m *= ONLY_K;
+    if (pact('hoard')) m *= 1 + hoardBonus();
+    if (pact('fever') && !feverOn()) m *= 0.7;
     if (relic('apple') && b.down) m *= 2;
     if (relic('chicken')) m *= 0.5;
     if (relic('pacifist')) m *= 1 + 0.06 * Math.min(G.paddleHits, 25);
@@ -6307,25 +6594,31 @@
   // A part of a fused relic is not offered again.
   const fusedAway = (id) => FUSIONS.some((f) => run.relics[f.id] && (f.a === id || f.b === id));
   function relicChoices(not = []) {
+    if (pact('hermitlife')) return [];
     const pool = RELICS.filter((r) => !run.relics[r.id] && !r.fused && !fusedAway(r.id) && !not.includes(r.id) && (r.at || 0) <= run.level);
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-    return pool.slice(0, 3);
+    return pool.slice(0, pact('none') && !run.daily ? 4 : 3);
   }
   function fuseRelics(f) {
     delete run.relics[f.a]; delete run.relics[f.b]; run.relics[f.id] = true;
     sticker('fusion'); sfx.relic();
     return `⚗️ ${relicById(f.a).icon} + ${relicById(f.b).icon} = ${f.icon} ${f.name}!`;
   }
-  let relicShown = [];
+  let relicShown = [], relicTwist = {};
   // not = relics that a reroll leaves out
   function showRelics(not = []) {
     mode = 'relic'; pauseBtn.style.display = 'none';
     relicShown = relicChoices(not).map((r) => r.id);
+    // the Cursed Heirloom: each card carries one twist, and the twist stays for the whole run
+    const twists = ['grease', 'tiny', 'bouncy'].sort(() => Math.random() - 0.5), cursed = !!run.heirloom;
+    relicTwist = {};
+    if (cursed) relicShown.forEach((id, i) => { relicTwist[id] = twists[i % twists.length]; });
+    const twist = (id) => (cursed ? `<br><span class="curse">－ ${ODDS[relicTwist[id]].icon} ${ODDS[relicTwist[id]].name}: ${ODDS[relicTwist[id]].text}</span>` : '');
     const cards = relicShown.map(relicById).map((r, i) => `<button class="relic" data-relic="${r.id}" style="animation-delay:${i * 0.12}s">
-      <span class="ric">${r.icon}</span><span class="rnm">${r.name}</span><span class="rds">${r.desc}</span></button>`).join('');
+      <span class="ric">${r.icon}</span><span class="rnm">${r.name}</span><span class="rds">${r.desc}${twist(r.id)}</span></button>`).join('');
     const reroll = run.reroll && relicChoices(relicShown).length ? '<button class="big alt" data-act="reroll">🔄 Three other relics</button>' : '';
-    showOverlay(`<div class="center"><div class="tally-sub">A GIFT FROM THE BAZAAR</div><h2>Pick a relic</h2>${snailBubble('relicPick')}<div class="relics">${cards}</div>
-      ${reroll}<div class="hint">Relics last for the whole run.</div></div>`, 'see');
+    showOverlay(`<div class="center"><div class="tally-sub">${cursed ? 'THE CURSED HEIRLOOM' : 'A GIFT FROM THE BAZAAR'}</div><h2>Pick a relic</h2>${snailBubble('relicPick')}<div class="relics">${cards}</div>
+      ${reroll}<div class="hint">${cursed ? 'The relic and its twist last for the whole run.' : 'Relics last for the whole run.'}</div></div>`, 'see');
     sfx.relic();
   }
   function relicBricks(b, cx, cy) {
@@ -6339,7 +6632,7 @@
     }
     if (relic('balloons') && run.stats.bricks % 40 === 0 && !G.boss) spawnBlimp();
     if (relic('leech') && run.stats.bricks % 60 === 0) {
-      if (run.lives < 6) { run.lives++; sfx.life(); say(cx, cy, '+1 LIFE', '#ff5c8a', 1.2); } else dropCoin(cx, cy, 15, true);
+      if (run.lives < maxLives()) { run.lives++; sfx.life(); say(cx, cy, '+1 LIFE', '#ff5c8a', 1.2); } else dropCoin(cx, cy, 15, true);
     }
   }
 
@@ -6585,9 +6878,9 @@
     run.deals = []; run.sundry = null;
     run.dareOffer = pick(Object.keys(DARES).filter((k) => DARES[k].ok()));
     const next = levelDef(run.level), fixed = next.boss || next.wheel || next.map.some((row) => /[XL()]/.test(row));
-    run.oddOffer = pick(Object.keys(ODDS).filter((k) => (k !== 'flip' || !fixed) && (k !== 'jitter' || run.level >= FROM.pin)));
+    run.oddOffer = pick(Object.keys(ODDS).filter((k) => (k !== 'flip' || (!fixed && !pact('under'))) && (k !== 'jitter' || run.level >= FROM.pin) && k !== run.curse));
     run.offer = pick(specialPool(next, run.level)).id;
-    if (run.level < FROM.sales) return;
+    if (run.level < FROM.sales || pact('mail')) return;
     const pool = upgradePool();
     for (let i = 0; i < 2 && pool.length; i++) run.deals.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0].id);
     sundryShift();
@@ -6612,7 +6905,7 @@
       return;
     }
     const parts = [['clear', s.bonus], ['speed', s.speed], ['stars', s.starBonus], ['heat', s.heatBonus], ['piggy', s.interest], ['bonds', s.bonds],
-      ['bet', s.betWon], ['dare', s.darePay], ['insurance', s.insurance], ['alley', s.alley], ['ball boy', -s.wage]].filter(([, v]) => v);
+      ['bet', s.betWon], ['dare', s.darePay], ['insurance', s.insurance], ['alley', s.alley], ['ball boy', -s.wage], ['mortgage', s.mortgage]].filter(([, v]) => v);
     const fresh = run.level > 2 ? ITEMS.filter((it) => it.at === run.level) : [];
     const verdict = s.late ? 'tallyLate' : s.boss ? 'tallyBoss' : !s.flawless ? 'tallyClumsy' : s.time < s.par * 0.25 ? 'tallyFast'
       : s.stars === 3 ? 'tallyThree' : s.time > s.par * 0.8 ? 'tallySlow' : 'tallyOk';
@@ -6632,6 +6925,8 @@
       ${s.dare && !s.darePay ? chip(`🤞 Dare failed: ${s.dare.toLowerCase()}`) : ''}
       ${s.seals ? chip(`🦭 +${s.seals} Bazaar Seal${s.seals > 1 ? 's' : ''}. You have ${run.seals}. Spend them Upstairs.`, 'new') : ''}
       ${s.boyQuit ? chip('🧢 The ball boy quit: you could not pay his wage.', 'bad') : ''}
+      ${s.debtPaid ? chip('🏚️ The mortgage is paid. Mortimer frames the receipt.', 'new') : s.mortgage ? chip(`🏚️ Mortgage: ${s.debt} coins still to pay.`) : ''}
+      ${s.post ? chip(`📦 Snail Mail delivered: ${s.post}`, 'new') : ''}
       ${fresh.length ? chip(`🔓 New in the bazaar: ${fresh.map((it) => `<b>${it.icon} ${it.name}</b>`).join(' · ')}`, 'new') : ''}
       ${stickerNote()}`);
     for (let i = 0; i < s.stars; i++) setTimeout(() => { if (mode === 'tally') sfx.star(i); }, 250 + i * 300);
@@ -6746,7 +7041,7 @@
   }
   function beginStarRun(keep) {
     meta.stars = (meta.stars || 0) + 1; saveMeta();
-    beginRun(run.kit, keep);
+    showKits(keep);
   }
   const blimpLevel = (k, d) => { const i = Object.keys(BLIMPS).indexOf(k); return i >= 1 && i <= (run.stars || 0) ? Math.min(d.from, FROM.blimp) : d.from; };
 
@@ -6968,7 +7263,7 @@
   const INTRO = 0.35; // seconds a brick takes to drop into place
   function drawBricks(t) {
     const wh = G.def.wheel, dance = feverOn() ? A.beat() * 0.06 : 0; // in a fever the bricks pulse with the music
-    const sleepy = special('insomnia') && G.fx.panic <= 0;
+    const sleepy = special('insomnia') && G.fx.panic <= 0, cheesy = special('cheese');
     if (wh && !wh.ry) {
       ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 2; ctx.beginPath();
       for (const b of G.bricks) if (b.alive && b.wheel != null) { ctx.moveTo(wh.x, wh.y); ctx.lineTo(b.x + b.w / 2, b.y + b.h / 2); }
@@ -6983,6 +7278,11 @@
       const sc = 1 + b.punch * 0.16 + dance, w = b.w * sc, h = b.h * sc, cx = b.x + b.w / 2, cy = b.y + b.h / 2 + oy;
       ctx.globalAlpha = it < 1 ? Math.min(1, it * 2) : 1;
       ctx.drawImage(brickSprite(spriteType(b), brickColor(b)), cx - w / 2, cy - h / 2, w, h);
+      if (cheesy && b.type === 'normal') {
+        ctx.fillStyle = 'rgba(255,208,58,0.72)'; rr(cx - w / 2, cy - h / 2, w, h, 5); ctx.fill();
+        ctx.fillStyle = 'rgba(150,90,0,0.4)';
+        for (const [hx, hy, hr] of [[-0.3, -0.15, 3.2], [0.12, 0.2, 2.6], [0.33, -0.2, 2]]) { ctx.beginPath(); ctx.arc(cx + hx * w, cy + hy * h, hr, 0, TAU); ctx.fill(); }
+      }
       if (b.type === 'runner') {
         const k = Math.sin(b.hop * 18) * 5;
         ctx.strokeStyle = '#1b1f33'; ctx.lineWidth = 2.5; ctx.beginPath();
@@ -6992,7 +7292,7 @@
         const ball = G.balls[0];
         eyes(cx, cy - 1, 8, 4.5, ball ? clamp((ball.x - cx) / 60, -2.5, 2.5) : 0);
         ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      } else if ((b.type === 'normal' && b.maxhp > 1) || b.type === 'steel' || b.type === 'pinata' || b.type === 'turtle') {
+      } else if ((b.type === 'normal' && b.maxhp > 1 && !b.nemesis) || b.type === 'steel' || b.type === 'pinata' || b.type === 'turtle') {
         ctx.fillStyle = b.type === 'steel' ? '#26303f' : 'rgba(0,0,0,0.45)'; ctx.fillText(short(b.hp), cx, cy + 1);
       } else if (b.type === 'tag') {
         ctx.fillStyle = '#3a0a14'; ctx.fillText('$' + tagPrice(), cx + 3, cy + 1);
@@ -7016,6 +7316,14 @@
         ctx.stroke();
       }
       if (b.flash > 0) { ctx.globalAlpha = Math.min(1, b.flash * 8); ctx.fillStyle = '#ffffff'; rr(cx - w / 2, cy - h / 2, w, h, 5); ctx.fill(); }
+      if (b.nemesis && meta.nemesis) {
+        ctx.globalAlpha = 1; ctx.strokeStyle = '#1a1026'; ctx.fillStyle = '#1a1026'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(cx, cy + 3); ctx.quadraticCurveTo(cx - 7, cy + 9, cx - 13, cy + 1); ctx.moveTo(cx, cy + 3); ctx.quadraticCurveTo(cx + 7, cy + 9, cx + 13, cy + 1); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx + 8, cy - 4, 4.5, 0, TAU); ctx.moveTo(cx + 12, cy - 2); ctx.lineTo(cx + 15, cy + 7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx - 8, cy - 4, 1.6, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.fillText(`🧐 ${meta.nemesis.name} · ${short(b.hp)}`, clamp(cx, 90, W - 90), b.y - 9);
+        ctx.font = 'bold 12px system-ui, sans-serif';
+      }
       if (b.wanted) {
         const left = Math.ceil(WANTED_S - G.clock);
         ctx.globalAlpha = 1; ctx.strokeStyle = Math.sin(t * 10) > 0 ? '#ff2a4d' : '#ffd23f'; ctx.lineWidth = 2.5; rr(b.x - 3, b.y - 3, b.w + 6, b.h + 6, 7); ctx.stroke();
@@ -7112,6 +7420,7 @@
   // Heavy Core: the ball is darker steel with each level.
   const CORE_LOOK = ['#ffffff', '#eef2ff', '#dde4f4', '#c8d2e8', '#b1bedb', '#99a9cc', '#8092bd'];
   function drawBall(b) {
+    if (b.charged) { glow(b.x, b.y, b.r + 16, '#ffd23f', 0.55 + 0.15 * Math.sin(G.time * 12)); ctx.globalAlpha = 1; }
     const fire = G.fx.fire > 0 || b.fireT > 0 || comet();
     if (b.tail) {
       ctx.fillStyle = '#9aa6c9';
@@ -7178,6 +7487,11 @@
   const COIN_LOOK = [['#7a421a', '#d98a4a', '#ffd9b0'], ['#6b7488', '#d3daea', '#ffffff'], ['#a8730a', '#ffd84a', '#fff6c0']];
   const coinTier = () => { const n = lv('value') + lv('goldage'); return n >= 3 ? 2 : n >= 1 ? 1 : 0; };
   function drawCoin(c) {
+    if (c.cursed) {
+      glow(c.x, c.y, 26, '#b56bff', 0.5 + 0.2 * Math.sin(G.time * 8)); ctx.globalAlpha = 1;
+      ctx.font = '22px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🧿', c.x, c.y);
+      return;
+    }
     const look = COIN_LOOK[c.fat ? 2 : coinTier()];
     const R = c.fat ? 1.6 : 1, walk = c.on && c.run && G.fx.stampede > 0, flat = c.on && !walk;
     const sx = flat || walk ? 1 : Math.abs(Math.cos(c.spin)), sy = flat ? 0.55 : 1, y = c.y + COIN_R - 7 * sy * R - (walk ? 3 : 0);
@@ -7568,7 +7882,8 @@
       drawCoin({ x: 70, y: 19, spin: 0, val: 0 });
       ctx.fillStyle = '#ffd84a'; ctx.font = `bold ${Math.round(20 * (1 + hud.coinPop * 0.25))}px system-ui, sans-serif`; ctx.fillText(Math.round(hud.coins), 82, 20);
     }
-    ctx.font = '15px system-ui, sans-serif'; ctx.fillStyle = '#ff5c8a'; ctx.fillText('♥'.repeat(Math.max(0, run.lives)), 62, 41);
+    if (pact('coinop')) { ctx.font = 'bold 12px system-ui, sans-serif'; ctx.fillStyle = '#ffd23f'; ctx.fillText(`🕹️ ball ${ballFee()}`, 62, 41); }
+    else { ctx.font = '15px system-ui, sans-serif'; ctx.fillStyle = '#ff5c8a'; ctx.fillText(run.lives > 6 ? '♥×' + run.lives : '♥'.repeat(Math.max(0, run.lives)), 62, 41); }
     if (run.heat) { ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillStyle = run.heat > 0 ? '#ff9a3d' : '#a8e6ff'; ctx.fillText((run.heat > 0 ? '🌶' : '🧊') + run.heat, 158, 41); }
     // guns: the bar is the clip, or the reload progress in grey
     let ax = 176;
@@ -7596,7 +7911,7 @@
     if (G.shield > 0) { ctx.fillStyle = '#6ee7ff'; ctx.fillText('🛡×' + G.shield, tx - 6, 41); }
     drawClock(t);
     // fever gauge
-    if (G.level < FROM.fever) return;
+    if (G.level < feverFrom()) return;
     const fy = HUD_H - 11;
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(0, fy, W, 5);
     if (feverOn()) {
@@ -7790,6 +8105,7 @@
     drawWalkers();
     drawNet(t);
     drawAim();
+    drawWish();
     for (const p of G.pus) drawPU(p, t);
     for (const c of G.coins) drawCoin(c);
     drawShots();
@@ -7808,6 +8124,7 @@
     drawTexts();
     ctx.restore();
     drawHUD(t);
+    drawPact();
     drawBossBar();
     drawLull();
     drawBanner(t);
@@ -7868,7 +8185,7 @@
     starRun(keep) { beginStarRun(keep); }, daily() { beginDaily(); }, victory() { showVictory(); }, ending() { showEnding(); }, get meta() { return meta; },
     hit(b, dmg, ball = true) { return hitBrick(b, dmg, ball); }, hurtBoss(dmg, raw) { damageBoss(dmg, raw); }, ballBoss(dmg) { ballHitBoss(G.balls[0], dmg); },
     levelCount: LEVELS.length, gen(n) { return genLevel(n); }, def(n) { return levelDef(n); }, roll() { rollDeals(); },
-    open() { openShop(); }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: offX + x * scale, clientY: offY + y * scale })); },
+    open() { openShop(); }, lose() { loseLife(); }, drop(x, y) { dropCapsule(x, y); }, nemesis(n) { if (n !== undefined) meta.nemesis = n; return meta.nemesis; }, over() { gameOver(); }, pact(id, keep) { beginRun(id, keep); }, relics() { showRelics(); }, kits() { showKits(); }, pacts: PACTS.map((p) => p.id), get deal() { return pactDeal; }, tap(x, y) { canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: offX + x * scale, clientY: offY + y * scale })); },
   };
 
   showMenu();

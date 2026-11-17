@@ -181,6 +181,12 @@ h2 { margin: 0 0 0.6em; font-size: 2em; }
 .stk.on b { color: #ffffff; }
 .stat.life { font-size: 0.85em; color: #9aa3d6; margin-top: 0.8em; }
 .relic.kit { padding-top: 0.5em; padding-bottom: 0.5em; }
+.relic.pact { opacity: 0.86; }
+.relic.pact.on { opacity: 1; border-color: #ffe680; box-shadow: 0 0 1.4em #ffd84a88; background: linear-gradient(160deg, #3a3168, #1c2146); }
+.boon { color: #9cf5b4; }
+.curse { color: #ff9aa8; }
+.owned .boon, .owned .curse { display: block; }
+.center > .lore { max-width: 26em; margin: 0.5em auto; text-align: left; }
 .big:disabled { opacity: 0.45; cursor: default; }
 .crash { max-width: 19em; margin: 0 auto; background: #c9ccd6; color: #15171f; border: 2px solid #ffffff; border-right-color: #6a6f80; border-bottom-color: #6a6f80; text-align: left; font-family: Tahoma, Verdana, sans-serif; }
 .crash .ct { background: #1b2a8a; color: #ffffff; font-weight: 700; font-size: 0.85em; padding: 0.35em 0.6em; }
