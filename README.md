@@ -22,7 +22,7 @@ After a change to a game, increase the `?v=` number of its scripts and styleshee
 | `game.js` | Game rules, shop, enemies, bosses, rendering |
 | `levels.js` | The 50 maps of the first act and the map legend. |
 | `levels2.js` | The 50 maps of the back room (levels 51 to 100), added to `BB_LEVELS`. Levels after 100 are generated in `game.js` (`endlessLevel`). |
-| `lore.js` | The story of the back room (`BB_LORE`): a chapter card for each level from 51 to 100, 20 letters, the memories of the last boss and the ending. Data only. |
+| `lore.js` | The two stories (`BB_LORE`). Act one, "The Notice": a card for each level from 1 to 50 (`act1`; card 1 is on the pick screen) and six letters. Act two, "The First Coin": a chapter card for each level from 51 to 100, 20 letters, the memories of the last boss and the ending. Data only. |
 | `audio.js` | Synthesised sound effects and generative music. Effects take their pitch from the chord that the music plays. The music has five channels; the menu and the shop fade to an ambient mix. The music follows the game through `fever(on)`, `streak(n)`, `rush(secondsLeft)` and `beat()`. The effects that fire most often play the next note of a riff, on the grid of the music, each family with its own instrument; big moments end on the tonic. Each level has one of six styles (mode, tempo, swing). |
 | `snail.js` | The lines of Mortimer, the snail who keeps the shop. Data only: `BB_SNAIL.lines[key]` is a list, and the game picks one line at random. |
 | `minigames.js`, `minigames.css` | The arcade mini-games of the shop (`BBMini.list`, `BBMini.play`). They do not use game.js. |
@@ -99,7 +99,7 @@ Things that a late run earns or meets (each has a `*_FROM` constant for its firs
 
 To add a bonus round, add an entry to `window.BBRounds` in rounds.js; game.js needs no change. A round pays through `api.coin` and `api.pay`, and `ROUND_COINS` limits one round.
 
-Data that outlives a run is in `meta` (`localStorage` key `brickbazaar.meta.v1`): the sticker album (`STICKERS`, `sticker(id)`) and the lifetime totals. Stickers open starting kits (`KITS`). To reset them, remove that key.
+Data that outlives a run is in `meta` (`localStorage` key `brickbazaar.meta.v1`): the sticker album (`STICKERS`, `sticker(id)`) and the lifetime totals. Stickers open heirlooms (`PACTS`, see "Starting pacts"). `meta.pactSeen` holds the heirlooms that the player has been dealt, and `meta.nemesis` the Nemesis Brick. To reset them, remove that key.
 
 The shop has a keeper, Mortimer. His lines are in `QUIPS` and change nothing in the game. The tip jar, the haggle, double or nothing, the Dare (`DARES`) and the Oddity (`ODDS`) are in the same section as `buy`.
 
@@ -117,6 +117,35 @@ Later additions, each with its own table or constant:
 *   **Written Warning.** `G.lazy` counts paddle bounces since a ball last touched a brick. A single ball gets warnings at `WARN_AT` and is replaced at `FIRE_AT` by The New One, which drops from the top and hits double for `KEEN_HITS` hits.
 *   **Lullaby.** With no input and a ball in flight, game time eases down to `LULL_K` after `LULL_WAIT` seconds (`LULL_TOUCH` after a finger left the screen). A touch wakes it. The pause menu has the switch (`meta.lull`). It is off in bonus rounds, in the daily run and while Pip can drive.
 *   **Sundry minds the shop.** From `SUNDRY_FROM`, on one shop visit in every ten levels the small snail swaps the price tags of the open upgrades (`sundryShift`, `run.sundry`). A tag is used up by one purchase.
+
+### Starting pacts
+
+A run starts in the Shed of Junk (`showKits`, `renderKits`, `signPact`). The player signs for one heirloom from the `PACTS` table, or for Nothing To Declare. `run.kit` holds its id, `pact(id)` asks for it, and `myPact()` returns the entry. The screen deals `PACT_DEAL` heirlooms from those that the stickers have opened (`need`), and shows first the ones that the player has never been dealt. One rummage for other heirlooms is free; each one after it costs a life. A tap selects a card and the Sign button starts the run, so that a card can be read first.
+
+Rules for a pact, from play feedback ("the starting pick made no difference"):
+
+*   A pact has a boon and a grudge, and both last for the whole run. The player must feel both on level 50 as well as on level 5. A gift that is spent by level 3 (coins, one upgrade) is not a pact.
+*   The grudge is a rule, not only a number. Heat takes back plain damage and the price index takes back about two thirds of plain income, so a pact that only adds a percentage is not felt.
+*   Both sides show on the screen: the card in the shed, the row in the pause menu, and the chip in the corner of the field (`drawPact`; `tag()` gives the chip a counter).
+*   A fee that a pact takes counts as spent (`run.spent`), so that losing money does not make the shop cheaper.
+
+The numbers of the pacts are constants above the table (`SALARY_K`, `SUNDAY_K`, `MORTGAGE_*`, `PENNY_*` and others). They were set with a bot that plays 20 levels with each pact: the target is earnings within about 15% of a run with no pact. Measured at level 20 against a run with no pact, with a paddle that never misses and a greedy shopper (runs differ by about 10%): Nine-to-Five earns about 10 to 15% more, Speedrunner's Sponsor about 25% more (that paddle is never late; a player is), Lazy Sunday about the same, Arf Arf Contract and Ice Bath about 15% less (Ice Bath keeps its bricks soft, and Arf buys relics). A real player has not confirmed these values.
+
+Where the rules of the pacts are: `relicHit`, `gunDmg` and `relicR` (damage and ball size), `loseLife` (Coin-Op Paddle, Nine Lives, Dragon's Hoard), `maxLives`, `finishLevel` (salary, mortgage, Heat, the post), `earnSeals` and `sealFrom`, `pactK` and `pactLock` (prices and forbidden items), `buy` and `deliverPost` (Snail Mail Order), `pennyDrop` (the Cursed Penny), `showRelics` and `takeRelic` (the twist of the Cursed Heirloom is `run.curse`, and `odd(k)` reads it), `rollSpecial` (Blackout Bazaar), `flipped` (Down Under), `clockOn` (Lazy Sunday).
+
+A save from before the pacts has no `pv` field; `loadRun` gives it no pact.
+
+### Small mechanics from the second idea round
+
+*   **Wishbone Capsules** (`dropCapsule`, `snapWish`): from level `WISH_FROM`, a quarter of the capsule drops are two different capsules on one string. The paddle takes the one nearer to its middle, and the other pops.
+*   **The Bazaar Shuffle** (`shuffleStep`): a serve ritual. `SHUFFLE_TURNS` turns of the paddle under a ball that waits for its serve charge the ball: the first brick takes `SHUFFLE_K` times the damage and drops two coins. Mortimer hints at it, and a sticker records the first one.
+*   **Cheese Day** (special `cheese`): a hurt plain brick gets narrower around its middle (`hitBrick`), so gaps open in the wall. Not on maps with stone, conveyors or a wheel.
+*   **The Nemesis Brick** (`nemesisCrown`, `nemesisIn`, `nemesisDown`): when a run ends, a brick gets a name. In later runs it comes back on the levels in `NEMESIS_AT` with `NEMESIS_HP` times the health. Only a ball can beat it; guns and bombs make it slip away.
+*   **Bucket of Fish** (item `u_fish`, Upstairs): Bazaar Seals buy a relic gift. The price rises by `FISH_SEALS` with each bucket. Seals had too few uses before.
+
+Debug hooks for these: `__bb.pact(id)` starts a run with a pact, `__bb.kits()` opens the shed, `__bb.pacts` lists the ids, `__bb.drop(x, y)` drops a capsule, `__bb.nemesis(obj)` reads or sets the nemesis, `__bb.lose()` loses a ball, `__bb.over()` ends the run.
+
+Ideas from the two idea rounds that are not built are not in this repository. Good ones that remain: Fever Flavours, Two Doors (a bootleg copy of the next map), Spike the Boss's Tea, Sponsors, The Ball Grows Up, Tip Jar Paddle, Bonus Ball, The Bola.
 
 ## Strata Siege notes
 

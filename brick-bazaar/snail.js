@@ -6,6 +6,8 @@ window.BB_SNAIL = {
   lines: {
     // Shop: the player enters.
     open: [
+      'My uncle always shuffled before a serve. Wiggle, wiggle. Then serve.',
+      'Two capsules on one string? Take the one in the middle of your paddle.',
       'Welcome back. Wipe your feet. Not on the bricks.',
       'Fresh stock! Well. Stock.',
       'Take your time. I always do.',
@@ -794,6 +796,16 @@ window.BB_SNAIL = {
       'Game over. I will keep the coins warm for you.',
       'The bricks won this time. They will be unbearable.',
       'Rest. Wash your hands. Come back.',
+      'Over. Put the kettle on. I will be at the door by Tuesday.',
+      'That was a run. Some of it was even running.',
+      'The bricks are counting their losses. You did well.',
+      'Done. I will sweep up. It takes me until the next run.',
+      'A good effort. I wrote it down. The word is "effort".',
+      'You fell. The Bazaar is still here. So am I. Shocking.',
+      'Rest. The wall is not going anywhere. It is a wall.',
+      'I have seen worse runs. I have done worse runs. In 1790.',
+      'That one ends here. The next one starts there. Slowly.',
+      'Nice. Go and see to whatever is crying. It is not me.',
     ],
     // Game-over screen: one line of his invoice.
     invoice: [
@@ -841,14 +853,47 @@ window.BB_SNAIL = {
     ],
     // The player chooses a starting kit.
     kits: [
-      'Pick a kit. It is like a lunchbox, but for violence.',
-      'Choose a starter. I recommend all of them. Equally.',
-      'A kit for the road. A short road. To the bricks.',
-      'Every kit is a good kit. Some are better.',
-      'Take one. They are free. I am still sad about it.',
-      'Starting kits! Packed by me. It took a month.',
-      'Pick your style. Mine is slow.',
-      'Pack light. Or heavy. You are sitting anyway.',
+      'The Shed of Junk. Returned without a receipt, all of it.',
+      'Nan Woodworm keeps the shed. And the Grudge Ledger.',
+      'They work out of spite. Spite is very reliable.',
+      'Every one has a gift. Every one has a grudge. Read both.',
+      'Sign for one. Or sign for nothing. Nothing never sulks.',
+      'These came back to the shop. They are legally sulking.',
+      'Pick slowly. It is the only speed that I trust.',
+      'An heirloom is for the whole run. Like a snail. Like me.',
+    ],
+    // The player taps an heirloom in the shed.
+    pactPick: [
+      'Signed and sulking. Lovely. Like a lettuce I once knew.',
+      'Nan wrote your name in the ledger. Mostly in the hole.',
+      'It is cross with you now. It will get over it. I did. 1811.',
+      'A pact! How exciting. For you. I am behind the counter.',
+      'Good pick. It hates you a reasonable amount.',
+      'Sign for it and there are no take-backs. That is how it got here.',
+      'It looked at me. I looked at it. We agreed you can have it.',
+      'Fine choice. It comes with a grudge. Grudges are free.',
+      'I would not have picked that one. That is why you are the hero.',
+      'That thing smells of grudge. And sock. Mostly sock.',
+      'It is glaring. It has no eyes. It is glaring anyway.',
+      'A cursed start. My favourite kind. It builds character.',
+      'Be nice to it. Or do not. It will remember either way.',
+      'Mind it on the paddle. Pip has already complained.',
+    ],
+    // The player taps Nothing To Declare.
+    pactNone: [
+      'Empty pockets. Very wise. Nothing never sulks.',
+      'Nothing! Excellent. It is my best seller.',
+      'No heirloom? Brave. Or tidy. One of those.',
+      'You left the junk in the shed. The junk is relieved.',
+      'Travelling light. Like me. I carry only a house.',
+    ],
+    // The first shop visit of a run.
+    firstShop: [
+      'First customer of the run! Also the last. Also the best.',
+      'Welcome. Everything is where it was. Very slowly, it moved.',
+      'Back already? It feels like a minute. It was a minute.',
+      'New run, same snail. I have tidied. Look closely. Closer.',
+      'Hello again. The stock is fresh. The snail is not.',
     ],
     // The sticker album.
     album: [
